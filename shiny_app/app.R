@@ -2327,6 +2327,7 @@ server <- function(input, output, session) {
     observaciones = "Observaciones y auditoría"
   )
   f5_capture_step <- reactiveVal("metadatos")
+  f5_certification_complete <- reactiveVal(FALSE)
   logged_in <- reactiveVal(skip_login)
   public_page <- reactiveVal("login")
   public_language <- reactiveVal("es")
@@ -2709,6 +2710,147 @@ server <- function(input, output, session) {
     ))
   }
 
+  f5_number <- function(value, default = NA_real_) {
+    if (is.null(value) || length(value) == 0 || is.na(value)) {
+      return(default)
+    }
+
+    text_value <- trimws(as.character(value[[1]]))
+    if (!nzchar(text_value)) {
+      return(default)
+    }
+
+    suppressWarnings(as.numeric(text_value))
+  }
+
+  f5_text <- function(value) {
+    if (is.null(value) || length(value) == 0 || is.na(value)) {
+      return("")
+    }
+
+    trimws(as.character(value))
+  }
+
+  f5_date <- function(value) {
+    if (is.null(value) || length(value) == 0 || is.na(value)) {
+      return(as.Date(NA))
+    }
+
+    as.Date(value)
+  }
+
+  f5_total_huevos_ingresados <- function() {
+    sum(
+      f5_number(input$f5_hv_huevos_viables, 0),
+      f5_number(input$f5_he_huevos_eclosionados, 0),
+      f5_number(input$f5_hc_huevos_canoa, 0),
+      f5_number(input$f5_hnf_huevos_no_fecundados, 0),
+      na.rm = TRUE
+    )
+  }
+
+  f5_capture_summary <- function() {
+    data.frame(
+      Campo = c(
+        "Código del formulario",
+        "País",
+        "Departamento #",
+        "Municipio #",
+        "Ciclo",
+        "Cepa / población",
+        "Especie",
+        "Fecha jaula",
+        "Número de hembras",
+        "Número de machos",
+        "Total individuos",
+        "Total huevos viables",
+        "Tipo alimentación",
+        "Fecha alimentación sangre",
+        "Fecha colocación sustrato",
+        "Fecha retiro sustrato",
+        "HV - huevos viables",
+        "HE - huevos eclosionados",
+        "HC - huevos canoa",
+        "HNF - huevos no fecundados",
+        "Total huevos ingresados",
+        "Creado por"
+      ),
+      Valor = c(
+        f5_text(input$f5_formulario_codigo),
+        f5_text(input$f5_pais),
+        as.character(f5_number(input$f5_departamento_numero)),
+        as.character(f5_number(input$f5_municipio_numero)),
+        f5_text(input$f5_ciclo),
+        f5_text(input$f5_cepa_poblacion),
+        f5_text(input$f5_especie),
+        as.character(f5_date(input$f5_fecha_jaula)),
+        as.character(f5_number(input$f5_numero_hembras, 0)),
+        as.character(f5_number(input$f5_numero_machos, 0)),
+        as.character(f5_number(input$f5_numero_hembras, 0) + f5_number(input$f5_numero_machos, 0)),
+        as.character(f5_number(input$f5_total_huevos_viables)),
+        f5_text(input$f5_tipo_alimentacion_descripcion),
+        as.character(f5_date(input$f5_fecha_alimentacion_sangre)),
+        as.character(f5_date(input$f5_fecha_colocacion_sustrato)),
+        as.character(f5_date(input$f5_fecha_retiro_sustrato)),
+        as.character(f5_number(input$f5_hv_huevos_viables, 0)),
+        as.character(f5_number(input$f5_he_huevos_eclosionados, 0)),
+        as.character(f5_number(input$f5_hc_huevos_canoa, 0)),
+        as.character(f5_number(input$f5_hnf_huevos_no_fecundados, 0)),
+        as.character(f5_total_huevos_ingresados()),
+        f5_text(input$f5_creado_por)
+      ),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  f5_quality_checks <- function() {
+    alerts <- character()
+    total_declarado <- f5_number(input$f5_total_huevos_viables)
+    total_ingresado <- f5_total_huevos_ingresados()
+    fecha_alimentacion <- f5_date(input$f5_fecha_alimentacion_sangre)
+    fecha_colocacion <- f5_date(input$f5_fecha_colocacion_sustrato)
+    fecha_retiro <- f5_date(input$f5_fecha_retiro_sustrato)
+
+    if (!is.na(total_declarado) && total_declarado < total_ingresado) {
+      alerts <- c(
+        alerts,
+        sprintf(
+          "Total huevos viables (%s) no puede ser menor que la suma de huevos ingresados (%s).",
+          total_declarado,
+          total_ingresado
+        )
+      )
+    }
+
+    if (!is.na(fecha_alimentacion) && !is.na(fecha_colocacion)) {
+      dias_alimentacion_sustrato <- as.integer(fecha_colocacion - fecha_alimentacion)
+      if (dias_alimentacion_sustrato < 2) {
+        alerts <- c(
+          alerts,
+          sprintf(
+            "Entre Fecha alimentación sangre y Fecha colocación sustrato debe haber mínimo 2 días; actualmente hay %s día(s).",
+            dias_alimentacion_sustrato
+          )
+        )
+      }
+    }
+
+    if (!is.na(fecha_colocacion) && !is.na(fecha_retiro)) {
+      dias_sustrato <- as.integer(fecha_retiro - fecha_colocacion)
+      if (dias_sustrato < 3) {
+        alerts <- c(
+          alerts,
+          sprintf(
+            "Entre Fecha colocación sustrato y Fecha retiro sustrato debe haber mínimo 3 días; actualmente hay %s día(s).",
+            dias_sustrato
+          )
+        )
+      }
+    }
+
+    alerts
+  }
+
   output$f5_capture_step_indicator <- renderUI({
     current_step <- f5_capture_step()
     current_index <- match(current_step, f5_capture_steps)
@@ -2837,12 +2979,29 @@ server <- function(input, output, session) {
       return(NULL)
     }
 
+    certification_status <- if (f5_certification_complete()) {
+      div(
+        class = "alert alert-success",
+        "Certificación de datos aprobada. El registro está listo para guardarse cuando se active la conexión final."
+      )
+    } else {
+      div(
+        class = "alert alert-warning",
+        "Antes de guardar el registro pendiente debe completar la certificación de datos."
+      )
+    }
+
     tagList(
-      tags$button(
-        type = "button",
-        class = "btn btn-primary",
-        disabled = "disabled",
-        "Guardar registro pendiente"
+      certification_status,
+      div(
+        class = "submit-row",
+        actionButton("f5_open_certification", "Certificación de datos", class = "btn-primary"),
+        tags$button(
+          type = "button",
+          class = if (f5_certification_complete()) "btn btn-primary" else "btn btn-default",
+          disabled = "disabled",
+          "Guardar registro pendiente"
+        )
       ),
       span(
         class = "help-block",
@@ -2924,12 +3083,89 @@ server <- function(input, output, session) {
     }
   })
 
+  observeEvent(input$f5_open_certification, {
+    showModal(modalDialog(
+      title = "Certificación de datos",
+      size = "l",
+      easyClose = TRUE,
+      p("Revise el resumen del registro antes de ejecutar el control de calidad."),
+      tableOutput("f5_certification_summary"),
+      footer = tagList(
+        modalButton("Cancelar"),
+        actionButton("f5_confirm_certification", "OK", class = "btn-primary")
+      )
+    ))
+  })
+
+  output$f5_certification_summary <- renderTable({
+    f5_capture_summary()
+  }, striped = TRUE, bordered = TRUE, spacing = "xs")
+
+  observeEvent(input$f5_confirm_certification, {
+    quality_alerts <- f5_quality_checks()
+    f5_certification_complete(length(quality_alerts) == 0)
+
+    if (length(quality_alerts) > 0) {
+      showModal(modalDialog(
+        title = "Control de calidad",
+        size = "m",
+        easyClose = TRUE,
+        div(
+          class = "alert alert-danger",
+          strong("Revise el registro antes de guardarlo.")
+        ),
+        tags$ul(lapply(quality_alerts, tags$li)),
+        footer = modalButton("Cerrar")
+      ))
+      return()
+    }
+
+    showModal(modalDialog(
+      title = "Control de calidad",
+      size = "m",
+      easyClose = TRUE,
+      div(
+        class = "alert alert-success",
+        "El registro pasó los controles de calidad disponibles."
+      ),
+      footer = modalButton("Cerrar")
+    ))
+  })
+
+  observeEvent({
+    list(
+      input$f5_formulario_codigo,
+      input$f5_pais,
+      input$f5_departamento_numero,
+      input$f5_municipio_numero,
+      input$f5_ciclo,
+      input$f5_cepa_poblacion,
+      input$f5_especie,
+      input$f5_fecha_jaula,
+      input$f5_numero_hembras,
+      input$f5_numero_machos,
+      input$f5_total_huevos_viables,
+      input$f5_tipo_alimentacion_descripcion,
+      input$f5_fecha_alimentacion_sangre,
+      input$f5_fecha_colocacion_sustrato,
+      input$f5_fecha_retiro_sustrato,
+      input$f5_hv_huevos_viables,
+      input$f5_he_huevos_eclosionados,
+      input$f5_hc_huevos_canoa,
+      input$f5_hnf_huevos_no_fecundados,
+      input$f5_creado_por
+    )
+  }, {
+    f5_certification_complete(FALSE)
+  }, ignoreInit = TRUE)
+
   observeEvent(input$open_dataset, {
     active_dataset(input$dataset_choice)
     submission_status("No se ha enviado ningún registro en esta sesión.")
 
     if (identical(input$dataset_choice, "formulario_5_alimentacion_conteo")) {
       f5_capture_step("metadatos")
+      f5_certification_complete(FALSE)
       show_formulario_5_modal()
     }
   })
@@ -2985,6 +3221,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$open_formulario_5_entry, {
     f5_capture_step("metadatos")
+    f5_certification_complete(FALSE)
     show_formulario_5_modal()
   })
 
