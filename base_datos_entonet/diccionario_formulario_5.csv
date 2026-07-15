@@ -1,0 +1,36 @@
+campo,seccion,tipo_dato,obligatorio,valores_permitidos,descripcion
+formulario_codigo,Metadatos,texto,si,F5,Codigo del formulario.
+ciclo,Metadatos,texto,si,Ciclo 3,Ciclo REI del formulario.
+formulario_nombre,Metadatos,texto,si,,Nombre del formulario.
+fecha_registro,Metadatos,fecha,si,yyyy-mm-dd,Fecha en que se digitaliza o registra la fila.
+cepa_poblacion,Datos generales,texto,si,,Nombre asignado a la cepa o poblacion de mosquitos.
+especie,Datos generales,lista,si,Ae. aegypti|Ae. albopictus,Especie de la cepa de mosquitos.
+generacion_filial_adultos,Datos generales,texto,si,,Generacion filial de los mosquitos adultos dentro de la jaula.
+responsable_ingreso_jaula,Datos generales,texto,si,,Responsable de crianza de la cepa que ingreso los mosquitos a la jaula.
+fecha_jaula,Datos generales,fecha,si,yyyy-mm-dd,Fecha asociada a la informacion de la jaula.
+numero_hembras,Datos generales,entero,si,>=0,Numero de hembras utilizadas para obtener la siguiente generacion.
+numero_machos,Datos generales,entero,si,>=0,Numero de machos utilizados para obtener la siguiente generacion.
+total_individuos,Datos generales,entero,no,>=0,Suma de hembras y machos.
+total_huevos_viables,Datos generales,entero,no,>=0,Total de huevos viables obtenidos.
+responsable_alimentacion,Alimentacion sanguinea,texto,si,,Persona responsable de la alimentacion sanguinea.
+tipo_alimentacion_codigo,Alimentacion sanguinea,lista,si,A|B|C|D|E,Codigo del tipo de alimentacion.
+tipo_alimentacion_descripcion,Alimentacion sanguinea,lista,no,conejo|humano|hemotek-conejo|hemotek-humano|hemotek-carnero,Descripcion del tipo de alimentacion.
+fecha_alimentacion_sangre,Alimentacion sanguinea,fecha,si,yyyy-mm-dd,Fecha en que se alimentaron los mosquitos.
+numero_charolas,Alimentacion sanguinea,entero,si,>=0,Numero de charolas colocadas en la fecha de alimentacion.
+observaciones_alimentacion,Alimentacion sanguinea,texto,no,,Observaciones sobre la alimentacion o condicion de las charolas.
+generacion_filial_huevos,Conteo de huevecillos,texto,si,,Generacion filial de los huevos obtenidos.
+codigo_sustrato,Conteo de huevecillos,texto,si,,Codigo unico del papel o sustrato usado para colectar huevos.
+fecha_colocacion_sustrato,Conteo de huevecillos,fecha,si,yyyy-mm-dd,Fecha de colocacion del papel dentro de la jaula.
+fecha_retiro_sustrato,Conteo de huevecillos,fecha,si,yyyy-mm-dd,Fecha de retiro del papel de la jaula.
+numero_cuadro_sustrato,Conteo de huevecillos,entero,si,>=0,Numero del cuadro seleccionado en el sustrato para contar.
+hv_huevos_viables,Conteo de huevecillos,entero,si,>=0,Total de huevos viables en el papel.
+he_huevos_eclosionados,Conteo de huevecillos,entero,si,>=0,Total de huevos eclosionados en el papel.
+hc_huevos_canoa,Conteo de huevecillos,entero,si,>=0,Total de huevos en canoa no fertiles en el papel.
+hnf_huevos_no_fecundados,Conteo de huevecillos,entero,si,>=0,Total de huevos no fecundados.
+total_huevos,Conteo de huevecillos,entero,no,>=0,Suma de huevos viables eclosionados en canoa y no fecundados.
+responsable_conteo_huevos,Conteo de huevecillos,texto,si,,Persona responsable del conteo de huevos.
+observaciones_generales,Observaciones,texto,no,,Observaciones generales del formulario.
+fuente_formulario,Metadatos,texto,no,,Imagen o archivo fuente usado para crear o auditar el registro.
+creado_por,Metadatos,texto,no,,Usuario o persona que creo el registro digital.
+creado_en,Metadatos,fecha_hora,no,yyyy-mm-dd hh:mm,Fecha y hora de creacion del registro digital.
+actualizado_en,Metadatos,fecha_hora,no,yyyy-mm-dd hh:mm,Fecha y hora de ultima actualizacion del registro digital.

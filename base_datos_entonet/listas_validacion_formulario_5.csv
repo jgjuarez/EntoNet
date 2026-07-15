@@ -1,0 +1,8 @@
+lista,codigo,valor,descripcion
+especie,Ae. aegypti,Ae. aegypti,Especie Aedes aegypti.
+especie,Ae. albopictus,Ae. albopictus,Especie Aedes albopictus.
+tipo_alimentacion,A,conejo,Alimentacion de hembras con sangre de conejo.
+tipo_alimentacion,B,humano,Alimentacion de hembras con sangre humana.
+tipo_alimentacion,C,hemotek-conejo,Alimentacion por hemotek con sangre de conejo.
+tipo_alimentacion,D,hemotek-humano,Alimentacion por hemotek con sangre humana.
+tipo_alimentacion,E,hemotek-carnero,Alimentacion por hemotek con sangre de carnero.

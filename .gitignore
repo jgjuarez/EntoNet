@@ -1,0 +1,25 @@
+# R / Shiny
+.Rhistory
+.RData
+.Ruserdata
+rsconnect/
+renv/library/
+renv/staging/
+
+# Secrets and local config
+.env
+.Renviron
+*.local
+config.local.*
+
+# OS/editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Temporary exports
+tmp/
+temp/
+*.log
+
