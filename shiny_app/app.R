@@ -2768,12 +2768,122 @@ server <- function(input, output, session) {
     trimws(as.character(value))
   }
 
+  f5_optional_text <- function(value) {
+    text <- f5_text(value)
+    if (!nzchar(text)) {
+      return(NA_character_)
+    }
+
+    text
+  }
+
+  f5_integer <- function(value, default = NA_integer_) {
+    number <- f5_number(value, default)
+    if (is.na(number)) {
+      return(default)
+    }
+
+    as.integer(number)
+  }
+
   f5_date <- function(value) {
     if (is.null(value) || length(value) == 0 || is.na(value)) {
       return(as.Date(NA))
     }
 
     as.Date(value)
+  }
+
+  f5_formulario_5_record <- function() {
+    data.frame(
+      formulario_codigo = f5_text(input$f5_formulario_codigo),
+      pais = f5_text(input$f5_pais),
+      departamento_numero = f5_integer(input$f5_departamento_numero),
+      municipio_numero = f5_integer(input$f5_municipio_numero),
+      ciclo = f5_text(input$f5_ciclo),
+      formulario_nombre = f5_text(input$f5_formulario_nombre),
+      fecha_registro = as.character(f5_date(input$f5_fecha_registro)),
+      cepa_poblacion = f5_text(input$f5_cepa_poblacion),
+      especie = f5_text(input$f5_especie),
+      generacion_filial_adultos = f5_text(input$f5_generacion_filial_adultos),
+      responsable_ingreso_jaula = f5_text(input$f5_responsable_ingreso_jaula),
+      fecha_jaula = as.character(f5_date(input$f5_fecha_jaula)),
+      numero_hembras = f5_integer(input$f5_numero_hembras, 0L),
+      numero_machos = f5_integer(input$f5_numero_machos, 0L),
+      total_huevos_viables = f5_integer(input$f5_total_huevos_viables),
+      responsable_alimentacion = f5_text(input$f5_responsable_alimentacion),
+      tipo_alimentacion_codigo = f5_text(input$f5_tipo_alimentacion_codigo),
+      tipo_alimentacion_descripcion = f5_optional_text(input$f5_tipo_alimentacion_descripcion),
+      fecha_alimentacion_sangre = as.character(f5_date(input$f5_fecha_alimentacion_sangre)),
+      numero_charolas = f5_integer(input$f5_numero_charolas, 0L),
+      observaciones_alimentacion = f5_optional_text(input$f5_observaciones_alimentacion),
+      generacion_filial_huevos = f5_text(input$f5_generacion_filial_huevos),
+      codigo_sustrato = f5_text(input$f5_codigo_sustrato),
+      fecha_colocacion_sustrato = as.character(f5_date(input$f5_fecha_colocacion_sustrato)),
+      fecha_retiro_sustrato = as.character(f5_date(input$f5_fecha_retiro_sustrato)),
+      numero_cuadro_sustrato = f5_integer(input$f5_numero_cuadro_sustrato, 0L),
+      hv_huevos_viables = f5_integer(input$f5_hv_huevos_viables, 0L),
+      he_huevos_eclosionados = f5_integer(input$f5_he_huevos_eclosionados, 0L),
+      hc_huevos_canoa = f5_integer(input$f5_hc_huevos_canoa, 0L),
+      hnf_huevos_no_fecundados = f5_integer(input$f5_hnf_huevos_no_fecundados, 0L),
+      responsable_conteo_huevos = f5_text(input$f5_responsable_conteo_huevos),
+      observaciones_generales = f5_optional_text(input$f5_observaciones_generales),
+      fuente_formulario = f5_optional_text(input$f5_fuente_formulario),
+      creado_por = f5_optional_text(input$f5_creado_por),
+      creado_en = as.character(f5_date(input$f5_creado_en)),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  f5_required_missing_fields <- function(record) {
+    required_fields <- c(
+      "formulario_codigo",
+      "pais",
+      "ciclo",
+      "formulario_nombre",
+      "fecha_registro",
+      "cepa_poblacion",
+      "especie",
+      "generacion_filial_adultos",
+      "responsable_ingreso_jaula",
+      "fecha_jaula",
+      "responsable_alimentacion",
+      "tipo_alimentacion_codigo",
+      "fecha_alimentacion_sangre",
+      "generacion_filial_huevos",
+      "codigo_sustrato",
+      "fecha_colocacion_sustrato",
+      "fecha_retiro_sustrato",
+      "responsable_conteo_huevos"
+    )
+
+    required_labels <- c(
+      formulario_codigo = "Código del formulario",
+      pais = "País",
+      ciclo = "Ciclo",
+      formulario_nombre = "Nombre del formulario",
+      fecha_registro = "Fecha de registro",
+      cepa_poblacion = "Cepa / población",
+      especie = "Especie",
+      generacion_filial_adultos = "Generación filial adultos",
+      responsable_ingreso_jaula = "Responsable ingreso jaula",
+      fecha_jaula = "Fecha jaula",
+      responsable_alimentacion = "Responsable alimentación",
+      tipo_alimentacion_codigo = "Tipo alimentación código",
+      fecha_alimentacion_sangre = "Fecha alimentación sangre",
+      generacion_filial_huevos = "Generación filial huevos",
+      codigo_sustrato = "Código sustrato",
+      fecha_colocacion_sustrato = "Fecha colocación sustrato",
+      fecha_retiro_sustrato = "Fecha retiro sustrato",
+      responsable_conteo_huevos = "Responsable conteo huevos"
+    )
+
+    missing <- required_fields[vapply(required_fields, function(field) {
+      value <- record[[field]][[1]]
+      is.na(value) || !nzchar(trimws(as.character(value)))
+    }, logical(1))]
+
+    unname(required_labels[missing])
   }
 
   f5_total_huevos_ingresados <- function() {
@@ -3034,7 +3144,7 @@ server <- function(input, output, session) {
     certification_status <- if (f5_certification_complete()) {
       div(
         class = "alert alert-success",
-        "Certificación de datos aprobada. El registro está listo para guardarse cuando se active la conexión final."
+        "Certificación de datos aprobada. El registro está listo para guardarse en Supabase."
       )
     } else {
       div(
@@ -3043,23 +3153,25 @@ server <- function(input, output, session) {
       )
     }
 
-    save_button <- tags$button(
-      type = "button",
-      class = if (f5_certification_complete()) "btn btn-primary" else "btn btn-default",
-      disabled = if (f5_certification_complete()) NULL else "disabled",
-      "Guardar registro pendiente"
-    )
-
     tagList(
       certification_status,
       div(
         class = "submit-row",
         actionButton("f5_open_certification", "Certificación de datos", class = "btn-primary"),
-        save_button
-      ),
-      span(
-        class = "help-block",
-        "El guardado en Supabase se conectará después de revisar y ajustar los campos."
+        if (f5_certification_complete()) {
+          actionButton(
+            "f5_save_pending",
+            "Guardar registro pendiente",
+            class = "btn-primary"
+          )
+        } else {
+          actionButton(
+            "f5_save_pending",
+            "Guardar registro pendiente",
+            class = "btn-default",
+            disabled = "disabled"
+          )
+        }
       )
     )
   })
@@ -3253,6 +3365,87 @@ server <- function(input, output, session) {
 
   observeEvent(input$f5_close_certification, {
     f5_certification_panel("closed")
+  })
+
+  observeEvent(input$f5_save_pending, {
+    if (!f5_certification_complete()) {
+      showNotification(
+        "Complete la certificación de datos antes de guardar el registro.",
+        type = "warning"
+      )
+      return()
+    }
+
+    quality_alerts <- f5_quality_checks()
+    if (length(quality_alerts) > 0) {
+      f5_certification_complete(FALSE)
+      f5_certification_alerts(quality_alerts)
+      f5_certification_panel("errors")
+      showNotification(
+        "El registro cambió después de certificarse. Revise el control de calidad.",
+        type = "error"
+      )
+      return()
+    }
+
+    record <- f5_formulario_5_record()
+    missing_fields <- f5_required_missing_fields(record)
+    if (length(missing_fields) > 0) {
+      showNotification(
+        paste(
+          "Complete los campos obligatorios:",
+          paste(missing_fields, collapse = ", ")
+        ),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
+    connection <- NULL
+    tryCatch({
+      connection <- connect_to_supabase()
+      dbWithTransaction(connection, {
+        dbAppendTable(
+          connection,
+          Id(schema = "public", table = "formulario_5_alimentacion_conteo_intake"),
+          record
+        )
+      })
+
+      inserted <- dbGetQuery(
+        connection,
+        "
+          select currval(
+            pg_get_serial_sequence(
+              'public.formulario_5_alimentacion_conteo_intake',
+              'intake_id'
+            )
+          )::text as intake_id
+        "
+      )
+
+      submission_status(sprintf(
+        "Formulario 5 guardado en Supabase como registro pendiente. Intake ID: %s.",
+        inserted$intake_id[[1]]
+      ))
+      showNotification(
+        sprintf("Formulario 5 guardado. Intake ID: %s.", inserted$intake_id[[1]]),
+        type = "message"
+      )
+      f5_certification_complete(FALSE)
+      removeModal()
+    }, error = function(error) {
+      showNotification(
+        paste("No se pudo guardar en Supabase:", conditionMessage(error)),
+        type = "error",
+        duration = 12
+      )
+    }, finally = {
+      if (!is.null(connection)) {
+        dbDisconnect(connection)
+      }
+    })
   })
 
   observeEvent({
