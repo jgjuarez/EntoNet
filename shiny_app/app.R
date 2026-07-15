@@ -3006,17 +3006,19 @@ server <- function(input, output, session) {
       )
     }
 
+    save_button <- tags$button(
+      type = "button",
+      class = if (f5_certification_complete()) "btn btn-primary" else "btn btn-default",
+      disabled = if (f5_certification_complete()) NULL else "disabled",
+      "Guardar registro pendiente"
+    )
+
     tagList(
       certification_status,
       div(
         class = "submit-row",
         actionButton("f5_open_certification", "Certificación de datos", class = "btn-primary"),
-        tags$button(
-          type = "button",
-          class = if (f5_certification_complete()) "btn btn-primary" else "btn btn-default",
-          disabled = "disabled",
-          "Guardar registro pendiente"
-        )
+        save_button
       ),
       span(
         class = "help-block",
@@ -3184,16 +3186,8 @@ server <- function(input, output, session) {
       return()
     }
 
-    showModal(modalDialog(
-      title = "Control de calidad",
-      size = "m",
-      easyClose = TRUE,
-      div(
-        class = "alert alert-success",
-        "El registro pasó los controles de calidad disponibles."
-      ),
-      footer = modalButton("Cerrar")
-    ))
+    showNotification("Certificación aprobada. Ya puede guardar el registro pendiente.", type = "message")
+    show_formulario_5_modal()
   })
 
   observeEvent({
