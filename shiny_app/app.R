@@ -2830,6 +2830,13 @@ server <- function(input, output, session) {
       )
     }
 
+    if (!is.na(fecha_jaula) && !is.na(fecha_colocacion) && fecha_colocacion <= fecha_jaula) {
+      alerts <- c(
+        alerts,
+        "Fecha colocación sustrato debe ser posterior a Fecha jaula."
+      )
+    }
+
     if (!is.na(fecha_alimentacion) && !is.na(fecha_colocacion)) {
       dias_alimentacion_sustrato <- as.integer(fecha_colocacion - fecha_alimentacion)
       if (dias_alimentacion_sustrato < 2) {
@@ -3061,16 +3068,57 @@ server <- function(input, output, session) {
   })
 
   output$f5_fecha_sustrato_alert <- renderUI({
-    req(input$f5_fecha_colocacion_sustrato, input$f5_fecha_retiro_sustrato)
+    req(input$f5_fecha_colocacion_sustrato)
 
-    if (as.Date(input$f5_fecha_colocacion_sustrato) > as.Date(input$f5_fecha_retiro_sustrato)) {
-      return(div(
+    alerts <- list()
+    fecha_jaula <- input$f5_fecha_jaula
+    fecha_alimentacion <- input$f5_fecha_alimentacion_sangre
+    fecha_colocacion <- as.Date(input$f5_fecha_colocacion_sustrato)
+    fecha_retiro <- input$f5_fecha_retiro_sustrato
+
+    if (!is.null(fecha_jaula) && !is.na(fecha_jaula) && fecha_colocacion <= as.Date(fecha_jaula)) {
+      alerts <- append(alerts, list(div(
         class = "alert alert-danger",
-        "Fecha colocación sustrato no puede ser posterior a Fecha retiro sustrato."
-      ))
+        "Fecha colocación sustrato debe ser posterior a Fecha jaula."
+      )))
     }
 
-    NULL
+    if (!is.null(fecha_alimentacion) && !is.na(fecha_alimentacion)) {
+      dias_alimentacion_sustrato <- as.integer(fecha_colocacion - as.Date(fecha_alimentacion))
+      if (dias_alimentacion_sustrato < 2) {
+        alerts <- append(alerts, list(div(
+          class = "alert alert-warning",
+          sprintf(
+            "Entre Fecha alimentación sangre y Fecha colocación sustrato debe haber mínimo 2 días; actualmente hay %s día(s).",
+            dias_alimentacion_sustrato
+          )
+        )))
+      }
+    }
+
+    if (!is.null(fecha_retiro) && !is.na(fecha_retiro)) {
+      dias_sustrato <- as.integer(as.Date(fecha_retiro) - fecha_colocacion)
+      if (dias_sustrato <= 0) {
+        alerts <- append(alerts, list(div(
+          class = "alert alert-danger",
+          "Fecha retiro sustrato debe ser posterior a Fecha colocación sustrato."
+        )))
+      } else if (dias_sustrato < 3) {
+        alerts <- append(alerts, list(div(
+          class = "alert alert-warning",
+          sprintf(
+            "Entre Fecha colocación sustrato y Fecha retiro sustrato debe haber mínimo 3 días; actualmente hay %s día(s).",
+            dias_sustrato
+          )
+        )))
+      }
+    }
+
+    if (length(alerts) == 0) {
+      return(NULL)
+    }
+
+    do.call(tagList, alerts)
   })
 
   output$f5_capture_navigation <- renderUI({
