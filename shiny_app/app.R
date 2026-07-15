@@ -45,11 +45,6 @@ profile_country <- read_local_env_value("PROJECT_REI_PROFILE_COUNTRY")
 support_email <- read_local_env_value("PROJECT_REI_SUPPORT_EMAIL")
 supabase_url <- read_local_env_value("SUPABASE_URL")
 supabase_service_role_key <- read_local_env_value("SUPABASE_SERVICE_ROLE_KEY")
-openai_api_key <- read_local_env_value("OPENAI_API_KEY")
-openai_form_review_model <- read_local_env_value("OPENAI_FORM_REVIEW_MODEL")
-if (!nzchar(openai_form_review_model)) {
-  openai_form_review_model <- "gpt-4.1-mini"
-}
 
 value_or_default <- function(value, default) {
   if (!is.null(value) && length(value) > 0 && nzchar(value[[1]])) {
@@ -57,14 +52,6 @@ value_or_default <- function(value, default) {
   }
 
   default
-}
-
-`%||%` <- function(value, fallback) {
-  if (is.null(value)) {
-    return(fallback)
-  }
-
-  value
 }
 
 tr <- function(language, spanish, english) {
@@ -1079,151 +1066,6 @@ ui <- fluidPage(
         };
 
         renderMap(0);
-      });
-
-      function sendFormulario5SourceStatus(status, message) {
-        if (window.Shiny) {
-          Shiny.setInputValue('f5_source_document_status', {
-            status: status,
-            message: message,
-            timestamp: new Date().toISOString()
-          }, {priority: 'event'});
-        }
-      }
-
-      function readFileAsDataURL(file, callback) {
-        var reader = new FileReader();
-        reader.onload = function(event) {
-          callback(null, event.target.result);
-        };
-        reader.onerror = function() {
-          callback('No se pudo leer el archivo.');
-        };
-        reader.readAsDataURL(file);
-      }
-
-      function compressImageToLimit(file, limitBytes, callback) {
-        readFileAsDataURL(file, function(error, dataUrl) {
-          if (error) {
-            callback(error);
-            return;
-          }
-
-          var image = new Image();
-          image.onload = function() {
-            var maxDimension = 1600;
-            var quality = 0.82;
-            var attempts = 0;
-
-            var compressAttempt = function() {
-              attempts += 1;
-              var scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-              var canvas = document.createElement('canvas');
-              canvas.width = Math.max(1, Math.round(image.width * scale));
-              canvas.height = Math.max(1, Math.round(image.height * scale));
-
-              var context = canvas.getContext('2d');
-              context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-              canvas.toBlob(function(blob) {
-                if (!blob) {
-                  callback('No se pudo comprimir la imagen.');
-                  return;
-                }
-
-                if (blob.size <= limitBytes || attempts >= 8) {
-                  if (blob.size > limitBytes) {
-                    callback('La imagen no pudo comprimirse por debajo de 1 MB.');
-                    return;
-                  }
-
-                  callback(null, blob);
-                  return;
-                }
-
-                maxDimension = Math.max(700, Math.round(maxDimension * 0.82));
-                quality = Math.max(0.48, quality - 0.07);
-                compressAttempt();
-              }, 'image/jpeg', quality);
-            };
-
-            compressAttempt();
-          };
-          image.onerror = function() {
-            callback('No se pudo procesar la imagen seleccionada.');
-          };
-          image.src = dataUrl;
-        });
-      }
-
-      document.addEventListener('change', function(event) {
-        var input = event.target;
-        if (!input.classList || !input.classList.contains('f5-source-file-input')) {
-          return;
-        }
-
-        var file = input.files && input.files[0];
-        var maxBytes = 1024 * 1024;
-        var mode = input.getAttribute('data-source-mode') || 'upload';
-
-        if (!file) {
-          return;
-        }
-
-        sendFormulario5SourceStatus('processing', 'Preparando archivo para revisión...');
-
-        if (file.type && file.type.indexOf('image/') === 0) {
-          compressImageToLimit(file, maxBytes, function(error, blob) {
-            if (error) {
-              sendFormulario5SourceStatus('error', error);
-              return;
-            }
-
-            readFileAsDataURL(blob, function(readError, dataUrl) {
-              if (readError) {
-                sendFormulario5SourceStatus('error', readError);
-                return;
-              }
-
-              Shiny.setInputValue('f5_source_document', {
-                data_url: dataUrl,
-                file_name: file.name || 'formulario_5.jpg',
-                mime_type: 'image/jpeg',
-                source_mode: mode,
-                size_bytes: blob.size,
-                original_size_bytes: file.size,
-                compressed: true,
-                captured_at: new Date().toISOString()
-              }, {priority: 'event'});
-              sendFormulario5SourceStatus('ready', 'Imagen lista para revisión ML (' + Math.round(blob.size / 1024) + ' KB).');
-            });
-          });
-          return;
-        }
-
-        if (file.size > maxBytes) {
-          sendFormulario5SourceStatus('error', 'El archivo excede 1 MB. Suba una imagen comprimida o un PDF menor a 1 MB.');
-          return;
-        }
-
-        readFileAsDataURL(file, function(error, dataUrl) {
-          if (error) {
-            sendFormulario5SourceStatus('error', error);
-            return;
-          }
-
-          Shiny.setInputValue('f5_source_document', {
-            data_url: dataUrl,
-            file_name: file.name,
-            mime_type: file.type || 'application/octet-stream',
-            source_mode: mode,
-            size_bytes: file.size,
-            original_size_bytes: file.size,
-            compressed: false,
-            captured_at: new Date().toISOString()
-          }, {priority: 'event'});
-          sendFormulario5SourceStatus('ready', 'Archivo listo para revisión ML (' + Math.round(file.size / 1024) + ' KB).');
-        });
       });
     ")),
     tags$style(HTML("
@@ -2332,18 +2174,6 @@ ui <- fluidPage(
         justify-content: flex-end;
         margin-top: 18px;
       }
-      .f5-source-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin: 10px 0 12px;
-      }
-      .f5-source-actions label {
-        margin-bottom: 0;
-      }
-      .f5-source-status {
-        margin-bottom: 12px;
-      }
       .top-alerts { margin-top: 12px; margin-bottom: 18px; }
       .selector-box { background: #eef4fb; padding: 16px; border-radius: 6px; margin-bottom: 18px; }
       .btn-primary { background-color: #008c8f; border-color: #008c8f; }
@@ -2535,11 +2365,6 @@ server <- function(input, output, session) {
   f5_certification_complete <- reactiveVal(FALSE)
   f5_certification_panel <- reactiveVal("closed")
   f5_certification_alerts <- reactiveVal(character())
-  f5_source_document <- reactiveVal(NULL)
-  f5_source_document_status <- reactiveVal(NULL)
-  f5_ml_review_state <- reactiveVal("idle")
-  f5_ml_review_message <- reactiveVal(NULL)
-  f5_ml_review_result <- reactiveVal(NULL)
   logged_in <- reactiveVal(skip_login)
   public_page <- reactiveVal("login")
   public_language <- reactiveVal("es")
@@ -2961,247 +2786,6 @@ server <- function(input, output, session) {
     )
   }
 
-  f5_source_document_label <- function() {
-    source_document <- f5_source_document()
-    if (is.null(source_document) || is.null(source_document$file_name)) {
-      return("Sin archivo adjunto")
-    }
-
-    size_kb <- round(as.numeric(source_document$size_bytes) / 1024)
-    mode_label <- if (identical(source_document$source_mode, "camera")) "foto" else "archivo"
-    sprintf("%s (%s, %s KB)", source_document$file_name, mode_label, size_kb)
-  }
-
-  f5_review_field_specs <- list(
-    list(key = "formulario_codigo", label = "Código del formulario", type = "text", value = function() f5_text(input$f5_formulario_codigo)),
-    list(key = "pais", label = "País", type = "text", value = function() f5_text(input$f5_pais)),
-    list(key = "departamento_numero", label = "Departamento #", type = "number", value = function() f5_number(input$f5_departamento_numero)),
-    list(key = "municipio_numero", label = "Municipio #", type = "number", value = function() f5_number(input$f5_municipio_numero)),
-    list(key = "ciclo", label = "Ciclo", type = "text", value = function() f5_text(input$f5_ciclo)),
-    list(key = "fecha_registro", label = "Fecha de registro", type = "date", value = function() f5_date(input$f5_fecha_registro)),
-    list(key = "cepa_poblacion", label = "Cepa / población", type = "text", value = function() f5_text(input$f5_cepa_poblacion)),
-    list(key = "especie", label = "Especie", type = "text", value = function() f5_text(input$f5_especie)),
-    list(key = "fecha_jaula", label = "Fecha jaula", type = "date", value = function() f5_date(input$f5_fecha_jaula)),
-    list(key = "numero_hembras", label = "Número de hembras", type = "number", value = function() f5_number(input$f5_numero_hembras, 0)),
-    list(key = "numero_machos", label = "Número de machos", type = "number", value = function() f5_number(input$f5_numero_machos, 0)),
-    list(key = "total_huevos_viables", label = "Total huevos viables", type = "number", value = function() f5_number(input$f5_total_huevos_viables)),
-    list(key = "responsable_alimentacion", label = "Responsable alimentación", type = "text", value = function() f5_text(input$f5_responsable_alimentacion)),
-    list(key = "tipo_alimentacion_codigo", label = "Tipo alimentación código", type = "text", value = function() f5_text(input$f5_tipo_alimentacion_codigo)),
-    list(key = "tipo_alimentacion_descripcion", label = "Tipo alimentación descripción", type = "text", value = function() f5_text(input$f5_tipo_alimentacion_descripcion)),
-    list(key = "fecha_alimentacion_sangre", label = "Fecha alimentación sangre", type = "date", value = function() f5_date(input$f5_fecha_alimentacion_sangre)),
-    list(key = "numero_charolas", label = "Número de charolas", type = "number", value = function() f5_number(input$f5_numero_charolas, 0)),
-    list(key = "generacion_filial_huevos", label = "Generación filial huevos", type = "text", value = function() f5_text(input$f5_generacion_filial_huevos)),
-    list(key = "codigo_sustrato", label = "Código sustrato", type = "text", value = function() f5_text(input$f5_codigo_sustrato)),
-    list(key = "fecha_colocacion_sustrato", label = "Fecha colocación sustrato", type = "date", value = function() f5_date(input$f5_fecha_colocacion_sustrato)),
-    list(key = "fecha_retiro_sustrato", label = "Fecha retiro sustrato", type = "date", value = function() f5_date(input$f5_fecha_retiro_sustrato)),
-    list(key = "numero_cuadro_sustrato", label = "Número cuadro sustrato", type = "number", value = function() f5_number(input$f5_numero_cuadro_sustrato, 0)),
-    list(key = "hv_huevos_viables", label = "HV - huevos viables", type = "number", value = function() f5_number(input$f5_hv_huevos_viables, 0)),
-    list(key = "he_huevos_eclosionados", label = "HE - huevos eclosionados", type = "number", value = function() f5_number(input$f5_he_huevos_eclosionados, 0)),
-    list(key = "hc_huevos_canoa", label = "HC - huevos canoa", type = "number", value = function() f5_number(input$f5_hc_huevos_canoa, 0)),
-    list(key = "hnf_huevos_no_fecundados", label = "HNF - huevos no fecundados", type = "number", value = function() f5_number(input$f5_hnf_huevos_no_fecundados, 0)),
-    list(key = "responsable_conteo_huevos", label = "Responsable conteo huevos", type = "text", value = function() f5_text(input$f5_responsable_conteo_huevos)),
-    list(key = "fuente_formulario", label = "Fuente formulario", type = "text", value = function() f5_text(input$f5_fuente_formulario)),
-    list(key = "creado_por", label = "Creado por", type = "text", value = function() f5_text(input$f5_creado_por)),
-    list(key = "creado_en", label = "Fecha creación", type = "date", value = function() f5_date(input$f5_creado_en))
-  )
-
-  f5_format_compare_value <- function(value, type) {
-    if (is.null(value) || length(value) == 0 || is.na(value)) {
-      return("")
-    }
-
-    if (identical(type, "date")) {
-      date_value <- suppressWarnings(as.Date(value))
-      if (is.na(date_value)) {
-        return(trimws(as.character(value[[1]])))
-      }
-      return(as.character(date_value))
-    }
-
-    if (identical(type, "number")) {
-      numeric_value <- suppressWarnings(as.numeric(value[[1]]))
-      if (is.na(numeric_value)) {
-        return(trimws(as.character(value[[1]])))
-      }
-      return(as.character(numeric_value))
-    }
-
-    trimws(as.character(value[[1]]))
-  }
-
-  f5_values_match <- function(app_value, document_value, type) {
-    app_text <- f5_format_compare_value(app_value, type)
-    document_text <- f5_format_compare_value(document_value, type)
-
-    if (!nzchar(app_text) && !nzchar(document_text)) {
-      return(TRUE)
-    }
-
-    if (identical(type, "number")) {
-      app_number <- suppressWarnings(as.numeric(app_text))
-      document_number <- suppressWarnings(as.numeric(document_text))
-      if (!is.na(app_number) && !is.na(document_number)) {
-        return(abs(app_number - document_number) < 0.0001)
-      }
-    }
-
-    if (identical(type, "date")) {
-      app_date <- suppressWarnings(as.Date(app_text))
-      document_date <- suppressWarnings(as.Date(document_text))
-      if (!is.na(app_date) && !is.na(document_date)) {
-        return(identical(app_date, document_date))
-      }
-    }
-
-    identical(tolower(app_text), tolower(document_text))
-  }
-
-  f5_document_content_item <- function(source_document) {
-    mime_type <- f5_text(source_document$mime_type)
-    data_url <- f5_text(source_document$data_url)
-
-    if (grepl("^image/", mime_type)) {
-      return(list(
-        type = "input_image",
-        image_url = data_url,
-        detail = "high"
-      ))
-    }
-
-    list(
-      type = "input_file",
-      filename = f5_text(source_document$file_name),
-      file_data = data_url,
-      detail = "high"
-    )
-  }
-
-  f5_openai_error_message <- function(error) {
-    response <- tryCatch(
-      resp_body_json(error$response, check_type = FALSE),
-      error = function(...) NULL
-    )
-    api_message <- response$error$message %||% NULL
-
-    if (!is.null(api_message) && nzchar(api_message)) {
-      return(api_message)
-    }
-
-    conditionMessage(error)
-  }
-
-  f5_extract_response_text <- function(response_body) {
-    if (!is.null(response_body$output_text) && nzchar(response_body$output_text)) {
-      return(response_body$output_text)
-    }
-
-    output_text <- character()
-    for (output_item in response_body$output %||% list()) {
-      for (content_item in output_item$content %||% list()) {
-        if (!is.null(content_item$text) && content_item$type %in% c("output_text", "text")) {
-          output_text <- c(output_text, content_item$text)
-        }
-      }
-    }
-
-    paste(output_text, collapse = "\n")
-  }
-
-  f5_parse_model_json <- function(text) {
-    json_text <- trimws(text)
-    start <- regexpr("\\{", json_text)
-    end_positions <- gregexpr("\\}", json_text)[[1]]
-
-    if (start[[1]] > 0 && length(end_positions) > 0 && end_positions[[length(end_positions)]] > start[[1]]) {
-      json_text <- substr(json_text, start[[1]], end_positions[[length(end_positions)]])
-    }
-
-    jsonlite::fromJSON(json_text, simplifyVector = FALSE)
-  }
-
-  f5_ml_extract_document_values <- function(source_document) {
-    if (!nzchar(openai_api_key)) {
-      stop("OPENAI_API_KEY no está configurada para ejecutar la revisión ML.")
-    }
-
-    field_keys <- vapply(f5_review_field_specs, function(spec) spec$key, character(1))
-    prompt <- paste(
-      "Eres un sistema de doble digitacion para Formulario 5: Alimentacion sanguinea y conteo de huevecillos Aedes spp.",
-      "Extrae exclusivamente los valores visibles en el documento adjunto.",
-      "No inventes datos. Si un campo no es visible, usa null.",
-      "Normaliza fechas a YYYY-MM-DD y numeros como valores numericos.",
-      "Devuelve solo JSON valido, sin markdown, con esta forma:",
-      "{\"fields\":{\"campo\":valor},\"notes\":[\"observacion\"]}.",
-      "Los campos esperados son:",
-      paste(field_keys, collapse = ", "),
-      sep = "\n"
-    )
-
-    response <- tryCatch({
-      request("https://api.openai.com/v1/responses") |>
-        req_auth_bearer_token(openai_api_key) |>
-        req_headers("Content-Type" = "application/json") |>
-        req_body_json(
-          list(
-            model = openai_form_review_model,
-            input = list(list(
-              role = "user",
-              content = list(
-                list(type = "input_text", text = prompt),
-                f5_document_content_item(source_document)
-              )
-            )),
-            max_output_tokens = 1800
-          ),
-          auto_unbox = TRUE
-        ) |>
-        req_perform()
-    }, httr2_http = function(error) {
-      stop(f5_openai_error_message(error), call. = FALSE)
-    })
-
-    parsed <- f5_parse_model_json(f5_extract_response_text(resp_body_json(response)))
-    if (is.null(parsed$fields)) {
-      stop("La respuesta ML no incluyó el objeto fields esperado.")
-    }
-
-    parsed
-  }
-
-  f5_compare_document_values <- function(extracted_fields) {
-    rows <- lapply(f5_review_field_specs, function(spec) {
-      document_value <- extracted_fields[[spec$key]]
-      app_value <- spec$value()
-
-      if (is.null(document_value) || length(document_value) == 0) {
-        return(NULL)
-      }
-
-      if (f5_values_match(app_value, document_value, spec$type)) {
-        return(NULL)
-      }
-
-      data.frame(
-        Campo = spec$label,
-        Valor_digitado = f5_format_compare_value(app_value, spec$type),
-        Valor_documento = f5_format_compare_value(document_value, spec$type),
-        stringsAsFactors = FALSE
-      )
-    })
-
-    rows <- Filter(Negate(is.null), rows)
-    if (length(rows) == 0) {
-      return(data.frame(
-        Campo = character(),
-        Valor_digitado = character(),
-        Valor_documento = character(),
-        stringsAsFactors = FALSE
-      ))
-    }
-
-    do.call(rbind, rows)
-  }
-
   f5_capture_summary <- function() {
     data.frame(
       Campo = c(
@@ -3226,7 +2810,6 @@ server <- function(input, output, session) {
         "HC - huevos canoa",
         "HNF - huevos no fecundados",
         "Total huevos ingresados",
-        "Documento temporal verificación ML",
         "Creado por"
       ),
       Valor = c(
@@ -3251,7 +2834,6 @@ server <- function(input, output, session) {
         as.character(f5_number(input$f5_hc_huevos_canoa, 0)),
         as.character(f5_number(input$f5_hnf_huevos_no_fecundados, 0)),
         as.character(f5_total_huevos_ingresados()),
-        f5_source_document_label(),
         f5_text(input$f5_creado_por)
       ),
       stringsAsFactors = FALSE
@@ -3437,37 +3019,6 @@ server <- function(input, output, session) {
           h4("Observaciones y auditoría"),
           textAreaInput("f5_observaciones_generales", "Observaciones generales", rows = 4),
           textInput("f5_fuente_formulario", "Fuente formulario"),
-          div(
-            class = "f5-source-actions",
-            tags$label(
-              class = "btn btn-primary",
-              "Tomar foto",
-              tags$input(
-                id = "f5_source_camera_file",
-                class = "f5-source-file-input",
-                type = "file",
-                accept = "image/*",
-                capture = "environment",
-                `data-source-mode` = "camera",
-                style = "display: none;"
-              )
-            ),
-            tags$label(
-              class = "btn btn-default",
-              "Subir archivo",
-              tags$input(
-                id = "f5_source_upload_file",
-                class = "f5-source-file-input",
-                type = "file",
-                accept = "image/*,.pdf,application/pdf",
-                `data-source-mode` = "upload",
-                style = "display: none;"
-              )
-            )
-          ),
-          uiOutput("f5_source_file_status"),
-          uiOutput("f5_ml_review_controls"),
-          uiOutput("f5_ml_review_result"),
           textInput("f5_creado_por", "Creado por"),
           dateInput("f5_creado_en", "Fecha creación", value = Sys.Date())
         )
@@ -3609,137 +3160,6 @@ server <- function(input, output, session) {
     do.call(tagList, alerts)
   })
 
-  output$f5_source_file_status <- renderUI({
-    status <- f5_source_document_status()
-    source_document <- f5_source_document()
-
-    if (is.null(status) && is.null(source_document)) {
-      return(div(
-        class = "alert alert-info f5-source-status",
-        "Puede tomar una foto o subir un archivo temporal para verificación ML. Fuente formulario sigue siendo el lugar físico del documento. Las imágenes se comprimen antes de enviarse para no exceder 1 MB."
-      ))
-    }
-
-    if (!is.null(status) && identical(status$status, "error")) {
-      return(div(
-        class = "alert alert-danger f5-source-status",
-        status$message
-      ))
-    }
-
-    if (!is.null(status) && identical(status$status, "processing")) {
-      return(div(
-        class = "alert alert-warning f5-source-status",
-        status$message
-      ))
-    }
-
-    if (!is.null(source_document)) {
-      return(div(
-        class = "alert alert-success f5-source-status",
-        paste("Documento temporal listo para verificación ML:", f5_source_document_label())
-      ))
-    }
-
-    NULL
-  })
-
-  output$f5_ml_review_controls <- renderUI({
-    if (is.null(f5_source_document())) {
-      return(NULL)
-    }
-
-    div(
-      class = "submit-row",
-      actionButton("f5_evaluate_source_document", "Evaluar valores del documento", class = "btn-primary")
-    )
-  })
-
-  output$f5_ml_review_result <- renderUI({
-    state <- f5_ml_review_state()
-    message <- f5_ml_review_message()
-    result <- f5_ml_review_result()
-
-    if (identical(state, "idle")) {
-      return(NULL)
-    }
-
-    if (identical(state, "processing")) {
-      return(div(
-        class = "alert alert-warning",
-        "Revisión ML en proceso. Esto puede tardar unos segundos."
-      ))
-    }
-
-    if (identical(state, "error")) {
-      return(div(
-        class = "alert alert-danger",
-        message %||% "No se pudo completar la revisión ML."
-      ))
-    }
-
-    if (is.null(result) || nrow(result$discrepancies) == 0) {
-      return(div(
-        class = "alert alert-success",
-        "La revisión ML no encontró diferencias entre el documento y los valores digitados."
-      ))
-    }
-
-    tagList(
-      div(
-        class = "alert alert-danger",
-        sprintf("La revisión ML encontró %s diferencia(s). Revise antes de certificar.", nrow(result$discrepancies))
-      ),
-      tableOutput("f5_ml_discrepancies")
-    )
-  })
-
-  output$f5_ml_discrepancies <- renderTable({
-    req(f5_ml_review_result())
-    f5_ml_review_result()$discrepancies
-  }, striped = TRUE, bordered = TRUE, spacing = "xs")
-
-  observeEvent(input$f5_source_document, {
-    f5_source_document(input$f5_source_document)
-    f5_ml_review_state("idle")
-    f5_ml_review_message(NULL)
-    f5_ml_review_result(NULL)
-  }, ignoreNULL = TRUE)
-
-  observeEvent(input$f5_source_document_status, {
-    f5_source_document_status(input$f5_source_document_status)
-  }, ignoreNULL = TRUE)
-
-  observeEvent(input$f5_evaluate_source_document, {
-    source_document <- f5_source_document()
-
-    if (is.null(source_document)) {
-      f5_ml_review_state("error")
-      f5_ml_review_message("Primero debe tomar una foto o subir un archivo temporal para verificación ML.")
-      f5_ml_review_result(NULL)
-      return()
-    }
-
-    f5_ml_review_state("processing")
-    f5_ml_review_message(NULL)
-    f5_ml_review_result(NULL)
-
-    tryCatch({
-      extracted <- f5_ml_extract_document_values(source_document)
-      discrepancies <- f5_compare_document_values(extracted$fields)
-      f5_ml_review_result(list(
-        fields = extracted$fields,
-        notes = extracted$notes %||% character(),
-        discrepancies = discrepancies
-      ))
-      f5_ml_review_state("done")
-    }, error = function(error) {
-      f5_ml_review_state("error")
-      f5_ml_review_message(conditionMessage(error))
-      f5_ml_review_result(NULL)
-    })
-  })
-
   output$f5_capture_navigation <- renderUI({
     current_index <- match(f5_capture_step(), f5_capture_steps)
     tagList(
@@ -3856,7 +3276,6 @@ server <- function(input, output, session) {
       input$f5_he_huevos_eclosionados,
       input$f5_hc_huevos_canoa,
       input$f5_hnf_huevos_no_fecundados,
-      input$f5_source_document,
       input$f5_creado_por
     )
   }, {
@@ -3872,11 +3291,6 @@ server <- function(input, output, session) {
       f5_certification_complete(FALSE)
       f5_certification_panel("closed")
       f5_certification_alerts(character())
-      f5_source_document(NULL)
-      f5_source_document_status(NULL)
-      f5_ml_review_state("idle")
-      f5_ml_review_message(NULL)
-      f5_ml_review_result(NULL)
       show_formulario_5_modal()
     }
   })
@@ -3935,11 +3349,6 @@ server <- function(input, output, session) {
     f5_certification_complete(FALSE)
     f5_certification_panel("closed")
     f5_certification_alerts(character())
-    f5_source_document(NULL)
-    f5_source_document_status(NULL)
-    f5_ml_review_state("idle")
-    f5_ml_review_message(NULL)
-    f5_ml_review_result(NULL)
     show_formulario_5_modal()
   })
 
