@@ -881,7 +881,8 @@ formulario_5_review_form <- function() {
       ),
       textAreaInput("f5_review_notes", "Notas de revisión", rows = 5),
       textInput("f5_reviewed_by", "Revisado por"),
-      dateInput("f5_reviewed_at", "Fecha de revisión", value = Sys.Date())
+      dateInput("f5_reviewed_at", "Fecha de revisión", value = Sys.Date()),
+      dateInput("f5_actualizado_en", "Fecha actualización", value = Sys.Date())
     ),
     div(
       class = "submit-row",
@@ -2736,7 +2737,7 @@ server <- function(input, output, session) {
             selectInput("f5_pais", "País", choices = c("El Salvador", "Guatemala"), selected = "El Salvador"),
             numericInput("f5_departamento_numero", "Departamento #", value = NA, min = 0, step = 1),
             numericInput("f5_municipio_numero", "Municipio #", value = NA, min = 0, step = 1),
-            textInput("f5_ciclo", "Ciclo", value = "Ciclo 3"),
+            textInput("f5_ciclo", "Ciclo", value = "", placeholder = "Ingrese ciclo"),
             textInput("f5_formulario_nombre", "Nombre del formulario", value = "Alimentación sanguínea y conteo huevecillos Aedes spp."),
             dateInput("f5_fecha_registro", "Fecha de registro", value = Sys.Date())
           )
@@ -2755,6 +2756,7 @@ server <- function(input, output, session) {
             textInput("f5_generacion_filial_adultos", "Generación filial adultos"),
             textInput("f5_responsable_ingreso_jaula", "Responsable ingreso jaula"),
             dateInput("f5_fecha_jaula", "Fecha jaula", value = Sys.Date()),
+            uiOutput("f5_fecha_jaula_alert"),
             numericInput("f5_numero_hembras", "Número de hembras", value = 0, min = 0, step = 1),
             numericInput("f5_numero_machos", "Número de machos", value = 0, min = 0, step = 1),
             div(class = "summary-box", strong("Total individuos: "), textOutput("f5_total_individuos", inline = TRUE)),
@@ -2785,6 +2787,7 @@ server <- function(input, output, session) {
               )
             ),
             dateInput("f5_fecha_alimentacion_sangre", "Fecha alimentación sangre", value = Sys.Date()),
+            uiOutput("f5_fecha_alimentacion_alert"),
             numericInput("f5_numero_charolas", "Número de charolas", value = 0, min = 0, step = 1),
             textAreaInput("f5_observaciones_alimentacion", "Observaciones alimentación", rows = 4)
           )
@@ -2802,6 +2805,7 @@ server <- function(input, output, session) {
             textInput("f5_codigo_sustrato", "Código sustrato"),
             dateInput("f5_fecha_colocacion_sustrato", "Fecha colocación sustrato", value = Sys.Date()),
             dateInput("f5_fecha_retiro_sustrato", "Fecha retiro sustrato", value = Sys.Date()),
+            uiOutput("f5_fecha_sustrato_alert"),
             numericInput("f5_numero_cuadro_sustrato", "Número cuadro sustrato", value = 0, min = 0, step = 1),
             numericInput("f5_hv_huevos_viables", "HV - huevos viables", value = 0, min = 0, step = 1),
             numericInput("f5_he_huevos_eclosionados", "HE - huevos eclosionados", value = 0, min = 0, step = 1),
@@ -2822,8 +2826,7 @@ server <- function(input, output, session) {
           textAreaInput("f5_observaciones_generales", "Observaciones generales", rows = 4),
           textInput("f5_fuente_formulario", "Fuente formulario"),
           textInput("f5_creado_por", "Creado por"),
-          dateInput("f5_creado_en", "Fecha creación", value = Sys.Date()),
-          dateInput("f5_actualizado_en", "Fecha actualización", value = Sys.Date())
+          dateInput("f5_creado_en", "Fecha creación", value = Sys.Date())
         )
       )
     )
@@ -2846,6 +2849,53 @@ server <- function(input, output, session) {
         "El guardado en Supabase se conectará después de revisar y ajustar los campos."
       )
     )
+  })
+
+  output$f5_fecha_jaula_alert <- renderUI({
+    req(input$f5_fecha_jaula)
+    fecha_registro <- input$f5_fecha_registro
+    if (is.null(fecha_registro) || is.na(fecha_registro)) {
+      fecha_registro <- Sys.Date()
+    }
+
+    if (identical(as.Date(input$f5_fecha_jaula), as.Date(fecha_registro))) {
+      return(div(
+        class = "alert alert-warning",
+        "Revise la fecha: Fecha jaula es el mismo día que la fecha de registro."
+      ))
+    }
+
+    NULL
+  })
+
+  output$f5_fecha_alimentacion_alert <- renderUI({
+    req(input$f5_fecha_alimentacion_sangre)
+    fecha_registro <- input$f5_fecha_registro
+    if (is.null(fecha_registro) || is.na(fecha_registro)) {
+      fecha_registro <- Sys.Date()
+    }
+
+    if (identical(as.Date(input$f5_fecha_alimentacion_sangre), as.Date(fecha_registro))) {
+      return(div(
+        class = "alert alert-warning",
+        "Revise la fecha: Fecha alimentación sangre es el mismo día que la fecha de registro."
+      ))
+    }
+
+    NULL
+  })
+
+  output$f5_fecha_sustrato_alert <- renderUI({
+    req(input$f5_fecha_colocacion_sustrato, input$f5_fecha_retiro_sustrato)
+
+    if (as.Date(input$f5_fecha_colocacion_sustrato) > as.Date(input$f5_fecha_retiro_sustrato)) {
+      return(div(
+        class = "alert alert-danger",
+        "Fecha colocación sustrato no puede ser posterior a Fecha retiro sustrato."
+      ))
+    }
+
+    NULL
   })
 
   output$f5_capture_navigation <- renderUI({
