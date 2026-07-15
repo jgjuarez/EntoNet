@@ -3203,7 +3203,8 @@ server <- function(input, output, session) {
             column(
               width = 4,
               br(),
-              actionButton("open_dataset", "Abrir formulario", class = "btn-primary")
+              actionButton("open_dataset", "Abrir formulario", class = "btn-primary"),
+              actionButton("open_formulario_5_review", "Revisión de formularios", class = "btn-primary")
             )
           )
         ),
@@ -3316,21 +3317,12 @@ server <- function(input, output, session) {
       return(tagList(
         fluidRow(
           column(
-            width = 6,
+            width = 12,
             div(
               class = "capture-option-card",
               h4("Formulario 5: Alimentación conteo"),
               p("Capture la información de alimentación sanguínea y conteo de huevecillos con todas las columnas disponibles en Supabase."),
               actionButton("open_formulario_5_entry", "Abrir captura Formulario 5", class = "btn-primary")
-            )
-          ),
-          column(
-            width = 6,
-            div(
-              class = "capture-option-card",
-              h4("Revisión formularios"),
-              p("Revise registros pendientes de Formulario 5 y documente el estado, responsable y notas de revisión."),
-              actionButton("open_formulario_5_review", "Revisión formularios", class = "btn-primary")
             )
           )
         ),
