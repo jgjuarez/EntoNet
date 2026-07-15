@@ -27,6 +27,7 @@ PROJECT_REI_APP_PASSWORD=your_private_password
 Optional profile and support values:
 
 ```text
+ENTONET_SKIP_LOGIN=false
 PROJECT_REI_PROFILE_NAME=Nombre Apellido
 PROJECT_REI_PROFILE_INSTITUTION=Institucion
 PROJECT_REI_PROFILE_POSITION=Puesto
@@ -35,6 +36,10 @@ PROJECT_REI_SUPPORT_EMAIL=email@example.org
 SUPABASE_URL=https://PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
+
+For local development only, set `ENTONET_SKIP_LOGIN=true` in `.env.local` to
+open the authenticated portal directly while checking UI updates. Keep it
+disabled for deployed or shared environments.
 
 New oviposition records are saved to `rei.egg_count_intake` with a `pending`
 review status. They do not modify the historical observations table.
