@@ -58,3 +58,17 @@ create index if not exists idx_formulario_5_cepa
 create index if not exists idx_formulario_5_fechas
   on public.formulario_5_alimentacion_conteo (fecha_jaula, fecha_alimentacion_sangre);
 
+alter table public.formulario_5_alimentacion_conteo enable row level security;
+
+drop policy if exists formulario_5_no_api_access
+  on public.formulario_5_alimentacion_conteo;
+
+create policy formulario_5_no_api_access
+  on public.formulario_5_alimentacion_conteo
+  for all
+  to anon, authenticated
+  using (false)
+  with check (false);
+
+revoke all on table public.formulario_5_alimentacion_conteo from anon, authenticated;
+revoke all on sequence public.formulario_5_alimentacion_conteo_id_seq from anon, authenticated;

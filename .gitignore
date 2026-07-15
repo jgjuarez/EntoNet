@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+.Rproj.user/
 rsconnect/
 renv/library/
 renv/staging/
@@ -22,4 +23,3 @@ Thumbs.db
 tmp/
 temp/
 *.log
-
