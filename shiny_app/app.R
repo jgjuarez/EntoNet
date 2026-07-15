@@ -3378,9 +3378,12 @@ server <- function(input, output, session) {
       ))
     }
 
+    if (identical(dataset, "formulario_5_alimentacion_conteo")) {
+      return(NULL)
+    }
+
     dataset_label <- switch(
       dataset,
-      formulario_5_alimentacion_conteo = "Formulario 5: Alimentación conteo",
       egg_count_raw = "Conteo de huevos - datos crudos",
       adult_count_raw = "Conteo de adultos - datos crudos",
       bioassay_raw = "Bioensayo - datos crudos"
@@ -3397,21 +3400,7 @@ server <- function(input, output, session) {
     }
 
     if (identical(dataset, "formulario_5_alimentacion_conteo")) {
-      return(tagList(
-        fluidRow(
-          column(
-            width = 12,
-            div(
-              class = "capture-option-card",
-              h4("Formulario 5: Alimentación conteo"),
-              p("Capture la información de alimentación sanguínea y conteo de huevecillos con todas las columnas disponibles en Supabase."),
-              actionButton("open_formulario_5_entry", "Abrir captura Formulario 5", class = "btn-primary")
-            )
-          )
-        ),
-        h4("Estado del envío"),
-        verbatimTextOutput("submission_status")
-      ))
+      return(NULL)
     }
 
     if (dataset != "egg_count_raw") {
