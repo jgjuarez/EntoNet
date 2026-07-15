@@ -2365,6 +2365,7 @@ server <- function(input, output, session) {
   f5_certification_complete <- reactiveVal(FALSE)
   f5_certification_panel <- reactiveVal("closed")
   f5_certification_alerts <- reactiveVal(character())
+  f5_save_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
   logged_in <- reactiveVal(skip_login)
   public_page <- reactiveVal("login")
   public_language <- reactiveVal("es")
@@ -3141,6 +3142,9 @@ server <- function(input, output, session) {
       return(NULL)
     }
 
+    save_status <- f5_save_status()
+    is_saving <- identical(save_status$type, "saving")
+
     certification_status <- if (f5_certification_complete()) {
       div(
         class = "alert alert-success",
@@ -3155,10 +3159,11 @@ server <- function(input, output, session) {
 
     tagList(
       certification_status,
+      uiOutput("f5_save_status"),
       div(
         class = "submit-row",
         actionButton("f5_open_certification", "Certificación de datos", class = "btn-primary"),
-        if (f5_certification_complete()) {
+        if (f5_certification_complete() && !is_saving) {
           actionButton(
             "f5_save_pending",
             "Guardar registro pendiente",
@@ -3167,10 +3172,54 @@ server <- function(input, output, session) {
         } else {
           actionButton(
             "f5_save_pending",
-            "Guardar registro pendiente",
+            if (is_saving) "Guardando..." else "Guardar registro pendiente",
             class = "btn-default",
             disabled = "disabled"
           )
+        }
+      )
+    )
+  })
+
+  output$f5_save_status <- renderUI({
+    status <- f5_save_status()
+
+    if (is.null(status$type) || identical(status$type, "idle")) {
+      return(NULL)
+    }
+
+    alert_class <- switch(
+      status$type,
+      saving = "alert alert-info",
+      success = "alert alert-success",
+      error = "alert alert-danger",
+      warning = "alert alert-warning",
+      "alert alert-info"
+    )
+
+    details <- status$details
+    if (is.null(details)) {
+      details <- character()
+    }
+
+    tagList(
+      div(
+        class = alert_class,
+        strong(status$message),
+        if (identical(status$type, "saving")) {
+          div(
+            class = "progress",
+            style = "margin-top: 10px; margin-bottom: 0;",
+            div(
+              class = "progress-bar progress-bar-striped active",
+              role = "progressbar",
+              style = "width: 100%;",
+              "Subiendo a Supabase"
+            )
+          )
+        },
+        if (length(details) > 0) {
+          tags$ul(lapply(details, tags$li))
         }
       )
     )
@@ -3369,6 +3418,11 @@ server <- function(input, output, session) {
 
   observeEvent(input$f5_save_pending, {
     if (!f5_certification_complete()) {
+      f5_save_status(list(
+        type = "warning",
+        message = "Complete la certificación de datos antes de guardar el registro.",
+        details = character()
+      ))
       showNotification(
         "Complete la certificación de datos antes de guardar el registro.",
         type = "warning"
@@ -3381,6 +3435,11 @@ server <- function(input, output, session) {
       f5_certification_complete(FALSE)
       f5_certification_alerts(quality_alerts)
       f5_certification_panel("errors")
+      f5_save_status(list(
+        type = "error",
+        message = "El registro cambió después de certificarse. Revise el control de calidad.",
+        details = quality_alerts
+      ))
       showNotification(
         "El registro cambió después de certificarse. Revise el control de calidad.",
         type = "error"
@@ -3391,6 +3450,11 @@ server <- function(input, output, session) {
     record <- f5_formulario_5_record()
     missing_fields <- f5_required_missing_fields(record)
     if (length(missing_fields) > 0) {
+      f5_save_status(list(
+        type = "error",
+        message = "Complete los campos obligatorios antes de guardar.",
+        details = missing_fields
+      ))
       showNotification(
         paste(
           "Complete los campos obligatorios:",
@@ -3402,40 +3466,64 @@ server <- function(input, output, session) {
       return()
     }
 
+    f5_save_status(list(
+      type = "saving",
+      message = "Subiendo registro pendiente a Supabase...",
+      details = character()
+    ))
+
     connection <- NULL
     tryCatch({
-      connection <- connect_to_supabase()
-      dbWithTransaction(connection, {
-        dbAppendTable(
-          connection,
-          Id(schema = "public", table = "formulario_5_alimentacion_conteo_intake"),
-          record
-        )
-      })
+      inserted <- withProgress(message = "Subiendo registro a Supabase", value = 0, {
+        incProgress(0.2, detail = "Abriendo conexión")
+        connection <- connect_to_supabase()
 
-      inserted <- dbGetQuery(
-        connection,
-        "
-          select currval(
-            pg_get_serial_sequence(
-              'public.formulario_5_alimentacion_conteo_intake',
-              'intake_id'
-            )
-          )::text as intake_id
-        "
-      )
+        incProgress(0.5, detail = "Guardando registro")
+        dbWithTransaction(connection, {
+          dbAppendTable(
+            connection,
+            Id(schema = "public", table = "formulario_5_alimentacion_conteo_intake"),
+            record
+          )
+        })
+
+        incProgress(0.2, detail = "Confirmando ID")
+        inserted <- dbGetQuery(
+          connection,
+          "
+            select currval(
+              pg_get_serial_sequence(
+                'public.formulario_5_alimentacion_conteo_intake',
+                'intake_id'
+              )
+            )::text as intake_id
+          "
+        )
+
+        incProgress(0.1, detail = "Listo")
+        inserted
+      })
 
       submission_status(sprintf(
         "Formulario 5 guardado en Supabase como registro pendiente. Intake ID: %s.",
         inserted$intake_id[[1]]
+      ))
+      f5_save_status(list(
+        type = "success",
+        message = sprintf("Formulario 5 guardado en Supabase. Intake ID: %s.", inserted$intake_id[[1]]),
+        details = "El registro quedó como pending para revisión."
       ))
       showNotification(
         sprintf("Formulario 5 guardado. Intake ID: %s.", inserted$intake_id[[1]]),
         type = "message"
       )
       f5_certification_complete(FALSE)
-      removeModal()
     }, error = function(error) {
+      f5_save_status(list(
+        type = "error",
+        message = "No se pudo guardar en Supabase.",
+        details = conditionMessage(error)
+      ))
       showNotification(
         paste("No se pudo guardar en Supabase:", conditionMessage(error)),
         type = "error",
@@ -3473,6 +3561,7 @@ server <- function(input, output, session) {
     )
   }, {
     f5_certification_complete(FALSE)
+    f5_save_status(list(type = "idle", message = NULL, details = character()))
   }, ignoreInit = TRUE)
 
   observeEvent(input$open_dataset, {
@@ -3484,6 +3573,7 @@ server <- function(input, output, session) {
       f5_certification_complete(FALSE)
       f5_certification_panel("closed")
       f5_certification_alerts(character())
+      f5_save_status(list(type = "idle", message = NULL, details = character()))
       show_formulario_5_modal()
     }
   })
@@ -3542,6 +3632,7 @@ server <- function(input, output, session) {
     f5_certification_complete(FALSE)
     f5_certification_panel("closed")
     f5_certification_alerts(character())
+    f5_save_status(list(type = "idle", message = NULL, details = character()))
     show_formulario_5_modal()
   })
 
