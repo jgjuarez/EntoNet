@@ -858,21 +858,6 @@ formulario_5_capture_form <- function() {
       column(
         width = 6,
         wellPanel(
-          h4("Revisión"),
-          selectInput(
-            "f5_review_status",
-            "Estado de revisión",
-            choices = c("Pendiente" = "pending", "Revisado" = "reviewed", "Rechazado" = "rejected"),
-            selected = "pending"
-          ),
-          textAreaInput("f5_review_notes", "Notas de revisión", rows = 3),
-          textInput("f5_reviewed_by", "Revisado por"),
-          dateInput("f5_reviewed_at", "Fecha de revisión", value = NA)
-        )
-      ),
-      column(
-        width = 6,
-        wellPanel(
           h4("Metadatos"),
           textInput("f5_formulario_codigo", "Código del formulario", value = "F5"),
           selectInput("f5_pais", "País", choices = c("El Salvador", "Guatemala"), selected = "El Salvador"),
@@ -969,6 +954,40 @@ formulario_5_capture_form <- function() {
       span(
         class = "help-block",
         "El guardado en Supabase se conectará después de revisar y ajustar los campos."
+      )
+    )
+  )
+}
+
+formulario_5_review_form <- function() {
+  tagList(
+    div(
+      class = "alert alert-info",
+      "Componente preliminar para revisar registros de Formulario 5 guardados en intake. Las columnas de revisión ya existen en Supabase; la conexión a registros pendientes se hará después."
+    ),
+    wellPanel(
+      h4("Revisión de formularios"),
+      selectInput(
+        "f5_review_status",
+        "Estado de revisión",
+        choices = c("Pendiente" = "pending", "Revisado" = "reviewed", "Rechazado" = "rejected"),
+        selected = "pending"
+      ),
+      textAreaInput("f5_review_notes", "Notas de revisión", rows = 5),
+      textInput("f5_reviewed_by", "Revisado por"),
+      dateInput("f5_reviewed_at", "Fecha de revisión", value = Sys.Date())
+    ),
+    div(
+      class = "submit-row",
+      tags$button(
+        type = "button",
+        class = "btn btn-primary",
+        disabled = "disabled",
+        "Guardar revisión"
+      ),
+      span(
+        class = "help-block",
+        "El guardado de revisión se conectará cuando activemos la consulta de registros pendientes."
       )
     )
   )
@@ -2760,6 +2779,20 @@ server <- function(input, output, session) {
     ))
   }
 
+  show_formulario_5_review_modal <- function() {
+    showModal(modalDialog(
+      title = div(
+        class = "modal-title-row",
+        span("Revisión formularios"),
+        actionButton("close_formulario_5_review", HTML("&times;"), class = "modal-close-button")
+      ),
+      size = "l",
+      easyClose = TRUE,
+      formulario_5_review_form(),
+      footer = modalButton("Cerrar")
+    ))
+  }
+
   observeEvent(input$open_dataset, {
     active_dataset(input$dataset_choice)
     submission_status("No se ha enviado ningún registro en esta sesión.")
@@ -2823,6 +2856,14 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$close_formulario_5_entry, {
+    removeModal()
+  })
+
+  observeEvent(input$open_formulario_5_review, {
+    show_formulario_5_review_modal()
+  })
+
+  observeEvent(input$close_formulario_5_review, {
     removeModal()
   })
 
@@ -3275,12 +3316,21 @@ server <- function(input, output, session) {
       return(tagList(
         fluidRow(
           column(
-            width = 12,
+            width = 6,
             div(
               class = "capture-option-card",
               h4("Formulario 5: Alimentación conteo"),
               p("Capture la información de alimentación sanguínea y conteo de huevecillos con todas las columnas disponibles en Supabase."),
               actionButton("open_formulario_5_entry", "Abrir captura Formulario 5", class = "btn-primary")
+            )
+          ),
+          column(
+            width = 6,
+            div(
+              class = "capture-option-card",
+              h4("Revisión formularios"),
+              p("Revise registros pendientes de Formulario 5 y documente el estado, responsable y notas de revisión."),
+              actionButton("open_formulario_5_review", "Revisión formularios", class = "btn-primary")
             )
           )
         ),
