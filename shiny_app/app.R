@@ -48,7 +48,7 @@ supabase_service_role_key <- read_local_env_value("SUPABASE_SERVICE_ROLE_KEY")
 openai_api_key <- read_local_env_value("OPENAI_API_KEY")
 openai_form_review_model <- read_local_env_value("OPENAI_FORM_REVIEW_MODEL")
 if (!nzchar(openai_form_review_model)) {
-  openai_form_review_model <- "gpt-5.6"
+  openai_form_review_model <- "gpt-4.1-mini"
 }
 
 value_or_default <- function(value, default) {
@@ -3071,9 +3071,23 @@ server <- function(input, output, session) {
     list(
       type = "input_file",
       filename = f5_text(source_document$file_name),
-      file_data = sub("^data:[^;]+;base64,", "", data_url),
+      file_data = data_url,
       detail = "high"
     )
+  }
+
+  f5_openai_error_message <- function(error) {
+    response <- tryCatch(
+      resp_body_json(error$response, check_type = FALSE),
+      error = function(...) NULL
+    )
+    api_message <- response$error$message %||% NULL
+
+    if (!is.null(api_message) && nzchar(api_message)) {
+      return(api_message)
+    }
+
+    conditionMessage(error)
   }
 
   f5_extract_response_text <- function(response_body) {
@@ -3123,24 +3137,28 @@ server <- function(input, output, session) {
       sep = "\n"
     )
 
-    response <- request("https://api.openai.com/v1/responses") |>
-      req_auth_bearer_token(openai_api_key) |>
-      req_headers("Content-Type" = "application/json") |>
-      req_body_json(
-        list(
-          model = openai_form_review_model,
-          input = list(list(
-            role = "user",
-            content = list(
-              list(type = "input_text", text = prompt),
-              f5_document_content_item(source_document)
-            )
-          )),
-          max_output_tokens = 1800
-        ),
-        auto_unbox = TRUE
-      ) |>
-      req_perform()
+    response <- tryCatch({
+      request("https://api.openai.com/v1/responses") |>
+        req_auth_bearer_token(openai_api_key) |>
+        req_headers("Content-Type" = "application/json") |>
+        req_body_json(
+          list(
+            model = openai_form_review_model,
+            input = list(list(
+              role = "user",
+              content = list(
+                list(type = "input_text", text = prompt),
+                f5_document_content_item(source_document)
+              )
+            )),
+            max_output_tokens = 1800
+          ),
+          auto_unbox = TRUE
+        ) |>
+        req_perform()
+    }, httr2_http = function(error) {
+      stop(f5_openai_error_message(error), call. = FALSE)
+    })
 
     parsed <- f5_parse_model_json(f5_extract_response_text(resp_body_json(response)))
     if (is.null(parsed$fields)) {
