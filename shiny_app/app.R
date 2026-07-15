@@ -855,107 +855,12 @@ formulario_5_capture_form <- function() {
       class = "alert alert-info",
       "Formulario de captura preliminar con todas las columnas disponibles en la tabla de ingreso. Los campos se pueden editar y depurar en la siguiente iteración."
     ),
-    fluidRow(
-      column(
-        width = 6,
-        wellPanel(
-          h4("Metadatos"),
-          textInput("f5_formulario_codigo", "Código del formulario", value = "F5"),
-          selectInput("f5_pais", "País", choices = c("El Salvador", "Guatemala"), selected = "El Salvador"),
-          numericInput("f5_departamento_numero", "Departamento #", value = NA, min = 0, step = 1),
-          numericInput("f5_municipio_numero", "Municipio #", value = NA, min = 0, step = 1),
-          textInput("f5_ciclo", "Ciclo", value = "Ciclo 3"),
-          textInput("f5_formulario_nombre", "Nombre del formulario", value = "Alimentación sanguínea y conteo huevecillos Aedes spp."),
-          dateInput("f5_fecha_registro", "Fecha de registro", value = Sys.Date())
-        )
-      )
-    ),
-    fluidRow(
-      column(
-        width = 6,
-        wellPanel(
-          h4("Datos generales"),
-          textInput("f5_cepa_poblacion", "Cepa / población"),
-          selectInput("f5_especie", "Especie", choices = c("Ae. aegypti", "Ae. albopictus")),
-          textInput("f5_generacion_filial_adultos", "Generación filial adultos"),
-          textInput("f5_responsable_ingreso_jaula", "Responsable ingreso jaula"),
-          dateInput("f5_fecha_jaula", "Fecha jaula", value = Sys.Date()),
-          numericInput("f5_numero_hembras", "Número de hembras", value = 0, min = 0, step = 1),
-          numericInput("f5_numero_machos", "Número de machos", value = 0, min = 0, step = 1),
-          div(class = "summary-box", strong("Total individuos: "), textOutput("f5_total_individuos", inline = TRUE)),
-          numericInput("f5_total_huevos_viables", "Total huevos viables", value = NA, min = 0, step = 1)
-        )
-      ),
-      column(
-        width = 6,
-        wellPanel(
-          h4("Alimentación sanguínea"),
-          textInput("f5_responsable_alimentacion", "Responsable alimentación"),
-          selectInput(
-            "f5_tipo_alimentacion_codigo",
-            "Tipo alimentación código",
-            choices = c("A", "B", "C", "D", "E")
-          ),
-          selectInput(
-            "f5_tipo_alimentacion_descripcion",
-            "Tipo alimentación descripción",
-            choices = c(
-              "Sin dato" = "",
-              "conejo",
-              "humano",
-              "hemotek-conejo",
-              "hemotek-humano",
-              "hemotek-carnero"
-            )
-          ),
-          dateInput("f5_fecha_alimentacion_sangre", "Fecha alimentación sangre", value = Sys.Date()),
-          numericInput("f5_numero_charolas", "Número de charolas", value = 0, min = 0, step = 1),
-          textAreaInput("f5_observaciones_alimentacion", "Observaciones alimentación", rows = 4)
-        )
-      )
-    ),
-    fluidRow(
-      column(
-        width = 6,
-        wellPanel(
-          h4("Conteo de huevecillos"),
-          textInput("f5_generacion_filial_huevos", "Generación filial huevos"),
-          textInput("f5_codigo_sustrato", "Código sustrato"),
-          dateInput("f5_fecha_colocacion_sustrato", "Fecha colocación sustrato", value = Sys.Date()),
-          dateInput("f5_fecha_retiro_sustrato", "Fecha retiro sustrato", value = Sys.Date()),
-          numericInput("f5_numero_cuadro_sustrato", "Número cuadro sustrato", value = 0, min = 0, step = 1),
-          numericInput("f5_hv_huevos_viables", "HV - huevos viables", value = 0, min = 0, step = 1),
-          numericInput("f5_he_huevos_eclosionados", "HE - huevos eclosionados", value = 0, min = 0, step = 1),
-          numericInput("f5_hc_huevos_canoa", "HC - huevos canoa", value = 0, min = 0, step = 1),
-          numericInput("f5_hnf_huevos_no_fecundados", "HNF - huevos no fecundados", value = 0, min = 0, step = 1),
-          div(class = "summary-box", strong("Total huevos: "), textOutput("f5_total_huevos", inline = TRUE)),
-          textInput("f5_responsable_conteo_huevos", "Responsable conteo huevos")
-        )
-      ),
-      column(
-        width = 6,
-        wellPanel(
-          h4("Observaciones y auditoría"),
-          textAreaInput("f5_observaciones_generales", "Observaciones generales", rows = 4),
-          textInput("f5_fuente_formulario", "Fuente formulario"),
-          textInput("f5_creado_por", "Creado por"),
-          dateInput("f5_creado_en", "Fecha creación", value = Sys.Date()),
-          dateInput("f5_actualizado_en", "Fecha actualización", value = Sys.Date())
-        )
-      )
-    ),
+    uiOutput("f5_capture_step_indicator"),
+    uiOutput("f5_capture_step_area"),
     div(
       class = "submit-row",
-      tags$button(
-        type = "button",
-        class = "btn btn-primary",
-        disabled = "disabled",
-        "Guardar registro pendiente"
-      ),
-      span(
-        class = "help-block",
-        "El guardado en Supabase se conectará después de revisar y ajustar los campos."
-      )
+      uiOutput("f5_capture_navigation"),
+      uiOutput("f5_save_button_area")
     )
   )
 }
@@ -2412,6 +2317,15 @@ server <- function(input, output, session) {
   active_area <- reactiveVal(NULL)
   active_module <- reactiveVal(NULL)
   active_dataset <- reactiveVal(NULL)
+  f5_capture_steps <- c("metadatos", "datos_generales", "alimentacion", "conteo_huevecillos", "observaciones")
+  f5_capture_step_labels <- c(
+    metadatos = "Metadatos",
+    datos_generales = "Datos generales",
+    alimentacion = "Alimentación sanguínea",
+    conteo_huevecillos = "Conteo de huevecillos",
+    observaciones = "Observaciones y auditoría"
+  )
+  f5_capture_step <- reactiveVal("metadatos")
   logged_in <- reactiveVal(skip_login)
   public_page <- reactiveVal("login")
   public_language <- reactiveVal("es")
@@ -2794,11 +2708,178 @@ server <- function(input, output, session) {
     ))
   }
 
+  output$f5_capture_step_indicator <- renderUI({
+    current_step <- f5_capture_step()
+    current_index <- match(current_step, f5_capture_steps)
+
+    div(
+      class = "alert alert-info",
+      sprintf(
+        "Sección %s de %s: %s",
+        current_index,
+        length(f5_capture_steps),
+        f5_capture_step_labels[[current_step]]
+      )
+    )
+  })
+
+  output$f5_capture_step_area <- renderUI({
+    step <- f5_capture_step()
+
+    if (identical(step, "metadatos")) {
+      return(fluidRow(
+        column(
+          width = 8,
+          wellPanel(
+            h4("Metadatos"),
+            textInput("f5_formulario_codigo", "Código del formulario", value = "F5"),
+            selectInput("f5_pais", "País", choices = c("El Salvador", "Guatemala"), selected = "El Salvador"),
+            numericInput("f5_departamento_numero", "Departamento #", value = NA, min = 0, step = 1),
+            numericInput("f5_municipio_numero", "Municipio #", value = NA, min = 0, step = 1),
+            textInput("f5_ciclo", "Ciclo", value = "Ciclo 3"),
+            textInput("f5_formulario_nombre", "Nombre del formulario", value = "Alimentación sanguínea y conteo huevecillos Aedes spp."),
+            dateInput("f5_fecha_registro", "Fecha de registro", value = Sys.Date())
+          )
+        )
+      ))
+    }
+
+    if (identical(step, "datos_generales")) {
+      return(fluidRow(
+        column(
+          width = 8,
+          wellPanel(
+            h4("Datos generales"),
+            textInput("f5_cepa_poblacion", "Cepa / población"),
+            selectInput("f5_especie", "Especie", choices = c("Ae. aegypti", "Ae. albopictus")),
+            textInput("f5_generacion_filial_adultos", "Generación filial adultos"),
+            textInput("f5_responsable_ingreso_jaula", "Responsable ingreso jaula"),
+            dateInput("f5_fecha_jaula", "Fecha jaula", value = Sys.Date()),
+            numericInput("f5_numero_hembras", "Número de hembras", value = 0, min = 0, step = 1),
+            numericInput("f5_numero_machos", "Número de machos", value = 0, min = 0, step = 1),
+            div(class = "summary-box", strong("Total individuos: "), textOutput("f5_total_individuos", inline = TRUE)),
+            numericInput("f5_total_huevos_viables", "Total huevos viables", value = NA, min = 0, step = 1)
+          )
+        )
+      ))
+    }
+
+    if (identical(step, "alimentacion")) {
+      return(fluidRow(
+        column(
+          width = 8,
+          wellPanel(
+            h4("Alimentación sanguínea"),
+            textInput("f5_responsable_alimentacion", "Responsable alimentación"),
+            selectInput("f5_tipo_alimentacion_codigo", "Tipo alimentación código", choices = c("A", "B", "C", "D", "E")),
+            selectInput(
+              "f5_tipo_alimentacion_descripcion",
+              "Tipo alimentación descripción",
+              choices = c(
+                "Sin dato" = "",
+                "conejo",
+                "humano",
+                "hemotek-conejo",
+                "hemotek-humano",
+                "hemotek-carnero"
+              )
+            ),
+            dateInput("f5_fecha_alimentacion_sangre", "Fecha alimentación sangre", value = Sys.Date()),
+            numericInput("f5_numero_charolas", "Número de charolas", value = 0, min = 0, step = 1),
+            textAreaInput("f5_observaciones_alimentacion", "Observaciones alimentación", rows = 4)
+          )
+        )
+      ))
+    }
+
+    if (identical(step, "conteo_huevecillos")) {
+      return(fluidRow(
+        column(
+          width = 8,
+          wellPanel(
+            h4("Conteo de huevecillos"),
+            textInput("f5_generacion_filial_huevos", "Generación filial huevos"),
+            textInput("f5_codigo_sustrato", "Código sustrato"),
+            dateInput("f5_fecha_colocacion_sustrato", "Fecha colocación sustrato", value = Sys.Date()),
+            dateInput("f5_fecha_retiro_sustrato", "Fecha retiro sustrato", value = Sys.Date()),
+            numericInput("f5_numero_cuadro_sustrato", "Número cuadro sustrato", value = 0, min = 0, step = 1),
+            numericInput("f5_hv_huevos_viables", "HV - huevos viables", value = 0, min = 0, step = 1),
+            numericInput("f5_he_huevos_eclosionados", "HE - huevos eclosionados", value = 0, min = 0, step = 1),
+            numericInput("f5_hc_huevos_canoa", "HC - huevos canoa", value = 0, min = 0, step = 1),
+            numericInput("f5_hnf_huevos_no_fecundados", "HNF - huevos no fecundados", value = 0, min = 0, step = 1),
+            div(class = "summary-box", strong("Total huevos: "), textOutput("f5_total_huevos", inline = TRUE)),
+            textInput("f5_responsable_conteo_huevos", "Responsable conteo huevos")
+          )
+        )
+      ))
+    }
+
+    fluidRow(
+      column(
+        width = 8,
+        wellPanel(
+          h4("Observaciones y auditoría"),
+          textAreaInput("f5_observaciones_generales", "Observaciones generales", rows = 4),
+          textInput("f5_fuente_formulario", "Fuente formulario"),
+          textInput("f5_creado_por", "Creado por"),
+          dateInput("f5_creado_en", "Fecha creación", value = Sys.Date()),
+          dateInput("f5_actualizado_en", "Fecha actualización", value = Sys.Date())
+        )
+      )
+    )
+  })
+
+  output$f5_save_button_area <- renderUI({
+    if (!identical(f5_capture_step(), tail(f5_capture_steps, 1))) {
+      return(NULL)
+    }
+
+    tagList(
+      tags$button(
+        type = "button",
+        class = "btn btn-primary",
+        disabled = "disabled",
+        "Guardar registro pendiente"
+      ),
+      span(
+        class = "help-block",
+        "El guardado en Supabase se conectará después de revisar y ajustar los campos."
+      )
+    )
+  })
+
+  output$f5_capture_navigation <- renderUI({
+    current_index <- match(f5_capture_step(), f5_capture_steps)
+    tagList(
+      if (current_index > 1) {
+        actionButton("f5_previous_step", "Atrás")
+      },
+      if (current_index < length(f5_capture_steps)) {
+        actionButton("f5_next_step", "Seguir", class = "btn-primary")
+      }
+    )
+  })
+
+  observeEvent(input$f5_previous_step, {
+    current_index <- match(f5_capture_step(), f5_capture_steps)
+    if (!is.na(current_index) && current_index > 1) {
+      f5_capture_step(f5_capture_steps[[current_index - 1]])
+    }
+  })
+
+  observeEvent(input$f5_next_step, {
+    current_index <- match(f5_capture_step(), f5_capture_steps)
+    if (!is.na(current_index) && current_index < length(f5_capture_steps)) {
+      f5_capture_step(f5_capture_steps[[current_index + 1]])
+    }
+  })
+
   observeEvent(input$open_dataset, {
     active_dataset(input$dataset_choice)
     submission_status("No se ha enviado ningún registro en esta sesión.")
 
     if (identical(input$dataset_choice, "formulario_5_alimentacion_conteo")) {
+      f5_capture_step("metadatos")
       show_formulario_5_modal()
     }
   })
@@ -2853,6 +2934,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$open_formulario_5_entry, {
+    f5_capture_step("metadatos")
     show_formulario_5_modal()
   })
 
