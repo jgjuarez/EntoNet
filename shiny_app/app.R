@@ -3000,6 +3000,7 @@ server <- function(input, output, session) {
                 "dataset_choice",
                 "Formulario disponible",
                 choices = c(
+                  "Formulario 5: Alimentación conteo" = "formulario_5_alimentacion_conteo",
                   "Ovipostura / conteo de huevos" = "egg_count_raw",
                   "Conteo de adultos" = "adult_count_raw",
                   "Resistencia / bioensayo" = "bioassay_raw"
@@ -3102,6 +3103,7 @@ server <- function(input, output, session) {
 
     dataset_label <- switch(
       dataset,
+      formulario_5_alimentacion_conteo = "Formulario 5: Alimentación conteo",
       egg_count_raw = "Conteo de huevos - datos crudos",
       adult_count_raw = "Conteo de adultos - datos crudos",
       bioassay_raw = "Bioensayo - datos crudos"
@@ -3120,14 +3122,15 @@ server <- function(input, output, session) {
     if (dataset != "egg_count_raw") {
       dataset_label <- switch(
         dataset,
+        formulario_5_alimentacion_conteo = "Formulario 5: Alimentación conteo",
         adult_count_raw = "Conteo de adultos - datos crudos",
         bioassay_raw = "Bioensayo - datos crudos"
       )
 
       return(wellPanel(
         h4(paste(dataset_label, "- formulario pendiente")),
-        p("La ruta del menú ya está lista, pero este formulario se construirá cuando se definan las variables finales."),
-        p("Por ahora, solo el formulario de conteo de huevos está conectado a la tabla de ingreso en Supabase.")
+        p("La ruta del menú ya está lista. El siguiente paso es construir los campos de captura para este formulario."),
+        p("La tabla de ingreso en Supabase para Formulario 5 ya está creada como public.formulario_5_alimentacion_conteo_intake.")
       ))
     }
 
