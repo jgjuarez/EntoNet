@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 760" role="img" aria-labelledby="title description">
+  <title id="title">Mapa regional EntoNet</title>
+  <description id="description">Mapa estático estilizado de Centroamérica y República Dominicana con sitios de colecta y colaboradores estratégicos.</description>
+  <defs>
+    <linearGradient id="ocean" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef5f6"/>
+      <stop offset="1" stop-color="#cce5e9"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#082243" flood-opacity=".20"/>
+    </filter>
+  </defs>
+  <rect width="1400" height="760" fill="url(#ocean)"/>
+  <g fill="#d7e8df" stroke="#082243" stroke-width="3" filter="url(#shadow)">
+    <path d="M215 134 L280 105 L344 120 L365 172 L336 220 L285 235 L244 200 Z"/>
+    <path d="M290 232 L365 180 L420 196 L431 263 L393 330 L325 300 Z"/>
+    <path d="M397 265 L450 240 L490 287 L468 334 L417 329 Z"/>
+    <path d="M466 332 L530 300 L586 330 L571 394 L511 420 L474 376 Z"/>
+    <path d="M567 392 L625 372 L672 416 L655 481 L601 477 Z"/>
+    <path d="M651 476 L712 448 L764 480 L752 540 L692 548 Z"/>
+    <path d="M750 538 L826 515 L895 548 L915 606 L849 633 L784 600 Z"/>
+    <path d="M1100 280 L1172 260 L1245 284 L1268 332 L1218 356 L1138 342 L1091 316 Z"/>
+  </g>
+  <g fill="#082243" font-family="Arial, sans-serif" font-size="18" font-weight="700">
+    <text x="232" y="92">Belice</text>
+    <text x="303" y="348">Guatemala</text>
+    <text x="418" y="365">El Salvador</text>
+    <text x="510" y="455">Honduras</text>
+    <text x="595" y="520">Nicaragua</text>
+    <text x="684" y="590">Costa Rica</text>
+    <text x="820" y="672">Panamá</text>
+    <text x="1108" y="395">República Dominicana</text>
+  </g>
+  <g fill="#d96c27" stroke="#9f4516" stroke-width="2">
+    <circle cx="268" cy="168" r="8"/><circle cx="322" cy="198" r="8"/>
+    <circle cx="342" cy="250" r="8"/><circle cx="387" cy="286" r="8"/>
+    <circle cx="441" cy="294" r="8"/><circle cx="469" cy="315" r="8"/>
+    <circle cx="526" cy="348" r="8"/><circle cx="557" cy="383" r="8"/>
+    <circle cx="615" cy="422" r="8"/><circle cx="645" cy="453" r="8"/>
+    <circle cx="699" cy="500" r="8"/><circle cx="729" cy="525" r="8"/>
+    <circle cx="823" cy="561" r="8"/><circle cx="869" cy="586" r="8"/>
+    <circle cx="1151" cy="301" r="8"/><circle cx="1211" cy="321" r="8"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="15" font-weight="800" text-anchor="middle">
+    <g transform="translate(348 224)"><rect x="-31" y="-18" width="62" height="36" rx="7" fill="#4d284a" stroke="#fff" stroke-width="3"/><text y="5" fill="#fff">UVG</text></g>
+    <g transform="translate(448 252)"><rect x="-48" y="-18" width="96" height="36" rx="7" fill="#4d284a" stroke="#fff" stroke-width="3"/><text y="5" fill="#fff">CECOMISCA</text></g>
+    <g transform="translate(545 318)"><rect x="-36" y="-18" width="72" height="36" rx="7" fill="#4d284a" stroke="#fff" stroke-width="3"/><text y="5" fill="#fff">UNAH</text></g>
+    <g transform="translate(720 466)"><rect x="-44" y="-18" width="88" height="36" rx="7" fill="#4d284a" stroke="#fff" stroke-width="3"/><text y="5" fill="#fff">INCIENSA</text></g>
+    <g transform="translate(858 526)"><rect x="-57" y="-18" width="114" height="36" rx="7" fill="#4d284a" stroke="#fff" stroke-width="3"/><text y="5" fill="#fff">INDICASAT-AIP</text></g>
+  </g>
+  <g transform="translate(58 610)" font-family="Arial, sans-serif">
+    <rect width="520" height="108" rx="12" fill="#fff" stroke="#d8e3e6"/>
+    <circle cx="35" cy="32" r="10" fill="#d96c27" stroke="#9f4516" stroke-width="2"/>
+    <text x="57" y="38" fill="#46576a" font-size="17">Sitio de colecta / Collection site</text>
+    <rect x="24" y="62" width="72" height="28" rx="6" fill="#4d284a"/>
+    <text x="108" y="82" fill="#46576a" font-size="17">Colaborador estratégico / Strategic collaborator</text>
+  </g>
+</svg>
