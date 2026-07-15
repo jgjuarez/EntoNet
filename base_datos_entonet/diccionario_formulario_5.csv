@@ -1,5 +1,8 @@
 campo,seccion,tipo_dato,obligatorio,valores_permitidos,descripcion
 formulario_codigo,Metadatos,texto,si,F5,Codigo del formulario.
+pais,Metadatos,lista,si,El Salvador|Guatemala,Pais donde se genera el registro.
+departamento_numero,Metadatos,entero,no,>=0,Numero o codigo del departamento.
+municipio_numero,Metadatos,entero,no,>=0,Numero o codigo del municipio.
 ciclo,Metadatos,texto,si,Ciclo 3,Ciclo REI del formulario.
 formulario_nombre,Metadatos,texto,si,,Nombre del formulario.
 fecha_registro,Metadatos,fecha,si,yyyy-mm-dd,Fecha en que se digitaliza o registra la fila.

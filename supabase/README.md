@@ -6,7 +6,8 @@ Orden sugerido de ejecucion:
 
 1. `001_formulario_5_flat.sql`
 2. `002_formulario_5_intake.sql`
-3. Scripts futuros de catalogos, permisos y vistas.
+3. `003_add_formulario_5_location_metadata.sql`
+4. Scripts futuros de catalogos, permisos y vistas.
 
 Para ejecutar todos los scripts desde la raiz del repositorio:
 

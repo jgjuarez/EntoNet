@@ -8,6 +8,10 @@ create table if not exists public.formulario_5_alimentacion_conteo_intake (
 
   formulario_codigo text not null default 'F5'
     check (formulario_codigo = 'F5'),
+  pais text not null default 'El Salvador'
+    check (pais in ('El Salvador', 'Guatemala')),
+  departamento_numero integer check (departamento_numero >= 0),
+  municipio_numero integer check (municipio_numero >= 0),
   ciclo text not null default 'Ciclo 3',
   formulario_nombre text not null default 'Alimentacion sanguinea y conteo huevecillos Aedes spp.',
   fecha_registro date not null default current_date,

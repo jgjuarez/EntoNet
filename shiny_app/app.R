@@ -875,6 +875,9 @@ formulario_5_capture_form <- function() {
         wellPanel(
           h4("Metadatos"),
           textInput("f5_formulario_codigo", "Código del formulario", value = "F5"),
+          selectInput("f5_pais", "País", choices = c("El Salvador", "Guatemala"), selected = "El Salvador"),
+          numericInput("f5_departamento_numero", "Departamento #", value = NA, min = 0, step = 1),
+          numericInput("f5_municipio_numero", "Municipio #", value = NA, min = 0, step = 1),
           textInput("f5_ciclo", "Ciclo", value = "Ciclo 3"),
           textInput("f5_formulario_nombre", "Nombre del formulario", value = "Alimentación sanguínea y conteo huevecillos Aedes spp."),
           dateInput("f5_fecha_registro", "Fecha de registro", value = Sys.Date())
