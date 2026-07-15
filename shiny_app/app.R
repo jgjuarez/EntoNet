@@ -861,7 +861,8 @@ formulario_5_capture_form <- function() {
       class = "submit-row",
       uiOutput("f5_capture_navigation"),
       uiOutput("f5_save_button_area")
-    )
+    ),
+    uiOutput("f5_certification_overlay")
   )
 }
 
@@ -2139,6 +2140,37 @@ ui <- fluidPage(
       .required-label { font-weight: 600; }
       .summary-box { background: #f5f7fa; padding: 14px; border-radius: 6px; }
       .submit-row { margin-top: 16px; }
+      .f5-certification-backdrop {
+        align-items: flex-start;
+        background: rgba(8, 34, 67, 0.42);
+        bottom: 0;
+        display: flex;
+        justify-content: center;
+        left: 0;
+        overflow-y: auto;
+        padding: 48px 18px;
+        position: fixed;
+        right: 0;
+        top: 0;
+        z-index: 1060;
+      }
+      .f5-certification-dialog {
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 18px 45px rgba(8, 34, 67, 0.28);
+        max-width: 860px;
+        padding: 22px 24px;
+        width: min(860px, 100%);
+      }
+      .f5-certification-dialog-small {
+        max-width: 620px;
+      }
+      .f5-certification-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 18px;
+      }
       .top-alerts { margin-top: 12px; margin-bottom: 18px; }
       .selector-box { background: #eef4fb; padding: 16px; border-radius: 6px; margin-bottom: 18px; }
       .btn-primary { background-color: #008c8f; border-color: #008c8f; }
@@ -2328,6 +2360,8 @@ server <- function(input, output, session) {
   )
   f5_capture_step <- reactiveVal("metadatos")
   f5_certification_complete <- reactiveVal(FALSE)
+  f5_certification_panel <- reactiveVal("closed")
+  f5_certification_alerts <- reactiveVal(character())
   logged_in <- reactiveVal(skip_login)
   public_page <- reactiveVal("login")
   public_language <- reactiveVal("es")
@@ -3150,44 +3184,72 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$f5_open_certification, {
-    showModal(modalDialog(
-      title = "Certificación de datos",
-      size = "l",
-      easyClose = TRUE,
-      p("Revise el resumen del registro antes de ejecutar el control de calidad."),
-      tableOutput("f5_certification_summary"),
-      footer = tagList(
-        modalButton("Cancelar"),
-        actionButton("f5_confirm_certification", "OK", class = "btn-primary")
-      )
-    ))
+    f5_certification_alerts(character())
+    f5_certification_panel("summary")
   })
 
   output$f5_certification_summary <- renderTable({
     f5_capture_summary()
   }, striped = TRUE, bordered = TRUE, spacing = "xs")
 
+  output$f5_certification_overlay <- renderUI({
+    panel <- f5_certification_panel()
+
+    if (identical(panel, "closed")) {
+      return(NULL)
+    }
+
+    if (identical(panel, "summary")) {
+      return(div(
+        class = "f5-certification-backdrop",
+        div(
+          class = "f5-certification-dialog",
+          h4("Certificación de datos"),
+          p("Revise el resumen del registro antes de ejecutar el control de calidad."),
+          tableOutput("f5_certification_summary"),
+          div(
+            class = "f5-certification-actions",
+            actionButton("f5_close_certification", "Cancelar"),
+            actionButton("f5_confirm_certification", "OK", class = "btn-primary")
+          )
+        )
+      ))
+    }
+
+    div(
+      class = "f5-certification-backdrop",
+      div(
+        class = "f5-certification-dialog f5-certification-dialog-small",
+        h4("Control de calidad"),
+        div(
+          class = "alert alert-danger",
+          strong("Revise el registro antes de guardarlo.")
+        ),
+        tags$ul(lapply(f5_certification_alerts(), tags$li)),
+        div(
+          class = "f5-certification-actions",
+          actionButton("f5_close_certification", "Cerrar", class = "btn-primary")
+        )
+      )
+    )
+  })
+
   observeEvent(input$f5_confirm_certification, {
     quality_alerts <- f5_quality_checks()
     f5_certification_complete(length(quality_alerts) == 0)
 
     if (length(quality_alerts) > 0) {
-      showModal(modalDialog(
-        title = "Control de calidad",
-        size = "m",
-        easyClose = TRUE,
-        div(
-          class = "alert alert-danger",
-          strong("Revise el registro antes de guardarlo.")
-        ),
-        tags$ul(lapply(quality_alerts, tags$li)),
-        footer = modalButton("Cerrar")
-      ))
+      f5_certification_alerts(quality_alerts)
+      f5_certification_panel("errors")
       return()
     }
 
+    f5_certification_panel("closed")
     showNotification("Certificación aprobada. Ya puede guardar el registro pendiente.", type = "message")
-    show_formulario_5_modal()
+  })
+
+  observeEvent(input$f5_close_certification, {
+    f5_certification_panel("closed")
   })
 
   observeEvent({
@@ -3224,6 +3286,8 @@ server <- function(input, output, session) {
     if (identical(input$dataset_choice, "formulario_5_alimentacion_conteo")) {
       f5_capture_step("metadatos")
       f5_certification_complete(FALSE)
+      f5_certification_panel("closed")
+      f5_certification_alerts(character())
       show_formulario_5_modal()
     }
   })
@@ -3280,6 +3344,8 @@ server <- function(input, output, session) {
   observeEvent(input$open_formulario_5_entry, {
     f5_capture_step("metadatos")
     f5_certification_complete(FALSE)
+    f5_certification_panel("closed")
+    f5_certification_alerts(character())
     show_formulario_5_modal()
   })
 
