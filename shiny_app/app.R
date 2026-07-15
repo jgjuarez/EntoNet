@@ -2807,6 +2807,7 @@ server <- function(input, output, session) {
     alerts <- character()
     total_declarado <- f5_number(input$f5_total_huevos_viables)
     total_ingresado <- f5_total_huevos_ingresados()
+    fecha_jaula <- f5_date(input$f5_fecha_jaula)
     fecha_alimentacion <- f5_date(input$f5_fecha_alimentacion_sangre)
     fecha_colocacion <- f5_date(input$f5_fecha_colocacion_sustrato)
     fecha_retiro <- f5_date(input$f5_fecha_retiro_sustrato)
@@ -2819,6 +2820,13 @@ server <- function(input, output, session) {
           total_declarado,
           total_ingresado
         )
+      )
+    }
+
+    if (!is.na(fecha_jaula) && !is.na(fecha_alimentacion) && fecha_jaula > fecha_alimentacion) {
+      alerts <- c(
+        alerts,
+        "Fecha jaula no puede ser posterior a Fecha alimentación sangre."
       )
     }
 
@@ -3032,6 +3040,14 @@ server <- function(input, output, session) {
     fecha_registro <- input$f5_fecha_registro
     if (is.null(fecha_registro) || is.na(fecha_registro)) {
       fecha_registro <- Sys.Date()
+    }
+
+    fecha_jaula <- input$f5_fecha_jaula
+    if (!is.null(fecha_jaula) && !is.na(fecha_jaula) && as.Date(fecha_jaula) > as.Date(input$f5_fecha_alimentacion_sangre)) {
+      return(div(
+        class = "alert alert-danger",
+        "Fecha jaula no puede ser posterior a Fecha alimentación sangre."
+      ))
     }
 
     if (identical(as.Date(input$f5_fecha_alimentacion_sangre), as.Date(fecha_registro))) {
