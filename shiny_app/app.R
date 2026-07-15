@@ -1064,6 +1064,151 @@ ui <- fluidPage(
 
         renderMap(0);
       });
+
+      function sendFormulario5SourceStatus(status, message) {
+        if (window.Shiny) {
+          Shiny.setInputValue('f5_source_document_status', {
+            status: status,
+            message: message,
+            timestamp: new Date().toISOString()
+          }, {priority: 'event'});
+        }
+      }
+
+      function readFileAsDataURL(file, callback) {
+        var reader = new FileReader();
+        reader.onload = function(event) {
+          callback(null, event.target.result);
+        };
+        reader.onerror = function() {
+          callback('No se pudo leer el archivo.');
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function compressImageToLimit(file, limitBytes, callback) {
+        readFileAsDataURL(file, function(error, dataUrl) {
+          if (error) {
+            callback(error);
+            return;
+          }
+
+          var image = new Image();
+          image.onload = function() {
+            var maxDimension = 1600;
+            var quality = 0.82;
+            var attempts = 0;
+
+            var compressAttempt = function() {
+              attempts += 1;
+              var scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(image.width * scale));
+              canvas.height = Math.max(1, Math.round(image.height * scale));
+
+              var context = canvas.getContext('2d');
+              context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+              canvas.toBlob(function(blob) {
+                if (!blob) {
+                  callback('No se pudo comprimir la imagen.');
+                  return;
+                }
+
+                if (blob.size <= limitBytes || attempts >= 8) {
+                  if (blob.size > limitBytes) {
+                    callback('La imagen no pudo comprimirse por debajo de 1 MB.');
+                    return;
+                  }
+
+                  callback(null, blob);
+                  return;
+                }
+
+                maxDimension = Math.max(700, Math.round(maxDimension * 0.82));
+                quality = Math.max(0.48, quality - 0.07);
+                compressAttempt();
+              }, 'image/jpeg', quality);
+            };
+
+            compressAttempt();
+          };
+          image.onerror = function() {
+            callback('No se pudo procesar la imagen seleccionada.');
+          };
+          image.src = dataUrl;
+        });
+      }
+
+      document.addEventListener('change', function(event) {
+        var input = event.target;
+        if (!input.classList || !input.classList.contains('f5-source-file-input')) {
+          return;
+        }
+
+        var file = input.files && input.files[0];
+        var maxBytes = 1024 * 1024;
+        var mode = input.getAttribute('data-source-mode') || 'upload';
+
+        if (!file) {
+          return;
+        }
+
+        sendFormulario5SourceStatus('processing', 'Preparando archivo para revisión...');
+
+        if (file.type && file.type.indexOf('image/') === 0) {
+          compressImageToLimit(file, maxBytes, function(error, blob) {
+            if (error) {
+              sendFormulario5SourceStatus('error', error);
+              return;
+            }
+
+            readFileAsDataURL(blob, function(readError, dataUrl) {
+              if (readError) {
+                sendFormulario5SourceStatus('error', readError);
+                return;
+              }
+
+              Shiny.setInputValue('f5_source_document', {
+                data_url: dataUrl,
+                file_name: file.name || 'formulario_5.jpg',
+                mime_type: 'image/jpeg',
+                source_mode: mode,
+                size_bytes: blob.size,
+                original_size_bytes: file.size,
+                compressed: true,
+                captured_at: new Date().toISOString()
+              }, {priority: 'event'});
+              sendFormulario5SourceStatus('ready', 'Imagen lista para revisión ML (' + Math.round(blob.size / 1024) + ' KB).');
+            });
+          });
+          return;
+        }
+
+        if (file.size > maxBytes) {
+          sendFormulario5SourceStatus('error', 'El archivo excede 1 MB. Suba una imagen comprimida o un PDF menor a 1 MB.');
+          return;
+        }
+
+        readFileAsDataURL(file, function(error, dataUrl) {
+          if (error) {
+            sendFormulario5SourceStatus('error', error);
+            return;
+          }
+
+          Shiny.setInputValue('f5_source_document', {
+            data_url: dataUrl,
+            file_name: file.name,
+            mime_type: file.type || 'application/octet-stream',
+            source_mode: mode,
+            size_bytes: file.size,
+            original_size_bytes: file.size,
+            compressed: false,
+            captured_at: new Date().toISOString()
+          }, {priority: 'event'});
+          sendFormulario5SourceStatus('ready', 'Archivo listo para revisión ML (' + Math.round(file.size / 1024) + ' KB).');
+        });
+      });
     ")),
     tags$style(HTML("
       body { background: linear-gradient(90deg, #eef5f6 0%, #d3e8ed 48%, #4a9bb0 100%); color: #10223d; }
@@ -2171,6 +2316,18 @@ ui <- fluidPage(
         justify-content: flex-end;
         margin-top: 18px;
       }
+      .f5-source-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 10px 0 12px;
+      }
+      .f5-source-actions label {
+        margin-bottom: 0;
+      }
+      .f5-source-status {
+        margin-bottom: 12px;
+      }
       .top-alerts { margin-top: 12px; margin-bottom: 18px; }
       .selector-box { background: #eef4fb; padding: 16px; border-radius: 6px; margin-bottom: 18px; }
       .btn-primary { background-color: #008c8f; border-color: #008c8f; }
@@ -2362,6 +2519,8 @@ server <- function(input, output, session) {
   f5_certification_complete <- reactiveVal(FALSE)
   f5_certification_panel <- reactiveVal("closed")
   f5_certification_alerts <- reactiveVal(character())
+  f5_source_document <- reactiveVal(NULL)
+  f5_source_document_status <- reactiveVal(NULL)
   logged_in <- reactiveVal(skip_login)
   public_page <- reactiveVal("login")
   public_language <- reactiveVal("es")
@@ -2783,6 +2942,17 @@ server <- function(input, output, session) {
     )
   }
 
+  f5_source_document_label <- function() {
+    source_document <- f5_source_document()
+    if (is.null(source_document) || is.null(source_document$file_name)) {
+      return("Sin archivo adjunto")
+    }
+
+    size_kb <- round(as.numeric(source_document$size_bytes) / 1024)
+    mode_label <- if (identical(source_document$source_mode, "camera")) "foto" else "archivo"
+    sprintf("%s (%s, %s KB)", source_document$file_name, mode_label, size_kb)
+  }
+
   f5_capture_summary <- function() {
     data.frame(
       Campo = c(
@@ -2807,6 +2977,7 @@ server <- function(input, output, session) {
         "HC - huevos canoa",
         "HNF - huevos no fecundados",
         "Total huevos ingresados",
+        "Archivo fuente formulario",
         "Creado por"
       ),
       Valor = c(
@@ -2831,6 +3002,7 @@ server <- function(input, output, session) {
         as.character(f5_number(input$f5_hc_huevos_canoa, 0)),
         as.character(f5_number(input$f5_hnf_huevos_no_fecundados, 0)),
         as.character(f5_total_huevos_ingresados()),
+        f5_source_document_label(),
         f5_text(input$f5_creado_por)
       ),
       stringsAsFactors = FALSE
@@ -3016,6 +3188,35 @@ server <- function(input, output, session) {
           h4("Observaciones y auditoría"),
           textAreaInput("f5_observaciones_generales", "Observaciones generales", rows = 4),
           textInput("f5_fuente_formulario", "Fuente formulario"),
+          div(
+            class = "f5-source-actions",
+            tags$label(
+              class = "btn btn-primary",
+              "Tomar foto",
+              tags$input(
+                id = "f5_source_camera_file",
+                class = "f5-source-file-input",
+                type = "file",
+                accept = "image/*",
+                capture = "environment",
+                `data-source-mode` = "camera",
+                style = "display: none;"
+              )
+            ),
+            tags$label(
+              class = "btn btn-default",
+              "Subir archivo",
+              tags$input(
+                id = "f5_source_upload_file",
+                class = "f5-source-file-input",
+                type = "file",
+                accept = "image/*,.pdf,application/pdf",
+                `data-source-mode` = "upload",
+                style = "display: none;"
+              )
+            )
+          ),
+          uiOutput("f5_source_file_status"),
           textInput("f5_creado_por", "Creado por"),
           dateInput("f5_creado_en", "Fecha creación", value = Sys.Date())
         )
@@ -3157,6 +3358,49 @@ server <- function(input, output, session) {
     do.call(tagList, alerts)
   })
 
+  output$f5_source_file_status <- renderUI({
+    status <- f5_source_document_status()
+    source_document <- f5_source_document()
+
+    if (is.null(status) && is.null(source_document)) {
+      return(div(
+        class = "alert alert-info f5-source-status",
+        "Puede tomar una foto o subir un archivo del formulario fuente. Las imágenes se comprimen antes de enviarse para no exceder 1 MB."
+      ))
+    }
+
+    if (!is.null(status) && identical(status$status, "error")) {
+      return(div(
+        class = "alert alert-danger f5-source-status",
+        status$message
+      ))
+    }
+
+    if (!is.null(status) && identical(status$status, "processing")) {
+      return(div(
+        class = "alert alert-warning f5-source-status",
+        status$message
+      ))
+    }
+
+    if (!is.null(source_document)) {
+      return(div(
+        class = "alert alert-success f5-source-status",
+        paste("Fuente formulario lista:", f5_source_document_label())
+      ))
+    }
+
+    NULL
+  })
+
+  observeEvent(input$f5_source_document, {
+    f5_source_document(input$f5_source_document)
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$f5_source_document_status, {
+    f5_source_document_status(input$f5_source_document_status)
+  }, ignoreNULL = TRUE)
+
   output$f5_capture_navigation <- renderUI({
     current_index <- match(f5_capture_step(), f5_capture_steps)
     tagList(
@@ -3273,6 +3517,7 @@ server <- function(input, output, session) {
       input$f5_he_huevos_eclosionados,
       input$f5_hc_huevos_canoa,
       input$f5_hnf_huevos_no_fecundados,
+      input$f5_source_document,
       input$f5_creado_por
     )
   }, {
@@ -3288,6 +3533,8 @@ server <- function(input, output, session) {
       f5_certification_complete(FALSE)
       f5_certification_panel("closed")
       f5_certification_alerts(character())
+      f5_source_document(NULL)
+      f5_source_document_status(NULL)
       show_formulario_5_modal()
     }
   })
@@ -3346,6 +3593,8 @@ server <- function(input, output, session) {
     f5_certification_complete(FALSE)
     f5_certification_panel("closed")
     f5_certification_alerts(character())
+    f5_source_document(NULL)
+    f5_source_document_status(NULL)
     show_formulario_5_modal()
   })
 
