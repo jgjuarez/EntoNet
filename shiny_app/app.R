@@ -873,34 +873,36 @@ formulario_5_review_form <- function() {
   tagList(
     div(
       class = "alert alert-info",
-      "Componente preliminar para revisar registros de Formulario 5 guardados en intake. Las columnas de revisión ya existen en Supabase; la conexión a registros pendientes se hará después."
+      "Busque un registro por intake_id o genere una muestra aleatoria del 10% de registros ingresados entre dos fechas. Al abrir un ID, redigite el formulario para comparar contra la captura original."
     ),
     wellPanel(
-      h4("Revisión de formularios"),
-      selectInput(
-        "f5_review_status",
-        "Estado de revisión",
-        choices = c("Pendiente" = "pending", "Revisado" = "reviewed", "Rechazado" = "rejected"),
-        selected = "pending"
+      h4("Selección de registros"),
+      fluidRow(
+        column(3, numericInput("f5_review_search_id", "Buscar intake_id", value = NA, min = 1, step = 1)),
+        column(3, dateInput("f5_review_start_date", "Fecha inicio", value = Sys.Date() - 30)),
+        column(3, dateInput("f5_review_end_date", "Fecha fin", value = Sys.Date())),
+        column(
+          3,
+          selectInput(
+            "f5_review_filter_status",
+            "Estado",
+            choices = c("Pendiente" = "pending", "Revisado" = "reviewed", "Rechazado" = "rejected", "Todos" = "all"),
+            selected = "pending"
+          )
+        )
       ),
-      textAreaInput("f5_review_notes", "Notas de revisión", rows = 5),
-      textInput("f5_reviewed_by", "Revisado por"),
-      dateInput("f5_reviewed_at", "Fecha de revisión", value = Sys.Date()),
-      dateInput("f5_actualizado_en", "Fecha actualización", value = Sys.Date())
+      div(
+        class = "submit-row",
+        actionButton("f5_review_find_id", "Buscar ID", class = "btn-primary"),
+        actionButton("f5_review_generate_sample", "Generar muestra 10%", class = "btn-primary"),
+        actionButton("f5_review_refresh_list", "Actualizar listado")
+      ),
+      uiOutput("f5_review_status_message"),
+      uiOutput("f5_review_sample_list")
     ),
-    div(
-      class = "submit-row",
-      tags$button(
-        type = "button",
-        class = "btn btn-primary",
-        disabled = "disabled",
-        "Guardar revisión"
-      ),
-      span(
-        class = "help-block",
-        "El guardado de revisión se conectará cuando activemos la consulta de registros pendientes."
-      )
-    )
+    uiOutput("f5_review_selected_record"),
+    uiOutput("f5_review_redigit_form"),
+    uiOutput("f5_review_comparison_result")
   )
 }
 
@@ -2366,6 +2368,10 @@ server <- function(input, output, session) {
   f5_certification_panel <- reactiveVal("closed")
   f5_certification_alerts <- reactiveVal(character())
   f5_save_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
+  f5_review_records <- reactiveVal(data.frame())
+  f5_review_selected <- reactiveVal(NULL)
+  f5_review_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
+  f5_review_comparison <- reactiveVal(NULL)
   logged_in <- reactiveVal(skip_login)
   public_page <- reactiveVal("login")
   public_language <- reactiveVal("es")
@@ -2885,6 +2891,194 @@ server <- function(input, output, session) {
     }, logical(1))]
 
     unname(required_labels[missing])
+  }
+
+  f5_review_field_labels <- c(
+    formulario_codigo = "Código del formulario",
+    pais = "País",
+    departamento_numero = "Departamento #",
+    municipio_numero = "Municipio #",
+    ciclo = "Ciclo",
+    formulario_nombre = "Nombre del formulario",
+    fecha_registro = "Fecha de registro",
+    cepa_poblacion = "Cepa / población",
+    especie = "Especie",
+    generacion_filial_adultos = "Generación filial adultos",
+    responsable_ingreso_jaula = "Responsable ingreso jaula",
+    fecha_jaula = "Fecha jaula",
+    numero_hembras = "Número de hembras",
+    numero_machos = "Número de machos",
+    total_huevos_viables = "Total huevos viables",
+    responsable_alimentacion = "Responsable alimentación",
+    tipo_alimentacion_codigo = "Tipo alimentación código",
+    tipo_alimentacion_descripcion = "Tipo alimentación descripción",
+    fecha_alimentacion_sangre = "Fecha alimentación sangre",
+    numero_charolas = "Número de charolas",
+    observaciones_alimentacion = "Observaciones alimentación",
+    generacion_filial_huevos = "Generación filial huevos",
+    codigo_sustrato = "Código sustrato",
+    fecha_colocacion_sustrato = "Fecha colocación sustrato",
+    fecha_retiro_sustrato = "Fecha retiro sustrato",
+    numero_cuadro_sustrato = "Número cuadro sustrato",
+    hv_huevos_viables = "HV - huevos viables",
+    he_huevos_eclosionados = "HE - huevos eclosionados",
+    hc_huevos_canoa = "HC - huevos canoa",
+    hnf_huevos_no_fecundados = "HNF - huevos no fecundados",
+    responsable_conteo_huevos = "Responsable conteo huevos",
+    observaciones_generales = "Observaciones generales",
+    fuente_formulario = "Fuente formulario",
+    creado_por = "Creado por",
+    creado_en = "Fecha creación"
+  )
+
+  f5_review_date_fields <- c(
+    "fecha_registro",
+    "fecha_jaula",
+    "fecha_alimentacion_sangre",
+    "fecha_colocacion_sustrato",
+    "fecha_retiro_sustrato",
+    "creado_en"
+  )
+
+  f5_review_integer_fields <- c(
+    "departamento_numero",
+    "municipio_numero",
+    "numero_hembras",
+    "numero_machos",
+    "total_huevos_viables",
+    "numero_charolas",
+    "numero_cuadro_sustrato",
+    "hv_huevos_viables",
+    "he_huevos_eclosionados",
+    "hc_huevos_canoa",
+    "hnf_huevos_no_fecundados"
+  )
+
+  f5_review_multiline_fields <- c(
+    "observaciones_alimentacion",
+    "observaciones_generales"
+  )
+
+  f5_review_text_value <- function(value) {
+    if (is.null(value) || length(value) == 0 || is.na(value)) {
+      return("")
+    }
+
+    trimws(as.character(value[[1]]))
+  }
+
+  f5_review_compare_value <- function(value, field) {
+    if (is.null(value) || length(value) == 0 || is.na(value)) {
+      return("")
+    }
+
+    if (field %in% f5_review_date_fields) {
+      return(as.character(as.Date(value[[1]])))
+    }
+
+    if (field %in% f5_review_integer_fields) {
+      number <- suppressWarnings(as.integer(as.numeric(value[[1]])))
+      if (is.na(number)) {
+        return("")
+      }
+      return(as.character(number))
+    }
+
+    trimws(as.character(value[[1]]))
+  }
+
+  f5_review_input_id <- function(field) {
+    paste0("f5_review_redigit_", field)
+  }
+
+  f5_review_redigit_record <- function() {
+    values <- lapply(names(f5_review_field_labels), function(field) {
+      input[[f5_review_input_id(field)]]
+    })
+    names(values) <- names(f5_review_field_labels)
+    values
+  }
+
+  f5_review_discrepancies <- function(original, redigit) {
+    rows <- lapply(names(f5_review_field_labels), function(field) {
+      original_value <- f5_review_compare_value(original[[field]], field)
+      redigit_value <- f5_review_compare_value(redigit[[field]], field)
+
+      if (identical(original_value, redigit_value)) {
+        return(NULL)
+      }
+
+      data.frame(
+        Columna = field,
+        Campo = unname(f5_review_field_labels[[field]]),
+        Original = original_value,
+        Redigitado = redigit_value,
+        stringsAsFactors = FALSE
+      )
+    })
+
+    rows <- Filter(Negate(is.null), rows)
+    if (length(rows) == 0) {
+      return(data.frame(
+        Columna = character(),
+        Campo = character(),
+        Original = character(),
+        Redigitado = character(),
+        stringsAsFactors = FALSE
+      ))
+    }
+
+    do.call(rbind, rows)
+  }
+
+  f5_fetch_review_record <- function(intake_id) {
+    connection <- NULL
+    on.exit({
+      if (!is.null(connection)) {
+        dbDisconnect(connection)
+      }
+    }, add = TRUE)
+
+    connection <- connect_to_supabase()
+    dbGetQuery(
+      connection,
+      "
+        select *
+        from public.formulario_5_alimentacion_conteo_intake
+        where intake_id = $1
+      ",
+      params = list(as.integer(intake_id))
+    )
+  }
+
+  f5_review_record_summary <- function(record) {
+    if (is.null(record) || nrow(record) == 0) {
+      return(data.frame())
+    }
+
+    data.frame(
+      Campo = c(
+        "Intake ID",
+        "Estado",
+        "Fecha registro",
+        "País",
+        "Cepa / población",
+        "Especie",
+        "Fuente formulario",
+        "Actualizado en"
+      ),
+      Valor = c(
+        as.character(record$intake_id[[1]]),
+        f5_review_text_value(record$review_status),
+        as.character(as.Date(record$fecha_registro[[1]])),
+        f5_review_text_value(record$pais),
+        f5_review_text_value(record$cepa_poblacion),
+        f5_review_text_value(record$especie),
+        f5_review_text_value(record$fuente_formulario),
+        as.character(record$actualizado_en[[1]])
+      ),
+      stringsAsFactors = FALSE
+    )
   }
 
   f5_total_huevos_ingresados <- function() {
@@ -3536,6 +3730,543 @@ server <- function(input, output, session) {
     })
   })
 
+  f5_load_review_records <- function(random_sample = FALSE) {
+    start_date <- as.Date(input$f5_review_start_date)
+    end_date <- as.Date(input$f5_review_end_date)
+    status_filter <- f5_text(input$f5_review_filter_status)
+
+    if (is.na(start_date) || is.na(end_date) || start_date > end_date) {
+      stop("Seleccione un rango de fechas válido.")
+    }
+
+    if (!nzchar(status_filter)) {
+      status_filter <- "pending"
+    }
+
+    connection <- NULL
+    on.exit({
+      if (!is.null(connection)) {
+        dbDisconnect(connection)
+      }
+    }, add = TRUE)
+
+    connection <- connect_to_supabase()
+    count_query <- "
+      select count(*)::integer as total
+      from public.formulario_5_alimentacion_conteo_intake
+      where fecha_registro between $1 and $2
+        and ($3 = 'all' or review_status = $3)
+    "
+    total <- dbGetQuery(
+      connection,
+      count_query,
+      params = list(as.character(start_date), as.character(end_date), status_filter)
+    )$total[[1]]
+
+    if (total == 0) {
+      return(data.frame())
+    }
+
+    limit <- if (random_sample) {
+      max(1L, ceiling(total * 0.10))
+    } else {
+      min(total, 50L)
+    }
+
+    order_clause <- if (random_sample) "order by random()" else "order by creado_en desc nulls last, intake_id desc"
+    query <- paste(
+      "
+        select
+          intake_id,
+          review_status,
+          fecha_registro,
+          pais,
+          cepa_poblacion,
+          especie,
+          fuente_formulario,
+          actualizado_en
+        from public.formulario_5_alimentacion_conteo_intake
+        where fecha_registro between $1 and $2
+          and ($3 = 'all' or review_status = $3)
+      ",
+      order_clause,
+      "limit $4"
+    )
+
+    dbGetQuery(
+      connection,
+      query,
+      params = list(as.character(start_date), as.character(end_date), status_filter, as.integer(limit))
+    )
+  }
+
+  output$f5_review_status_message <- renderUI({
+    status <- f5_review_status()
+
+    if (is.null(status$type) || identical(status$type, "idle")) {
+      return(NULL)
+    }
+
+    alert_class <- switch(
+      status$type,
+      success = "alert alert-success",
+      error = "alert alert-danger",
+      warning = "alert alert-warning",
+      info = "alert alert-info",
+      "alert alert-info"
+    )
+
+    details <- status$details
+    if (is.null(details)) {
+      details <- character()
+    }
+
+    div(
+      class = alert_class,
+      strong(status$message),
+      if (length(details) > 0) {
+        tags$ul(lapply(details, tags$li))
+      }
+    )
+  })
+
+  output$f5_review_sample_list <- renderUI({
+    records <- f5_review_records()
+
+    if (is.null(records) || nrow(records) == 0) {
+      return(NULL)
+    }
+
+    table_rows <- lapply(seq_len(nrow(records)), function(index) {
+      record <- records[index, ]
+      intake_id <- record$intake_id[[1]]
+      tags$tr(
+        tags$td(tags$a(
+          href = "#",
+          onclick = sprintf(
+            "Shiny.setInputValue('f5_review_select_intake_id', %s, {priority: 'event'}); return false;",
+            intake_id
+          ),
+          as.character(intake_id)
+        )),
+        tags$td(record$review_status),
+        tags$td(as.character(record$fecha_registro)),
+        tags$td(record$pais),
+        tags$td(record$cepa_poblacion),
+        tags$td(record$especie),
+        tags$td(record$fuente_formulario)
+      )
+    })
+
+    tagList(
+      h4("Listado para revisión"),
+      tags$table(
+        class = "table table-striped table-condensed",
+        tags$thead(tags$tr(
+          tags$th("intake_id"),
+          tags$th("Estado"),
+          tags$th("Fecha registro"),
+          tags$th("País"),
+          tags$th("Cepa / población"),
+          tags$th("Especie"),
+          tags$th("Fuente formulario")
+        )),
+        tags$tbody(table_rows)
+      )
+    )
+  })
+
+  output$f5_review_selected_record <- renderUI({
+    record <- f5_review_selected()
+    if (is.null(record) || nrow(record) == 0) {
+      return(NULL)
+    }
+
+    tagList(
+      wellPanel(
+        h4(sprintf("Formulario original seleccionado: intake_id %s", record$intake_id[[1]])),
+        tableOutput("f5_review_original_summary")
+      )
+    )
+  })
+
+  output$f5_review_original_summary <- renderTable({
+    f5_review_record_summary(f5_review_selected())
+  }, striped = TRUE, bordered = TRUE, spacing = "xs", sanitize.text.function = identity)
+
+  output$f5_review_redigit_form <- renderUI({
+    record <- f5_review_selected()
+    if (is.null(record) || nrow(record) == 0) {
+      return(NULL)
+    }
+
+    input_for_field <- function(field) {
+      label <- unname(f5_review_field_labels[[field]])
+      input_id <- f5_review_input_id(field)
+
+      if (identical(field, "pais")) {
+        return(selectInput(input_id, label, choices = c("", "El Salvador", "Guatemala"), selected = ""))
+      }
+
+      if (identical(field, "especie")) {
+        return(selectInput(input_id, label, choices = c("", "Ae. aegypti", "Ae. albopictus"), selected = ""))
+      }
+
+      if (identical(field, "tipo_alimentacion_codigo")) {
+        return(selectInput(input_id, label, choices = c("", "A", "B", "C", "D", "E"), selected = ""))
+      }
+
+      if (identical(field, "tipo_alimentacion_descripcion")) {
+        return(selectInput(
+          input_id,
+          label,
+          choices = c("", "conejo", "humano", "hemotek-conejo", "hemotek-humano", "hemotek-carnero"),
+          selected = ""
+        ))
+      }
+
+      if (field %in% f5_review_date_fields) {
+        return(dateInput(input_id, label, value = NA))
+      }
+
+      if (field %in% f5_review_integer_fields) {
+        return(numericInput(input_id, label, value = NA, min = 0, step = 1))
+      }
+
+      if (field %in% f5_review_multiline_fields) {
+        return(textAreaInput(input_id, label, rows = 3))
+      }
+
+      textInput(input_id, label)
+    }
+
+    fields <- names(f5_review_field_labels)
+    split_fields <- split(fields, ceiling(seq_along(fields) / 12))
+
+    tagList(
+      wellPanel(
+        h4("Redigitación para control de calidad"),
+        p("Digite nuevamente los valores del formulario físico. Luego compare contra la captura original."),
+        fluidRow(lapply(split_fields, function(field_group) {
+          column(4, lapply(field_group, input_for_field))
+        })),
+        tags$hr(),
+        fluidRow(
+          column(
+            4,
+            selectInput(
+              "f5_review_final_status",
+              "Resultado de revisión",
+              choices = c("Revisado" = "reviewed", "Rechazado" = "rejected", "Pendiente" = "pending"),
+              selected = "reviewed"
+            )
+          ),
+          column(4, textInput("f5_reviewed_by", "Revisado por", value = user_profile$name)),
+          column(4, dateInput("f5_reviewed_at", "Fecha de revisión", value = Sys.Date()))
+        ),
+        textAreaInput("f5_review_notes", "Notas de revisión", rows = 4),
+        div(
+          class = "submit-row",
+          actionButton("f5_review_compare", "Comparar redigitación", class = "btn-primary"),
+          actionButton("f5_review_save", "Guardar revisión", class = "btn-default")
+        )
+      )
+    )
+  })
+
+  output$f5_review_comparison_result <- renderUI({
+    comparison <- f5_review_comparison()
+
+    if (is.null(comparison)) {
+      return(NULL)
+    }
+
+    if (nrow(comparison) == 0) {
+      return(div(
+        class = "alert alert-success",
+        strong("Redigitación coincide con el registro original."),
+        " Puede guardar la revisión."
+      ))
+    }
+
+    tagList(
+      div(
+        class = "alert alert-danger",
+        strong("Se encontraron discrepancias."),
+        " Revise estas columnas contra el formulario físico antes de guardar la revisión."
+      ),
+      tableOutput("f5_review_discrepancy_table")
+    )
+  })
+
+  output$f5_review_discrepancy_table <- renderTable({
+    f5_review_comparison()
+  }, striped = TRUE, bordered = TRUE, spacing = "xs")
+
+  observeEvent(input$f5_review_find_id, {
+    intake_id <- f5_integer(input$f5_review_search_id)
+    if (is.na(intake_id)) {
+      f5_review_status(list(
+        type = "warning",
+        message = "Ingrese un intake_id válido.",
+        details = character()
+      ))
+      return()
+    }
+
+    tryCatch({
+      record <- f5_fetch_review_record(intake_id)
+      if (nrow(record) == 0) {
+        f5_review_selected(NULL)
+        f5_review_comparison(NULL)
+        f5_review_status(list(
+          type = "warning",
+          message = sprintf("No se encontró intake_id %s.", intake_id),
+          details = character()
+        ))
+        return()
+      }
+
+      f5_review_records(record[, intersect(c(
+        "intake_id",
+        "review_status",
+        "fecha_registro",
+        "pais",
+        "cepa_poblacion",
+        "especie",
+        "fuente_formulario",
+        "actualizado_en"
+      ), names(record)), drop = FALSE])
+      f5_review_selected(record)
+      f5_review_comparison(NULL)
+      f5_review_status(list(
+        type = "success",
+        message = sprintf("Registro intake_id %s cargado para revisión.", intake_id),
+        details = character()
+      ))
+    }, error = function(error) {
+      f5_review_status(list(
+        type = "error",
+        message = "No se pudo buscar el registro.",
+        details = conditionMessage(error)
+      ))
+    })
+  })
+
+  observeEvent(input$f5_review_generate_sample, {
+    tryCatch({
+      records <- f5_load_review_records(random_sample = TRUE)
+      f5_review_records(records)
+      f5_review_selected(NULL)
+      f5_review_comparison(NULL)
+
+      if (nrow(records) == 0) {
+        f5_review_status(list(
+          type = "warning",
+          message = "No hay registros en el rango seleccionado.",
+          details = character()
+        ))
+      } else {
+        f5_review_status(list(
+          type = "success",
+          message = sprintf("Muestra generada: %s registro(s), equivalente al 10%% del rango seleccionado.", nrow(records)),
+          details = character()
+        ))
+      }
+    }, error = function(error) {
+      f5_review_status(list(
+        type = "error",
+        message = "No se pudo generar la muestra.",
+        details = conditionMessage(error)
+      ))
+    })
+  })
+
+  observeEvent(input$f5_review_refresh_list, {
+    tryCatch({
+      records <- f5_load_review_records(random_sample = FALSE)
+      f5_review_records(records)
+      f5_review_selected(NULL)
+      f5_review_comparison(NULL)
+
+      if (nrow(records) == 0) {
+        f5_review_status(list(
+          type = "warning",
+          message = "No hay registros en el rango seleccionado.",
+          details = character()
+        ))
+      } else {
+        f5_review_status(list(
+          type = "success",
+          message = sprintf("Listado actualizado: %s registro(s).", nrow(records)),
+          details = character()
+        ))
+      }
+    }, error = function(error) {
+      f5_review_status(list(
+        type = "error",
+        message = "No se pudo actualizar el listado.",
+        details = conditionMessage(error)
+      ))
+    })
+  })
+
+  observeEvent(input$f5_review_select_intake_id, {
+    intake_id <- f5_integer(input$f5_review_select_intake_id)
+    if (is.na(intake_id)) {
+      return()
+    }
+
+    tryCatch({
+      record <- f5_fetch_review_record(intake_id)
+      if (nrow(record) == 0) {
+        f5_review_status(list(
+          type = "warning",
+          message = sprintf("No se encontró intake_id %s.", intake_id),
+          details = character()
+        ))
+        return()
+      }
+
+      f5_review_selected(record)
+      f5_review_comparison(NULL)
+      f5_review_status(list(
+        type = "success",
+        message = sprintf("Registro intake_id %s abierto para redigitación.", intake_id),
+        details = character()
+      ))
+    }, error = function(error) {
+      f5_review_status(list(
+        type = "error",
+        message = "No se pudo abrir el registro seleccionado.",
+        details = conditionMessage(error)
+      ))
+    })
+  })
+
+  observeEvent(input$f5_review_compare, {
+    record <- f5_review_selected()
+    if (is.null(record) || nrow(record) == 0) {
+      f5_review_status(list(
+        type = "warning",
+        message = "Abra primero un intake_id para revisar.",
+        details = character()
+      ))
+      return()
+    }
+
+    comparison <- f5_review_discrepancies(record, f5_review_redigit_record())
+    f5_review_comparison(comparison)
+
+    if (nrow(comparison) == 0) {
+      updateSelectInput(session, "f5_review_final_status", selected = "reviewed")
+      f5_review_status(list(
+        type = "success",
+        message = "La redigitación coincide con el registro original.",
+        details = character()
+      ))
+    } else {
+      updateSelectInput(session, "f5_review_final_status", selected = "rejected")
+      f5_review_status(list(
+        type = "warning",
+        message = sprintf("Se encontraron discrepancias en %s columna(s).", nrow(comparison)),
+        details = comparison$Campo
+      ))
+    }
+  })
+
+  observeEvent(input$f5_review_save, {
+    record <- f5_review_selected()
+    if (is.null(record) || nrow(record) == 0) {
+      f5_review_status(list(
+        type = "warning",
+        message = "Abra primero un intake_id para revisar.",
+        details = character()
+      ))
+      return()
+    }
+
+    comparison <- f5_review_comparison()
+    if (is.null(comparison)) {
+      comparison <- f5_review_discrepancies(record, f5_review_redigit_record())
+      f5_review_comparison(comparison)
+    }
+
+    status <- f5_text(input$f5_review_final_status)
+    if (!status %in% c("pending", "reviewed", "rejected")) {
+      status <- if (nrow(comparison) == 0) "reviewed" else "rejected"
+    }
+
+    notes <- f5_optional_text(input$f5_review_notes)
+    if (nrow(comparison) > 0) {
+      discrepancy_note <- paste(
+        "Discrepancias:",
+        paste(comparison$Columna, collapse = ", ")
+      )
+      notes <- paste(na.omit(c(notes, discrepancy_note)), collapse = "\n")
+    }
+
+    connection <- NULL
+    tryCatch({
+      withProgress(message = "Actualizando revisión en Supabase", value = 0, {
+        incProgress(0.25, detail = "Abriendo conexión")
+        connection <- connect_to_supabase()
+        incProgress(0.5, detail = "Guardando revisión")
+        updated <- dbGetQuery(
+          connection,
+          "
+            update public.formulario_5_alimentacion_conteo_intake
+            set
+              review_status = $1,
+              review_notes = $2,
+              reviewed_by = nullif($3, ''),
+              reviewed_at = $4::timestamptz,
+              actualizado_en = now()
+            where intake_id = $5
+            returning intake_id, review_status, actualizado_en
+          ",
+          params = list(
+            status,
+            notes,
+            f5_text(input$f5_reviewed_by),
+            as.character(f5_date(input$f5_reviewed_at)),
+            as.integer(record$intake_id[[1]])
+          )
+        )
+        incProgress(0.25, detail = "Listo")
+
+        if (nrow(updated) == 0) {
+          stop("No se actualizó ningún registro.")
+        }
+
+        updated
+      })
+
+      refreshed <- f5_fetch_review_record(record$intake_id[[1]])
+      f5_review_selected(refreshed)
+      f5_review_status(list(
+        type = "success",
+        message = sprintf(
+          "Revisión guardada para intake_id %s. Estado: %s. Actualizado en: %s.",
+          record$intake_id[[1]],
+          status,
+          as.character(refreshed$actualizado_en[[1]])
+        ),
+        details = character()
+      ))
+    }, error = function(error) {
+      f5_review_status(list(
+        type = "error",
+        message = "No se pudo guardar la revisión.",
+        details = conditionMessage(error)
+      ))
+    }, finally = {
+      if (!is.null(connection)) {
+        dbDisconnect(connection)
+      }
+    })
+  })
+
   observeEvent({
     list(
       input$f5_formulario_codigo,
@@ -3641,6 +4372,10 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$open_formulario_5_review, {
+    f5_review_records(data.frame())
+    f5_review_selected(NULL)
+    f5_review_comparison(NULL)
+    f5_review_status(list(type = "idle", message = NULL, details = character()))
     show_formulario_5_review_modal()
   })
 
