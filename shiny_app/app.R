@@ -3812,6 +3812,7 @@ server <- function(input, output, session) {
       success = "alert alert-success",
       error = "alert alert-danger",
       warning = "alert alert-warning",
+      loading = "alert alert-info",
       info = "alert alert-info",
       "alert alert-info"
     )
@@ -3824,6 +3825,18 @@ server <- function(input, output, session) {
     div(
       class = alert_class,
       strong(status$message),
+      if (identical(status$type, "loading")) {
+        div(
+          class = "progress",
+          style = "margin-top: 10px; margin-bottom: 0;",
+          div(
+            class = "progress-bar progress-bar-striped active",
+            role = "progressbar",
+            style = "width: 100%;",
+            "Consultando Supabase"
+          )
+        )
+      },
       if (length(details) > 0) {
         tags$ul(lapply(details, tags$li))
       }
@@ -4054,8 +4067,24 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$f5_review_generate_sample, {
+    f5_review_status(list(
+      type = "loading",
+      message = "Generando muestra aleatoria del 10%...",
+      details = character()
+    ))
+    f5_review_records(data.frame())
+    f5_review_selected(NULL)
+    f5_review_comparison(NULL)
+
     tryCatch({
-      records <- f5_load_review_records(random_sample = TRUE)
+      records <- withProgress(message = "Generando muestra 10%", value = 0, {
+        incProgress(0.25, detail = "Validando rango de fechas")
+        Sys.sleep(0.1)
+        incProgress(0.35, detail = "Consultando registros elegibles")
+        records <- f5_load_review_records(random_sample = TRUE)
+        incProgress(0.3, detail = "Preparando listado")
+        records
+      })
       f5_review_records(records)
       f5_review_selected(NULL)
       f5_review_comparison(NULL)
