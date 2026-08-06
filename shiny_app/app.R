@@ -648,7 +648,7 @@ formulario_7_codigo_bioensayo_final <- function(
   pbo <- inputs[[6]]
   dm <- inputs[[7]]
   already_final <- !is.na(bioensayo) & (
-    grepl("REI[0-9]{2}[A-Z]{2}[0-9]{3}BIO[0-9]+(DD|IE|IC(2X|5X|10X)|S(DEF|PBO|DM))$", bioensayo) |
+    grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}BIO[0-9]+(DD|IE|IC(2X|5X|10X)|S(DEF|PBO|DM))$", bioensayo) |
       grepl("-(D|I(-[0-9]+X)+|I-1X-2X-5X-10X|S(-[A-Z]+)+)$", bioensayo)
   )
 
@@ -4760,7 +4760,7 @@ server <- function(input, output, session) {
     if (is.na(country_code) || is.na(population_number) || population_number < 1 || !nzchar(municipality) || is.na(year) || is.na(suffix)) {
       return(NA_character_)
     }
-    paste0("REI", sprintf("%02d", year %% 100L), country_code, sprintf("%03d", population_number), "BIO", municipality, suffix)
+    paste0("REI", sprintf("%02d", year %% 100L), country_code, municipality, "BIO", population_number, suffix)
   }
 
   f1_clean_text <- function(value) {
@@ -6726,7 +6726,7 @@ server <- function(input, output, session) {
       strong("Código Bioensayo generado: "),
       tags$code(codigo),
       tags$br(),
-      tags$small("Estructura: REI + año + país + # población + BIO + # municipio + tipo.")
+      tags$small("Estructura: REI + año + país + código municipio + BIO + # población + tipo.")
     )
   })
 
