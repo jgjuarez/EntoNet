@@ -2091,7 +2091,8 @@ formulario_1_print_form <- function() {
           selectInput("f1_print_pais", "País *", choices = c("Seleccione" = "", "El Salvador" = "El Salvador", "Guatemala" = "Guatemala"), selected = ""),
           selectInput("f1_print_departamento", "Departamento", choices = c("Seleccione país" = "")),
           uiOutput("f1_print_municipio_ui"),
-          textInput("f1_print_version_formulario", "Versión del formulario"),
+          numericInput("f1_print_ciclo", "Ciclo *", value = NA, min = 1, step = 1),
+          numericInput("f1_print_ronda", "Ronda *", value = NA, min = 1, step = 1),
           textInput("f1_print_codigo_encuestadores", "Código de encuestadores")
         ),
         column(
@@ -2104,7 +2105,7 @@ formulario_1_print_form <- function() {
           numericInput("f1_print_casas_por_cuadrante", "Número de casas por cuadrante", value = NA, min = 1, max = 50, step = 1),
           textInput("f1_print_codigo_casa_base", "Código inicial de casa"),
           textInput("f1_print_codigo_sustrato_base", "Código inicial sustrato"),
-          textInput("f1_print_codigo_formulario", "Código de formulario"),
+          uiOutput("f1_print_codigo_formulario_preview"),
           tags$small("El código de sustrato se autogenera desde el código inicial de sustrato.")
         )
       ),
@@ -5441,11 +5442,11 @@ server <- function(input, output, session) {
 
   f1_printable_sheet_xml <- function(
     pais, departamento, municipio, codigo_formulario, version_formulario,
-    codigo_encuestadores, codigo_cuadrante_base, casas_por_cuadrante,
+    codigo_encuestadores, ciclo, ronda, codigo_cuadrante_base, casas_por_cuadrante,
     codigo_casa_base, codigo_sustrato_base, quadrants, include_watermark = FALSE
   ) {
     rows <- character()
-    merges <- c("A1:N1", "C2:D2", "C3:D3", "C4:D4", "I2:J2", "L2:N2", "L3:N3", "L4:N4")
+    merges <- c("A1:N1", "C2:D2", "C3:D3", "C4:D4", "I2:K2", "L2:N2", "J3:K3", "L3:N3", "J4:K4", "L4:N4")
 
     add_row <- function(row, values, styles = rep(0L, length(values)), height = NULL) {
       cells <- lapply(seq_along(values), function(col) f1_excel_cell(row, col, values[[col]], styles[[col]]))
@@ -5453,9 +5454,9 @@ server <- function(input, output, session) {
     }
 
     add_row(1, c("ENTONET - FORMULARIO 1: COLOCACIÓN Y RETIRO DE OVITRAMPA", rep("", 13)), c(1L, rep(1L, 13)), 21)
-    add_row(2, c("", "PAÍS", pais, "", "CICLO", "", "RONDA", "", "CÓDIGOS GPS", "", "", codigo_formulario, "", ""), c(0, 8, 9, 9, 8, 9, 8, 9, 8, 8, 0, 10, 10, 10), 18)
-    add_row(3, c("", "DEPARTAMENTO", departamento, "", "FECHA COLOCACIÓN", "", "FECHA RETIRO", "", "GPS INICIAL", "", "", paste("VERSIÓN", version_formulario), "", ""), c(0, 8, 9, 9, 8, 9, 8, 9, 8, 9, 0, 11, 11, 11), 18)
-    add_row(4, c("", "MUNICIPIO", municipio, "", "GRUPO COLOCACIÓN", "", "GRUPO RETIRO", "", "GPS FINAL", "", "", f1_code39_value(codigo_formulario), "", ""), c(0, 8, 9, 9, 8, 9, 8, 9, 8, 9, 0, 12, 12, 12), 22)
+    add_row(2, c("", "PAÍS", pais, "", "CICLO", ciclo, "RONDA", ronda, "CÓDIGOS GPS", "", "", codigo_formulario, "", ""), c(0, 8, 9, 9, 8, 9, 8, 9, 8, 8, 0, 10, 10, 10), 18)
+    add_row(3, c("", "DEPARTAMENTO", departamento, "", "FECHA COLOCACIÓN", "", "FECHA RETIRO", "", "GPS INICIAL", "", "", paste("VERSIÓN", version_formulario), "", ""), c(0, 8, 9, 9, 8, 9, 8, 9, 8, 9, 9, 11, 11, 11), 18)
+    add_row(4, c("", "MUNICIPIO", municipio, "", "GRUPO COLOCACIÓN", "", "GRUPO RETIRO", "", "GPS FINAL", "", "", f1_code39_value(codigo_formulario), "", ""), c(0, 8, 9, 9, 8, 9, 8, 9, 8, 9, 9, 12, 12, 12), 22)
 
     current_row <- 6L
     headers <- c(
@@ -5467,8 +5468,18 @@ server <- function(input, output, session) {
     for (quadrant in seq_len(quadrants)) {
       quadrant_code <- f1_increment_quadrant_code(codigo_cuadrante_base, quadrant - 1L)
       if (!nzchar(quadrant_code) || is.na(quadrant_code)) quadrant_code <- paste("CUADRANTE", quadrant)
-      merges <- c(merges, paste0("A", current_row, ":N", current_row))
-      add_row(current_row, c(quadrant_code, rep("", 13)), c(2L, rep(2L, 13)), 18)
+      merges <- c(
+        merges,
+        paste0("A", current_row, ":E", current_row),
+        paste0("F", current_row, ":H", current_row),
+        paste0("I", current_row, ":N", current_row)
+      )
+      add_row(
+        current_row,
+        c(quadrant_code, "", "", "", "", f1_code39_value(quadrant_code), "", "", "Comentario:", "", "", "", "", ""),
+        c(rep(14L, 5), rep(12L, 3), rep(9L, 6)),
+        27.8
+      )
       current_row <- current_row + 1L
       merges <- c(merges, paste0("F", current_row, ":G", current_row))
       header_styles <- rep(5L, length(headers))
@@ -5481,12 +5492,12 @@ server <- function(input, output, session) {
         if (!nzchar(house_code) || is.na(house_code)) house_code <- ""
         sustrato_code <- f1_increment_code(codigo_sustrato_base, house_offset)
         if (!nzchar(sustrato_code) || is.na(sustrato_code)) sustrato_code <- ""
-        merges <- c(merges, paste0("F", current_row, ":G", current_row))
+        merges <- c(merges, paste0("C", current_row, ":D", current_row), paste0("F", current_row, ":G", current_row))
         add_row(
           current_row,
           c(as.character(house_row), house_code, "", "", sustrato_code, f1_code39_value(sustrato_code), "", "", "", "", "", "", "", ""),
           c(6L, 6L, 6L, 6L, 6L, 12L, 12L, 6L, 6L, 6L, 6L, 6L, 6L, 6L),
-          19
+          44.3
         )
         current_row <- current_row + 1L
       }
@@ -5506,15 +5517,16 @@ server <- function(input, output, session) {
       '<sheetFormatPr defaultRowHeight="18"/>',
       '<cols>',
       '<col min="1" max="1" width="4" customWidth="1"/>',
-      '<col min="2" max="2" width="12" customWidth="1"/>',
-      '<col min="3" max="4" width="9" customWidth="1"/>',
+      '<col min="2" max="2" width="9.35" customWidth="1"/>',
+      '<col min="3" max="3" width="9.79" customWidth="1"/>',
+      '<col min="4" max="4" width="10.12" customWidth="1"/>',
       '<col min="5" max="5" width="11" customWidth="1"/>',
       '<col min="6" max="7" width="10" customWidth="1"/>',
       '<col min="8" max="14" width="7.5" customWidth="1"/>',
       '</cols>',
       '<sheetData>', paste0(rows, collapse = ""), '</sheetData>',
       merge_xml,
-      '<pageMargins left="0.25" right="0.25" top="0.25" bottom="0.25" header="0.1" footer="0.1"/>',
+      '<pageMargins left="0.25" right="0.25" top="0.25" bottom="0.25" header="0.511811023622047" footer="0.511811023622047"/>',
       '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>',
       if (include_watermark) '<picture r:id="rId1"/>' else '',
       '</worksheet>'
@@ -5544,46 +5556,48 @@ server <- function(input, output, session) {
     paste0(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
       '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
-      '<fonts count="9">',
+      '<fonts count="10">',
       '<font><sz val="10"/><name val="Calibri"/></font>',
-      '<font><b/><sz val="14"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>',
-      '<font><b/><sz val="8"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>',
+      '<font><b/><sz val="14"/><color rgb="FF000000"/><name val="Calibri"/></font>',
+      '<font><b/><sz val="8"/><color rgb="FF000000"/><name val="Calibri"/></font>',
       '<font><i/><sz val="10"/><color rgb="FF404040"/><name val="Calibri"/></font>',
-      '<font><b/><sz val="8"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>',
+      '<font><b/><sz val="8"/><color rgb="FF000000"/><name val="Calibri"/></font>',
       '<font><b/><sz val="12"/><color rgb="FF000000"/><name val="Calibri"/></font>',
       '<font><sz val="8"/><color rgb="FF000000"/><name val="Calibri"/></font>',
       '<font><sz val="20"/><color rgb="FF000000"/><name val="Libre Barcode 39"/></font>',
-      '<font><b/><sz val="7"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>',
+      '<font><b/><sz val="7"/><color rgb="FF000000"/><name val="Calibri"/></font>',
+      '<font><b/><sz val="18"/><color rgb="FF000000"/><name val="Calibri"/></font>',
       '</fonts>',
       '<fills count="6">',
       '<fill><patternFill patternType="none"/></fill>',
       '<fill><patternFill patternType="gray125"/></fill>',
-      '<fill><patternFill patternType="solid"><fgColor rgb="FF005F73"/><bgColor indexed="64"/></patternFill></fill>',
-      '<fill><patternFill patternType="solid"><fgColor rgb="FF0A9396"/><bgColor indexed="64"/></patternFill></fill>',
-      '<fill><patternFill patternType="solid"><fgColor rgb="FFE9F5F5"/><bgColor indexed="64"/></patternFill></fill>',
-      '<fill><patternFill patternType="solid"><fgColor rgb="FFF7F7F7"/><bgColor indexed="64"/></patternFill></fill>',
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/><bgColor indexed="64"/></patternFill></fill>',
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill>',
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>',
+      '<fill><patternFill patternType="none"/></fill>',
       '</fills>',
       '<borders count="3">',
       '<border><left/><right/><top/><bottom/><diagonal/></border>',
-      '<border><left style="thin"><color rgb="FFB7B7B7"/></left><right style="thin"><color rgb="FFB7B7B7"/></right><top style="thin"><color rgb="FFB7B7B7"/></top><bottom style="thin"><color rgb="FFB7B7B7"/></bottom><diagonal/></border>',
-      '<border><left style="medium"><color rgb="FF005F73"/></left><right style="medium"><color rgb="FF005F73"/></right><top style="medium"><color rgb="FF005F73"/></top><bottom style="medium"><color rgb="FF005F73"/></bottom><diagonal/></border>',
+      '<border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>',
+      '<border><left style="medium"><color rgb="FF000000"/></left><right style="medium"><color rgb="FF000000"/></right><top style="medium"><color rgb="FF000000"/></top><bottom style="medium"><color rgb="FF000000"/></bottom><diagonal/></border>',
       '</borders>',
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>',
-      '<cellXfs count="14">',
+      '<cellXfs count="15">',
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
-      '<xf numFmtId="0" fontId="1" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
       '<xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>',
       '<xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
-      '<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+      '<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="4" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="5" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="6" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
       '<xf numFmtId="0" fontId="7" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
       '<xf numFmtId="0" fontId="8" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+      '<xf numFmtId="0" fontId="9" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
       '</cellXfs>',
       '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>',
       '</styleSheet>'
@@ -5650,7 +5664,7 @@ server <- function(input, output, session) {
 
   f1_create_printable_xlsx <- function(
     file, pais, departamento, municipio, codigo_formulario, version_formulario,
-    codigo_encuestadores, codigo_cuadrante_base, casas_por_cuadrante,
+    codigo_encuestadores, ciclo, ronda, codigo_cuadrante_base, casas_por_cuadrante,
     codigo_casa_base, codigo_sustrato_base, quadrants
   ) {
     root <- tempfile("f1_print_xlsx_")
@@ -5716,7 +5730,7 @@ server <- function(input, output, session) {
       file.path(root, "xl", "worksheets", "sheet1.xml"),
       f1_printable_sheet_xml(
         pais, departamento, municipio, codigo_formulario, version_formulario,
-        codigo_encuestadores, codigo_cuadrante_base, casas_por_cuadrante,
+        codigo_encuestadores, ciclo, ronda, codigo_cuadrante_base, casas_por_cuadrante,
         codigo_casa_base, codigo_sustrato_base, quadrants, include_watermark
       )
     )
@@ -6024,6 +6038,24 @@ server <- function(input, output, session) {
     year_number <- suppressWarnings(as.integer(format(as.Date(year), "%y")))
     if (is.na(year_number)) year_number <- as.integer(format(Sys.Date(), "%y"))
     paste0("REI", sprintf("%02d", year_number %% 100L), country_code, municipality_code, "C", sprintf("%03d", quadrant_number))
+  }
+
+  f1_new_form_code <- function(country, municipality_code, year = Sys.Date(), ronda = NA, ciclo = NA) {
+    country_code <- f1_country_acronym(country)
+    municipality_code <- gsub("[^0-9]", "", value_or_default(municipality_code, ""))
+    ronda_number <- f5_integer(ronda)
+    ciclo_number <- f5_integer(ciclo)
+    if (
+      is.na(country_code) || !nzchar(country_code) ||
+        !grepl("^[0-9]{4}$", municipality_code) ||
+        is.na(ronda_number) || ronda_number < 1 ||
+        is.na(ciclo_number) || ciclo_number < 1
+    ) {
+      return(NA_character_)
+    }
+    year_number <- suppressWarnings(as.integer(format(as.Date(year), "%y")))
+    if (is.na(year_number)) year_number <- as.integer(format(Sys.Date(), "%y"))
+    paste0("REI", sprintf("%02d", year_number %% 100L), country_code, municipality_code, "R", ronda_number, "C", ciclo_number)
   }
 
   f1_quadrant_code <- function(quadrant_index) {
@@ -8524,6 +8556,25 @@ server <- function(input, output, session) {
     div(class = "summary-box", strong("Código de cuadrante generado: "), tags$code(code))
   })
 
+  f1_print_recommended_form_code <- reactive({
+    municipality_code <- ubicacion_codigo_manual_o_seleccion(input$f1_print_municipio, input$f1_print_municipio_manual)
+    f1_new_form_code(
+      country = input$f1_print_pais,
+      municipality_code = municipality_code,
+      year = Sys.Date(),
+      ronda = input$f1_print_ronda,
+      ciclo = input$f1_print_ciclo
+    )
+  })
+
+  output$f1_print_codigo_formulario_preview <- renderUI({
+    code <- f1_print_recommended_form_code()
+    if (is.na(code) || !nzchar(code)) {
+      return(div(class = "alert alert-info", "Complete país, municipio, ronda y ciclo para generar el código de formulario."))
+    }
+    div(class = "summary-box", strong("Código de formulario generado: "), tags$code(code))
+  })
+
   output$f1_placement_status <- renderUI({
     status <- f1_placement_status()
     if (identical(status$type, "idle")) return(NULL)
@@ -10946,10 +10997,14 @@ server <- function(input, output, session) {
     if (!nzchar(trimws(value_or_default(input$f1_print_pais, "")))) details <- c(details, "Seleccione el país.")
     if (!nzchar(trimws(value_or_default(input$f1_print_departamento, "")))) details <- c(details, "Seleccione el departamento.")
     if (!nzchar(ubicacion_codigo_manual_o_seleccion(input$f1_print_municipio, input$f1_print_municipio_manual))) details <- c(details, "Seleccione el municipio.")
+    if (is.na(f5_integer(input$f1_print_ciclo)) || f5_integer(input$f1_print_ciclo) < 1) details <- c(details, "Ingrese el ciclo.")
+    if (is.na(f5_integer(input$f1_print_ronda)) || f5_integer(input$f1_print_ronda) < 1) details <- c(details, "Ingrese la ronda.")
     if (is.na(f5_integer(input$f1_print_num_quadrants)) || f5_integer(input$f1_print_num_quadrants) < 1) details <- c(details, "Ingrese un número de cuadrantes mayor que cero.")
-    if (!nzchar(trimws(value_or_default(input$f1_print_version_formulario, "")))) details <- c(details, "Ingrese la versión del formulario.")
     if (!f1_quadrant_code_has_structure(input$f1_print_codigo_cuadrante_base, input$f1_print_pais)) {
       details <- c(details, "Para impresión nueva use el formato REI + año + país + código municipio + C###. Ejemplo: REI25GT0503C001.")
+    }
+    if (is.na(f1_print_recommended_form_code()) || !nzchar(f1_print_recommended_form_code())) {
+      details <- c(details, "El código de formulario se generará al completar país, municipio, ronda y ciclo.")
     }
     if (is.na(f5_integer(input$f1_print_casas_por_cuadrante)) || f5_integer(input$f1_print_casas_por_cuadrante) < 1) details <- c(details, "Ingrese un número de casas por cuadrante mayor que cero.")
     if (!f1_code_has_counter(input$f1_print_codigo_casa_base)) details <- c(details, "Código inicial de casa debe tener letras seguidas de dígitos, por ejemplo HS001.")
@@ -10962,7 +11017,7 @@ server <- function(input, output, session) {
 
   output$download_formulario_1_printable <- downloadHandler(
     filename = function() {
-      code <- toupper(trimws(value_or_default(input$f1_print_codigo_formulario, "")))
+      code <- toupper(trimws(value_or_default(f1_print_recommended_form_code(), "")))
       code <- if (nzchar(code)) gsub("[^A-Z0-9_-]+", "_", code) else format(Sys.Date(), "%Y%m%d")
       paste0("formulario_1_imprimible_", code, ".xlsx")
     },
@@ -10972,6 +11027,10 @@ server <- function(input, output, session) {
       if (is.na(quadrants) || quadrants < 1) stop("Ingrese un número de cuadrantes mayor que cero.")
       houses <- f5_integer(input$f1_print_casas_por_cuadrante)
       if (is.na(houses) || houses < 1) stop("Ingrese un número de casas por cuadrante mayor que cero.")
+      ciclo <- f5_integer(input$f1_print_ciclo)
+      ronda <- f5_integer(input$f1_print_ronda)
+      if (is.na(ciclo) || ciclo < 1) stop("Ingrese el ciclo.")
+      if (is.na(ronda) || ronda < 1) stop("Ingrese la ronda.")
       if (!f1_quadrant_code_has_structure(input$f1_print_codigo_cuadrante_base, input$f1_print_pais)) {
         stop("Código de cuadrante inicial debe usar el formato nuevo REI25GT0503C001.")
       }
@@ -10984,14 +11043,24 @@ server <- function(input, output, session) {
       if (!nzchar(pais)) stop("Seleccione el país.")
       if (!nzchar(departamento_codigo)) stop("Seleccione el departamento.")
       if (!nzchar(municipio_codigo)) stop("Seleccione el municipio.")
+      codigo_formulario <- f1_new_form_code(
+        country = pais_raw,
+        municipality_code = municipio_codigo,
+        year = Sys.Date(),
+        ronda = ronda,
+        ciclo = ciclo
+      )
+      if (is.na(codigo_formulario) || !nzchar(codigo_formulario)) stop("No se pudo generar el código de formulario.")
       f1_create_printable_xlsx(
         file = file,
         pais = pais,
         departamento = toupper(paste0(ubicacion_departamento_nombre(pais_raw, departamento_codigo), " (", departamento_codigo, ")")),
         municipio = toupper(paste0(ubicacion_municipio_nombre(pais_raw, municipio_codigo), " (", municipio_codigo, ")")),
-        codigo_formulario = toupper(trimws(value_or_default(input$f1_print_codigo_formulario, ""))),
-        version_formulario = toupper(trimws(value_or_default(input$f1_print_version_formulario, ""))),
+        codigo_formulario = codigo_formulario,
+        version_formulario = "2",
         codigo_encuestadores = toupper(trimws(value_or_default(input$f1_print_codigo_encuestadores, ""))),
+        ciclo = as.character(ciclo),
+        ronda = as.character(ronda),
         codigo_cuadrante_base = toupper(trimws(value_or_default(input$f1_print_codigo_cuadrante_base, ""))),
         casas_por_cuadrante = min(as.integer(houses), 50L),
         codigo_casa_base = toupper(trimws(value_or_default(input$f1_print_codigo_casa_base, ""))),
