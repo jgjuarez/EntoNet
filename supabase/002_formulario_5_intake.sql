@@ -10,6 +10,7 @@ create table if not exists public.formulario_5_alimentacion_conteo_intake (
     check (formulario_codigo = 'F5'),
   pais text not null default 'El Salvador'
     check (pais in ('El Salvador', 'Guatemala')),
+  id_institucion text not null default 'UVG',
   departamento_numero integer check (departamento_numero >= 0),
   municipio_numero integer check (municipio_numero >= 0),
   ciclo text not null default 'Ciclo 3',

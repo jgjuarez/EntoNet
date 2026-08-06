@@ -1,0 +1,122 @@
+campo,seccion,tipo_dato,obligatorio,valores_permitidos,descripcion
+formulario_codigo,Metadatos,texto,si,F7,Código del formulario.
+formulario_nombre,Metadatos,texto,si,Registro de datos del bioensayo de la botella CDC,Nombre oficial del formulario.
+fecha_registro,1. Información general,fecha,si,yyyy-mm-dd,Fecha de digitalización o registro de la fila.
+nombre_poblacion,1. Información general,texto,si,,Nombre de la población evaluada. La nota A del documento también lo describe como el nombre del proyecto al que pertenece el bioensayo.
+id_proyecto,1. Información general,texto,si,,Identificador único del proyecto al que pertenece el bioensayo.
+modalidad_bioensayo,1. Información general,lista,condicional,Exploratorio|Completa,"Solo aplica cuando el Tipo de Bioensayo es Intensidad. En Exploratorio, b1=1X, b2=2X, b3=5X, b4=10X y se utiliza únicamente c1 como control."
+dosis_diagnostica_1x,1. Información general,booleano,si,true|false,Indica que el Tipo de Bioensayo seleccionado es Diagnóstica 1X.
+dosis_intensidad,1. Información general,lista,no,1X|2X|5X|10X,"Dosis usada cuando el Tipo de Bioensayo es Intensidad y la modalidad es Completa; valores permitidos 1X, 2X, 5X o 10X."
+sinergista_def,1. Información general,booleano,si,true|false,Indica que DEF fue seleccionado dentro del Tipo de Bioensayo Sinergistas.
+sinergista_pbo,1. Información general,booleano,si,true|false,Indica que PBO fue seleccionado dentro del Tipo de Bioensayo Sinergistas.
+sinergista_dm,1. Información general,booleano,si,true|false,Indica que DM fue seleccionado dentro del Tipo de Bioensayo Sinergistas.
+resultado_diagnostico,1. Información general,lista,condicional,Suceptible|Sospecha de Resistencia|Resistente,Clasificación obligatoria cuando el Tipo de Bioensayo es Diagnóstica 1X.
+codigo_bioensayo,1. Información general,texto,si,,"Ingrese el código base. El sistema agrega automáticamente D; I y la dosis; o S y los sinergistas DEF, PBO y/o DM."
+codigo_unico,1. Información general,texto,generado,Código de crianza-Código de bioensayo final-Fecha de registro,"Identificador generado automáticamente. El código de bioensayo final agrega D para Diagnóstica; I y la dosis para Intensidad (Exploratorio incluye 1X-2X-5X-10X); o S y los sinergistas seleccionados DEF, PBO y/o DM."
+fecha_realizacion_bioensayo,2. Información del bioensayo,fecha,si,yyyy-mm-dd,Fecha de realización del bioensayo.
+codigo_insecticida,2. Información del bioensayo,texto,si,,Código asignado al insecticida evaluado.
+solvente_utilizado,2. Información del bioensayo,lista,si,Etanol|Otro,Solvente utilizado para preparar la solución insecticida.
+solvente_otro,2. Información del bioensayo,texto,no,,Nombre del solvente cuando solvente_utilizado sea Otro.
+dosis_ug_ml,2. Información del bioensayo,decimal,si,>=0,"Dosis del insecticida evaluado, expresada en microgramos por mililitro (µg/mL)."
+codigo_dosis,2. Información del bioensayo,texto,si,,"Código de trazabilidad de la dosis: preparación, responsable, expiración, dosis, insecticida, lote y marca."
+fecha_revestimiento_botellas,2. Información del bioensayo,fecha,si,yyyy-mm-dd,Fecha de revestimiento de las botellas.
+numero_usos_botella_e1,3. Información del bioensayo,entero,no,>=0,Número de usos previos de la botella E1. El formulario marca C2 como no aplicable.
+numero_usos_botella_e2,3. Información del bioensayo,entero,no,>=0,Número de usos previos de la botella E2. El formulario marca C2 como no aplicable.
+numero_usos_botella_e3,3. Información del bioensayo,entero,no,>=0,Número de usos previos de la botella E3. El formulario marca C2 como no aplicable.
+numero_usos_botella_e4,3. Información del bioensayo,entero,no,>=0,Número de usos previos de la botella E4. El formulario marca C2 como no aplicable.
+numero_usos_botella_c1,3. Información del bioensayo,entero,no,>=0,Número de usos previos de la botella C1. El formulario marca C2 como no aplicable.
+origen_material,4. Información del material biológico,lista,si,Silvestre|Laboratorio,Origen de los mosquitos evaluados.
+pais,1. Información general,lista,si,El Salvador|Guatemala,País donde se obtuvo o procesó el material del bioensayo.
+codigo_departamento,1. Información general,texto,si,,Código de departamento; se conserva como texto para mantener ceros iniciales.
+codigo_municipio,1. Información general,texto,si,,Código de municipio; se conserva como texto para mantener ceros iniciales.
+codigo_crianza,1. Información general,texto,si,,Código de crianza del material biológico utilizado en el bioensayo.
+edad_dias,4. Información del material biológico,entero,no,>=0,Edad de los mosquitos en días; dejar vacío cuando sea indefinida.
+edad_indefinida,4. Información del material biológico,booleano,si,true|false,Indica si la edad de los mosquitos es indefinida.
+codigo_especie_mosquito,4. Información del material biológico,texto,si,,Código de la especie de mosquito evaluada; puede corresponder a los géneros Anopheles o Aedes.
+poblacion_material,4. Información del material biológico,texto,si,,"Población específica utilizada en el bioensayo, por ejemplo una combinación de cuadrante y ubicación de colecta."
+hora_separacion,4. Información del material biológico,hora,si,hh:mm,Hora de separación de los mosquitos.
+generacion_filial,4. Información del material biológico,texto,no,,Generación filial del material biológico; dejar vacío cuando sea indefinida.
+generacion_filial_indefinida,4. Información del material biológico,booleano,si,true|false,Indica si la generación filial es indefinida.
+fecha_separacion,4. Información del material biológico,fecha,si,yyyy-mm-dd,Fecha de separación de los mosquitos.
+codigo_responsable_revestimiento,5. Responsables,texto,si,,Código de la persona que realizó el revestimiento de las botellas.
+codigo_responsable_bioensayo,5. Responsables,texto,si,,Código de la persona que realizó el bioensayo.
+codigo_control_calidad,5. Responsables,texto,si,,Código de la persona encargada del control de calidad del bioensayo.
+codigo_revision_24h,5. Responsables,texto,si,,Código de la persona que revisó los mosquitos recuperados a las 24 horas.
+temperatura_inicial_c,6. Condiciones ambientales,decimal,si,,Temperatura inicial del bioensayo en grados Celsius.
+temperatura_final_c,6. Condiciones ambientales,decimal,si,,Temperatura final del bioensayo en grados Celsius.
+humedad_relativa_inicial_pct,6. Condiciones ambientales,decimal,si,0-100,Humedad relativa inicial en porcentaje.
+humedad_relativa_final_pct,6. Condiciones ambientales,decimal,si,0-100,Humedad relativa final en porcentaje.
+hora_inicio_bioensayo,7. Horario del bioensayo,hora,si,hh:mm,Hora inicial del bioensayo.
+hora_final_bioensayo,7. Horario del bioensayo,hora,si,hh:mm,Hora final del bioensayo.
+resultado_hora_inicio_b1,7.1 Resultados del bioensayo,hora,no,hh:mm,Hora de inicio de Botella 1 en la tabla principal de resultados. Completar cuando la botella haya sido utilizada.
+resultado_0min_b1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 1 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_0min_b1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 1 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 1 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 1 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 1 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 1 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 1 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 1 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_hora_lectura_24h_b1,7.2 Resultados KDR fenotípico,hora,no,hh:mm,Hora de lectura de Botella 1 para los resultados KDR fenotípicos a las 24 horas.
+resultado_24h_b1_vivos,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos vivos (V) en Botella 1 durante la lectura KDR a las 24 horas.
+resultado_24h_b1_incapacitados,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 1 durante la lectura KDR a las 24 horas.
+resultado_hora_inicio_b2,7.1 Resultados del bioensayo,hora,no,hh:mm,Hora de inicio de Botella 2 en la tabla principal de resultados. Completar cuando la botella haya sido utilizada.
+resultado_0min_b2_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 2 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_0min_b2_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 2 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b2_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 2 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b2_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 2 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b2_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 2 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b2_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 2 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b2_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 2 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b2_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 2 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_hora_lectura_24h_b2,7.2 Resultados KDR fenotípico,hora,no,hh:mm,Hora de lectura de Botella 2 para los resultados KDR fenotípicos a las 24 horas.
+resultado_24h_b2_vivos,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos vivos (V) en Botella 2 durante la lectura KDR a las 24 horas.
+resultado_24h_b2_incapacitados,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 2 durante la lectura KDR a las 24 horas.
+resultado_hora_inicio_b3,7.1 Resultados del bioensayo,hora,no,hh:mm,Hora de inicio de Botella 3 en la tabla principal de resultados. Completar cuando la botella haya sido utilizada.
+resultado_0min_b3_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 3 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_0min_b3_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 3 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b3_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 3 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b3_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 3 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b3_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 3 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b3_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 3 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b3_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 3 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b3_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 3 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_hora_lectura_24h_b3,7.2 Resultados KDR fenotípico,hora,no,hh:mm,Hora de lectura de Botella 3 para los resultados KDR fenotípicos a las 24 horas.
+resultado_24h_b3_vivos,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos vivos (V) en Botella 3 durante la lectura KDR a las 24 horas.
+resultado_24h_b3_incapacitados,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 3 durante la lectura KDR a las 24 horas.
+resultado_hora_inicio_b4,7.1 Resultados del bioensayo,hora,no,hh:mm,Hora de inicio de Botella 4 en la tabla principal de resultados. Completar cuando la botella haya sido utilizada.
+resultado_0min_b4_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 4 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_0min_b4_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 4 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b4_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 4 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_b4_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 4 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b4_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 4 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_b4_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 4 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b4_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella 4 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_b4_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 4 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_hora_lectura_24h_b4,7.2 Resultados KDR fenotípico,hora,no,hh:mm,Hora de lectura de Botella 4 para los resultados KDR fenotípicos a las 24 horas.
+resultado_24h_b4_vivos,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos vivos (V) en Botella 4 durante la lectura KDR a las 24 horas.
+resultado_24h_b4_incapacitados,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella 4 durante la lectura KDR a las 24 horas.
+resultado_hora_inicio_c1,7.1 Resultados del bioensayo,hora,no,hh:mm,Hora de inicio de Botella C1 en la tabla principal de resultados. Completar cuando la botella haya sido utilizada.
+resultado_0min_c1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella C1 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_0min_c1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella C1 a los 0 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_c1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella C1 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_15min_c1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella C1 a los 15 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_c1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella C1 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_30min_c1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella C1 a los 30 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_c1_vivos,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos vivos (V) en Botella C1 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_45min_c1_incapacitados,7.1 Resultados del bioensayo,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella C1 a los 45 minutos. Completar cuando la botella haya sido utilizada.
+resultado_hora_lectura_24h_c1,7.2 Resultados KDR fenotípico,hora,no,hh:mm,Hora de lectura de Botella C1 para los resultados KDR fenotípicos a las 24 horas.
+resultado_24h_c1_vivos,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos vivos (V) en Botella C1 durante la lectura KDR a las 24 horas.
+resultado_24h_c1_incapacitados,7.2 Resultados KDR fenotípico,entero,no,>=0,Número de mosquitos incapacitados (I) en Botella C1 durante la lectura KDR a las 24 horas.
+comentario_1,Comentarios,texto,no,,Comentario 1 registrado al final del formulario.
+comentario_1_nombre,Comentarios,texto,no,,Nombre de la persona asociada con el comentario 1.
+comentario_2,Comentarios,texto,no,,Comentario 2 registrado al final del formulario.
+comentario_2_nombre,Comentarios,texto,no,,Nombre de la persona asociada con el comentario 2.
+comentario_3,Comentarios,texto,no,,Comentario 3 registrado al final del formulario.
+comentario_3_nombre,Comentarios,texto,no,,Nombre de la persona asociada con el comentario 3.
+comentario_4,Comentarios,texto,no,,Comentario 4 registrado al final del formulario.
+comentario_4_nombre,Comentarios,texto,no,,Nombre de la persona asociada con el comentario 4.
+fuente_formulario,Metadatos,texto,no,,"Archivo, imagen o referencia fuente utilizada para crear o auditar el registro."
+creado_por,Metadatos,texto,no,,Usuario o persona que creó el registro digital.
+creado_en,Metadatos,fecha_hora,no,yyyy-mm-dd hh:mm,Fecha y hora de creación del registro digital.
+actualizado_en,Metadatos,fecha_hora,no,yyyy-mm-dd hh:mm,Fecha y hora de la última actualización del registro digital.

@@ -20,6 +20,7 @@ Thumbs.db
 .idea/
 
 # Temporary exports
+output/
 tmp/
 temp/
 *.log

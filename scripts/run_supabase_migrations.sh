@@ -3,16 +3,18 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 env_file="${repo_dir}/.env.local"
+parent_env_file="${repo_dir}/../.env.local"
 psql_bin="${PSQL_BIN:-/opt/homebrew/opt/libpq/bin/psql}"
 
-if [[ ! -f "${env_file}" ]]; then
-  parent_env_file="${repo_dir}/../.env.local"
-  if [[ -f "${parent_env_file}" ]]; then
+if [[ ! -f "${env_file}" ]] || ! grep -q '^SUPABASE_DB_URL=' "${env_file}"; then
+  if [[ -f "${parent_env_file}" ]] && grep -q '^SUPABASE_DB_URL=' "${parent_env_file}"; then
     env_file="${parent_env_file}"
-  else
-    printf 'Missing %s. Copy .env.example to .env.local and add the Supabase Session pooler URL.\n' "${env_file}" >&2
-    exit 1
   fi
+fi
+
+if [[ ! -f "${env_file}" ]]; then
+  printf 'Missing %s. Copy .env.example to .env.local and add the Supabase Session pooler URL.\n' "${env_file}" >&2
+  exit 1
 fi
 
 if [[ ! -x "${psql_bin}" ]]; then

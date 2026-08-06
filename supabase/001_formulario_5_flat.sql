@@ -1,6 +1,7 @@
 create table if not exists public.formulario_5_alimentacion_conteo (
   id bigserial primary key,
   formulario_codigo text not null default 'F5',
+  id_institucion text not null default 'UVG',
   ciclo text not null default 'Ciclo 3',
   formulario_nombre text not null default 'Alimentacion sanguinea y conteo huevecillos Aedes spp.',
   fecha_registro date,

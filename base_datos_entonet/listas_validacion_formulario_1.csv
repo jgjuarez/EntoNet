@@ -1,0 +1,8 @@
+lista,codigo,valor,descripcion
+estado_retiro,buen_estado,Buen estado,Ovitrampa retirada en buen estado.
+estado_retiro,sin_agua,Sin agua,Ovitrampa retirada sin agua.
+estado_retiro,sin_sustrato,Sin sustrato,Ovitrampa retirada sin sustrato.
+estado_retiro,sin_ovitrampa,Sin ovitrampa,No se encontro la ovitrampa.
+estado_retiro,movida,Movida,Ovitrampa movida del sitio original.
+estado_retiro,volteada,Volteada,Ovitrampa volteada.
+estado_retiro,casa_cerrada,Casa cerrada,Casa cerrada durante el retiro.

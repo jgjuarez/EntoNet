@@ -1,0 +1,34 @@
+campo,seccion,tipo_dato,obligatorio,valores_permitidos,descripcion
+formulario_codigo,Metadatos,texto,si,REISV,Codigo base del formulario pre-poblado para ReiSV.
+formulario_nombre,Metadatos,texto,si,Colocacion y retiro de ovitrampa,Nombre oficial del formulario.
+fecha_registro,Metadatos,fecha,si,yyyy-mm-dd,Fecha de ingreso del formulario.
+pais,Metadatos,lista,si,El Salvador|Guatemala,Pais donde se genera el registro.
+departamento,Metadatos,texto,no,,Provincia o departamento.
+municipio,Metadatos,texto,no,,Distrito o municipio.
+ciclo,Metadatos,texto,si,,Ciclo de colecta indicado en el formulario.
+ronda,Metadatos,texto,no,,Ronda de trabajo o colecta.
+codigo_formulario,Metadatos,texto,no,,Codigo unico impreso o asignado al formulario fisico; el campo se pre-popula con el prefijo ReiSV y el digitador completa el resto.
+fecha_colocacion,1. Colocacion de ovitrampa,fecha,si,yyyy-mm-dd,Fecha de colocacion de la ovitrampa.
+grupo_responsable_colocacion,1. Colocacion de ovitrampa,texto,no,,Grupo responsable de la colocacion.
+cuadrante,1. Colocacion de ovitrampa,texto,si,,Codigo del cuadrante; aplica a todas las ovitrampas del mismo ingreso.
+codigo_casa,1. Colocacion de ovitrampa,texto,si,,Codigo de casa; aplica a todas las ovitrampas del mismo ingreso.
+Latitud,1. Colocacion de ovitrampa,decimal,no,-90 a 90,Latitud del punto GPS en grados decimales.
+Longitud,1. Colocacion de ovitrampa,decimal,no,-180 a 180,Longitud del punto GPS en grados decimales.
+codigo_gps,1. Colocacion de ovitrampa,texto,no,,Codigo o identificador GPS asociado a la vivienda o punto de colocacion.
+Ovitrampas_colocadas,1. Colocacion de ovitrampa,entero,si,>=1,Numero de ovitrampas colocadas; determina cuantas filas de detalle deben registrarse.
+codigo_sustrato,3. Informacion de ovitrampas,texto,si,,Codigo del sustrato.
+fecha_retiro,2. Retiro de ovitrampa/sustrato,fecha,no,yyyy-mm-dd,Fecha de retiro de la ovitrampa o sustrato.
+grupo_responsable_retiro,2. Retiro de ovitrampa/sustrato,texto,no,,Grupo responsable del retiro.
+Ovitrampas_retiradas,2. Retiro de ovitrampa/sustrato,entero,no,>=0,Numero de ovitrampas retiradas; no puede ser mayor que Ovitrampas_colocadas.
+retiro_buen_estado,2. Retiro de ovitrampa/sustrato,entero,si,>=0,Numero de ovitrampas retiradas en buen estado.
+retiro_sin_agua,2. Retiro de ovitrampa/sustrato,entero,si,>=0,Numero de ovitrampas retiradas sin agua.
+retiro_sin_sustrato,2. Retiro de ovitrampa/sustrato,entero,si,>=0,Numero de ovitrampas retiradas sin sustrato.
+retiro_sin_ovitrampa,2. Retiro de ovitrampa/sustrato,entero,si,>=0,Numero de registros sin ovitrampa al retiro.
+retiro_movida,2. Retiro de ovitrampa/sustrato,entero,si,>=0,Numero de ovitrampas movidas.
+retiro_volteada,2. Retiro de ovitrampa/sustrato,entero,si,>=0,Numero de ovitrampas volteadas.
+retiro_casa_cerrada,2. Retiro de ovitrampa/sustrato,entero,si,>=0,Numero de ovitrampas en casa cerrada.
+retiro_casa_cerrada_descripcion,2. Retiro de ovitrampa/sustrato,texto,no,,Campo heredado opcional.
+fuente_formulario,Metadatos,texto,no,,Archivo o documento de origen.
+creado_por,Auditoria,texto,no,,Usuario o responsable de la digitalizacion.
+creado_en,Auditoria,fecha_hora,generado,,Fecha y hora de creacion en base de datos.
+actualizado_en,Auditoria,fecha_hora,generado,,Fecha y hora de ultima actualizacion en base de datos.
