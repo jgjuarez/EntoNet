@@ -5510,9 +5510,9 @@ server <- function(input, output, session) {
       '</cols>',
       '<sheetData>', paste0(rows, collapse = ""), '</sheetData>',
       merge_xml,
-      if (include_watermark) '<picture r:id="rId1"/>' else '',
       '<pageMargins left="0.25" right="0.25" top="0.25" bottom="0.25" header="0.1" footer="0.1"/>',
       '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>',
+      if (include_watermark) '<picture r:id="rId1"/>' else '',
       '</worksheet>'
     )
   }
@@ -5819,9 +5819,9 @@ server <- function(input, output, session) {
       '</cols>',
       '<sheetData>', paste0(rows, collapse = ""), '</sheetData>',
       merge_xml,
-      if (include_watermark) '<picture r:id="rId1"/>' else '',
       '<pageMargins left="0.25" right="0.25" top="0.25" bottom="0.25" header="0.1" footer="0.1"/>',
       '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1"/>',
+      if (include_watermark) '<picture r:id="rId1"/>' else '',
       '</worksheet>'
     )
   }
