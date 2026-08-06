@@ -47,6 +47,10 @@ if (!nzchar(supabase_anon_key)) {
   supabase_anon_key <- read_local_env_value("SUPABASE_PUBLISHABLE_KEY")
 }
 supabase_service_role_key <- read_local_env_value("SUPABASE_SERVICE_ROLE_KEY")
+supabase_auth_api_key <- supabase_anon_key
+if (!nzchar(supabase_auth_api_key)) {
+  supabase_auth_api_key <- supabase_service_role_key
+}
 
 value_or_default <- function(value, default) {
   if (!is.null(value) && length(value) > 0 && !is.na(value[[1]]) && nzchar(as.character(value[[1]]))) {
@@ -758,13 +762,13 @@ supabase_auth_sign_in <- function(login_identifier, password) {
   if (!nzchar(project_url)) {
     stop("SUPABASE_URL is not configured and could not be derived from SUPABASE_DB_URL.")
   }
-  if (!nzchar(supabase_anon_key)) {
-    stop("SUPABASE_ANON_KEY or SUPABASE_PUBLISHABLE_KEY is not configured.")
+  if (!nzchar(supabase_auth_api_key)) {
+    stop("SUPABASE_ANON_KEY, SUPABASE_PUBLISHABLE_KEY, or SUPABASE_SERVICE_ROLE_KEY is not configured.")
   }
 
   response <- request(paste0(project_url, "/auth/v1/token?grant_type=password")) |>
     req_headers(
-      apikey = supabase_anon_key,
+      apikey = supabase_auth_api_key,
       `Content-Type` = "application/json"
     ) |>
     req_body_json(list(email = login_identifier, password = password), auto_unbox = TRUE) |>
@@ -786,14 +790,14 @@ supabase_auth_update_password <- function(access_token, password) {
   if (!nzchar(project_url)) {
     stop("SUPABASE_URL is not configured and could not be derived from SUPABASE_DB_URL.")
   }
-  if (!nzchar(supabase_anon_key)) {
-    stop("SUPABASE_ANON_KEY or SUPABASE_PUBLISHABLE_KEY is not configured.")
+  if (!nzchar(supabase_auth_api_key)) {
+    stop("SUPABASE_ANON_KEY, SUPABASE_PUBLISHABLE_KEY, or SUPABASE_SERVICE_ROLE_KEY is not configured.")
   }
 
   response <- request(paste0(project_url, "/auth/v1/user")) |>
     req_method("PUT") |>
     req_headers(
-      apikey = supabase_anon_key,
+      apikey = supabase_auth_api_key,
       Authorization = paste("Bearer", access_token),
       `Content-Type` = "application/json"
     ) |>
@@ -4029,10 +4033,10 @@ server <- function(input, output, session) {
       }
 
       message <- login_error()
-      if (is.null(message) && (!nzchar(supabase_anon_key) || !nzchar(storage_project_url()))) {
+      if (is.null(message) && (!nzchar(supabase_auth_api_key) || !nzchar(storage_project_url()))) {
         message <- div(
           class = "alert alert-warning",
-          "Supabase Auth no está configurado. Agregue SUPABASE_URL y SUPABASE_ANON_KEY al archivo .env.local o a las variables secretas del servidor."
+          "Supabase Auth no está configurado. Agregue SUPABASE_URL y SUPABASE_ANON_KEY o SUPABASE_SERVICE_ROLE_KEY a las variables secretas del servidor."
         )
       }
       return(landing_page(message, public_language()))
