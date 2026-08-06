@@ -2118,6 +2118,19 @@ ui <- fluidPage(
     tags$link(rel = "stylesheet", href = "leaflet/leaflet.css"),
     tags$script(src = "leaflet/leaflet.js"),
     tags$script(HTML("
+      (function storeInitialSupabaseAuthParams() {
+        var params = new URLSearchParams('');
+        if (window.location.hash && window.location.hash.length > 1) {
+          params = new URLSearchParams(window.location.hash.substring(1));
+        } else if (window.location.search && window.location.search.length > 1) {
+          params = new URLSearchParams(window.location.search.substring(1));
+        }
+        if (params.get('access_token') || params.get('error_description')) {
+          try {
+            window.sessionStorage.setItem('entonet_supabase_auth_params', params.toString());
+          } catch (error) {}
+        }
+      })();
       function sendSupabaseAuthHashToShiny() {
         if (typeof Shiny === 'undefined') {
           return;
@@ -2127,6 +2140,12 @@ ui <- fluidPage(
           params = new URLSearchParams(window.location.hash.substring(1));
         } else if (window.location.search && window.location.search.length > 1) {
           params = new URLSearchParams(window.location.search.substring(1));
+        } else {
+          try {
+            params = new URLSearchParams(window.sessionStorage.getItem('entonet_supabase_auth_params') || '');
+          } catch (error) {
+            params = new URLSearchParams('');
+          }
         }
         var accessToken = params.get('access_token');
         var refreshToken = params.get('refresh_token');
@@ -2142,6 +2161,9 @@ ui <- fluidPage(
             refresh_token: refreshToken || '',
             type: authType || 'recovery'
           }, {priority: 'event'});
+          try {
+            window.sessionStorage.removeItem('entonet_supabase_auth_params');
+          } catch (error) {}
           if (window.history && window.history.replaceState) {
             window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
           }
@@ -4058,6 +4080,29 @@ server <- function(input, output, session) {
     span(value_or_default(user_profile$name, value_or_default(user_profile$username, "Usuario")))
   })
 
+  show_password_setup_modal <- function() {
+    showModal(modalDialog(
+      title = "Crear o restablecer contraseña",
+      size = "m",
+      easyClose = FALSE,
+      div(
+        class = "alert alert-info",
+        "Enlace verificado. Ingrese una nueva contraseña para su cuenta EntoNet."
+      ),
+      passwordInput("setup_password", "Nueva contraseña"),
+      passwordInput("setup_password_confirm", "Confirmar nueva contraseña"),
+      uiOutput("password_setup_modal_status"),
+      footer = tagList(
+        actionButton("setup_return_to_login", "Cancelar", class = "btn-default"),
+        actionButton("setup_password_save", "Guardar contraseña", class = "btn-primary")
+      )
+    ))
+  }
+
+  output$password_setup_modal_status <- renderUI({
+    password_setup_status()
+  })
+
   observe({
     req(logged_in())
     active_area()
@@ -4279,6 +4324,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$setup_return_to_login, {
+    removeModal()
     password_setup_status(NULL)
     public_page("login")
   })
@@ -4348,9 +4394,10 @@ server <- function(input, output, session) {
 
     password_setup_token(token)
     password_setup_refresh_token(value_or_default(auth_hash$refresh_token, ""))
-    password_setup_status(div(class = "alert alert-info", "Invitación verificada. Defina su contraseña para activar la cuenta."))
+    password_setup_status(NULL)
     login_error(NULL)
-    public_page("password_setup")
+    public_page("login")
+    show_password_setup_modal()
   }, ignoreInit = TRUE)
 
   observeEvent(input$setup_password_save, {
@@ -4382,6 +4429,7 @@ server <- function(input, output, session) {
       password_setup_token("")
       password_setup_refresh_token("")
       password_setup_status(NULL)
+      removeModal()
       login_error(div(class = "alert alert-success", "Contraseña creada correctamente. Ingrese con su correo y nueva contraseña."))
       public_page("login")
     }
