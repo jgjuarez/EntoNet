@@ -591,7 +591,7 @@ formulario_1_template <- data.frame(
   codigo_formulario = "REISV",
   fecha_colocacion = "",
   grupo_responsable_colocacion = "",
-  cuadrante = "REISV001",
+  cuadrante = "REI25SV0201C001",
   codigo_casa = "OV001",
   Latitud = "",
   Longitud = "",
@@ -1671,8 +1671,10 @@ formulario_1_capture_form <- function() {
             dateInput("f1_fecha_colocacion", "Fecha de colocación *", value = NA),
             textInput("f1_grupo_responsable_colocacion", "Grupo responsable colocación"),
             numericInput("f1_num_quadrants", "Número de cuadrantes *", value = NA, min = 1, step = 1),
-            textInput("f1_codigo_cuadrante_base", "Código cuadrante *", placeholder = "REI25GT001"),
-            tags$small("Estructura recomendada para códigos nuevos: REI + año + país (GT/SV) + # cuadrante. Ejemplo: REI25GT001."),
+            numericInput("f1_codigo_cuadrante_numero", "# cuadrante inicial", value = 1, min = 1, step = 1),
+            textInput("f1_codigo_cuadrante_base", "Código cuadrante *", placeholder = "REI25GT0503C001"),
+            tags$small("Estructura nueva: REI + año + país + código municipio + C###. Ejemplo: REI25GT0503C001. Por ahora puede editarse para datos antiguos."),
+            uiOutput("f1_codigo_cuadrante_preview"),
             numericInput("f1_casas_por_cuadrante", "Casas por cuadrante *", value = NA, min = 1, step = 1)
           ),
           column(
@@ -2095,8 +2097,10 @@ formulario_1_print_form <- function() {
         column(
           6,
           numericInput("f1_print_num_quadrants", "Número de cuadrantes por formulario *", value = NA, min = 1, max = 50, step = 1),
-          textInput("f1_print_codigo_cuadrante_base", "Código de cuadrante inicial", placeholder = "REI25GT001"),
-          tags$small("Estructura recomendada para códigos nuevos: REI + año + país (GT/SV) + # cuadrante. Ejemplo: REI25GT001."),
+          numericInput("f1_print_codigo_cuadrante_numero", "# cuadrante inicial", value = 1, min = 1, step = 1),
+          textInput("f1_print_codigo_cuadrante_base", "Código de cuadrante inicial", placeholder = "REI25GT0503C001"),
+          tags$small("Para impresión nueva se usa: REI + año + país + código municipio + C###. Ejemplo: REI25GT0503C001."),
+          uiOutput("f1_print_codigo_cuadrante_preview"),
           numericInput("f1_print_casas_por_cuadrante", "Número de casas por cuadrante", value = NA, min = 1, max = 50, step = 1),
           textInput("f1_print_codigo_casa_base", "Código inicial de casa"),
           textInput("f1_print_codigo_sustrato_base", "Código inicial sustrato"),
@@ -5959,14 +5963,33 @@ server <- function(input, output, session) {
 
   f1_quadrant_code_parts <- function(code) {
     code <- toupper(trimws(value_or_default(code, "")))
+    match <- regexec("^(REI)([0-9]{2})([A-Z]{2})([0-9]{4})(C)([0-9]+)$", code)
+    parts <- regmatches(code, match)[[1]]
+    if (length(parts) == 7) {
+      return(list(
+        format = "rei_municipio_c",
+        prefix = parts[[2]],
+        year = parts[[3]],
+        country = parts[[4]],
+        municipio = parts[[5]],
+        c_prefix = parts[[6]],
+        counter = as.integer(parts[[7]]),
+        counter_width = nchar(parts[[7]])
+      ))
+    }
+
     match <- regexec("^(REI)([0-9]{2})([A-Z]{2})([0-9]{3})$", code)
     parts <- regmatches(code, match)[[1]]
     if (length(parts) != 5) return(NULL)
     list(
+      format = "legacy_rei_country",
       prefix = parts[[2]],
       year = parts[[3]],
       country = parts[[4]],
-      counter = as.integer(parts[[5]])
+      municipio = "",
+      c_prefix = "",
+      counter = as.integer(parts[[5]]),
+      counter_width = nchar(parts[[5]])
     )
   }
 
@@ -5984,8 +6007,23 @@ server <- function(input, output, session) {
       parts$prefix,
       parts$year,
       parts$country,
-      sprintf("%03d", parts$counter + offset)
+      parts$municipio,
+      parts$c_prefix,
+      sprintf(paste0("%0", parts$counter_width, "d"), parts$counter + offset)
     )
+  }
+
+  f1_new_quadrant_code <- function(country, municipality_code, year = Sys.Date(), quadrant_number = 1L) {
+    country_code <- f1_country_acronym(country)
+    municipality_code <- gsub("[^0-9]", "", value_or_default(municipality_code, ""))
+    quadrant_number <- f5_integer(quadrant_number)
+    if (is.na(quadrant_number) || quadrant_number < 1) quadrant_number <- 1L
+    if (is.na(country_code) || !nzchar(country_code) || !grepl("^[0-9]{4}$", municipality_code)) {
+      return(NA_character_)
+    }
+    year_number <- suppressWarnings(as.integer(format(as.Date(year), "%y")))
+    if (is.na(year_number)) year_number <- as.integer(format(Sys.Date(), "%y"))
+    paste0("REI", sprintf("%02d", year_number %% 100L), country_code, municipality_code, "C", sprintf("%03d", quadrant_number))
   }
 
   f1_quadrant_code <- function(quadrant_index) {
@@ -8411,6 +8449,35 @@ server <- function(input, output, session) {
     )
   })
 
+  f1_capture_recommended_quadrant_code <- reactive({
+    municipality_code <- ubicacion_codigo_manual_o_seleccion(input$f1_municipio, input$f1_municipio_manual)
+    f1_new_quadrant_code(
+      country = input$f1_pais,
+      municipality_code = municipality_code,
+      year = value_or_default(input$f1_fecha_colocacion, Sys.Date()),
+      quadrant_number = input$f1_codigo_cuadrante_numero
+    )
+  })
+
+  observeEvent(
+    list(input$f1_pais, input$f1_municipio, input$f1_municipio_manual, input$f1_fecha_colocacion, input$f1_codigo_cuadrante_numero),
+    {
+      code <- f1_capture_recommended_quadrant_code()
+      if (!is.na(code) && nzchar(code)) {
+        updateTextInput(session, "f1_codigo_cuadrante_base", value = code)
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  output$f1_codigo_cuadrante_preview <- renderUI({
+    code <- f1_capture_recommended_quadrant_code()
+    if (is.na(code) || !nzchar(code)) {
+      return(div(class = "alert alert-info", "Seleccione país, municipio y fecha de colocación para sugerir el código nuevo."))
+    }
+    div(class = "summary-box", strong("Código sugerido: "), tags$code(code))
+  })
+
   observeEvent(input$f1_print_pais, {
     updateSelectInput(session, "f1_print_departamento", choices = ubicacion_departamento_choices(input$f1_print_pais), selected = "")
   }, ignoreInit = FALSE)
@@ -8426,6 +8493,35 @@ server <- function(input, output, session) {
         textInput("f1_print_municipio_manual", "Código nacional de municipio", placeholder = "Ej. 0201")
       )
     )
+  })
+
+  f1_print_recommended_quadrant_code <- reactive({
+    municipality_code <- ubicacion_codigo_manual_o_seleccion(input$f1_print_municipio, input$f1_print_municipio_manual)
+    f1_new_quadrant_code(
+      country = input$f1_print_pais,
+      municipality_code = municipality_code,
+      year = Sys.Date(),
+      quadrant_number = input$f1_print_codigo_cuadrante_numero
+    )
+  })
+
+  observeEvent(
+    list(input$f1_print_pais, input$f1_print_municipio, input$f1_print_municipio_manual, input$f1_print_codigo_cuadrante_numero),
+    {
+      code <- f1_print_recommended_quadrant_code()
+      if (!is.na(code) && nzchar(code)) {
+        updateTextInput(session, "f1_print_codigo_cuadrante_base", value = code)
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  output$f1_print_codigo_cuadrante_preview <- renderUI({
+    code <- f1_print_recommended_quadrant_code()
+    if (is.na(code) || !nzchar(code)) {
+      return(div(class = "alert alert-info", "Seleccione país y municipio para generar el código de cuadrante de impresión."))
+    }
+    div(class = "summary-box", strong("Código de cuadrante generado: "), tags$code(code))
   })
 
   output$f1_placement_status <- renderUI({
@@ -8488,7 +8584,7 @@ server <- function(input, output, session) {
     }
     if (!f1_quadrant_code_has_structure(input$f1_codigo_cuadrante_base, input$f1_pais) &&
         !f1_code_has_counter(input$f1_codigo_cuadrante_base)) {
-      details <- c(details, "Código cuadrante debe tener un correlativo para incrementar. Puede usar el formato nuevo REI25GT001 o el formato anterior con letras seguidas de dígitos.")
+      details <- c(details, "Código cuadrante debe tener un correlativo para incrementar. Puede usar el formato nuevo REI25GT0503C001 o un formato anterior con letras seguidas de dígitos.")
     }
     if (!f1_code_has_counter(input$f1_codigo_casa_base)) {
       details <- c(details, "Código casa debe tener letras seguidas de dígitos, por ejemplo HS010.")
@@ -10852,9 +10948,8 @@ server <- function(input, output, session) {
     if (!nzchar(ubicacion_codigo_manual_o_seleccion(input$f1_print_municipio, input$f1_print_municipio_manual))) details <- c(details, "Seleccione el municipio.")
     if (is.na(f5_integer(input$f1_print_num_quadrants)) || f5_integer(input$f1_print_num_quadrants) < 1) details <- c(details, "Ingrese un número de cuadrantes mayor que cero.")
     if (!nzchar(trimws(value_or_default(input$f1_print_version_formulario, "")))) details <- c(details, "Ingrese la versión del formulario.")
-    if (!f1_quadrant_code_has_structure(input$f1_print_codigo_cuadrante_base, input$f1_print_pais) &&
-        !f1_code_has_counter(input$f1_print_codigo_cuadrante_base)) {
-      details <- c(details, "Código de cuadrante inicial debe tener un correlativo para incrementar. Puede usar el formato nuevo REI25GT001 o el formato anterior con letras seguidas de dígitos.")
+    if (!f1_quadrant_code_has_structure(input$f1_print_codigo_cuadrante_base, input$f1_print_pais)) {
+      details <- c(details, "Para impresión nueva use el formato REI + año + país + código municipio + C###. Ejemplo: REI25GT0503C001.")
     }
     if (is.na(f5_integer(input$f1_print_casas_por_cuadrante)) || f5_integer(input$f1_print_casas_por_cuadrante) < 1) details <- c(details, "Ingrese un número de casas por cuadrante mayor que cero.")
     if (!f1_code_has_counter(input$f1_print_codigo_casa_base)) details <- c(details, "Código inicial de casa debe tener letras seguidas de dígitos, por ejemplo HS001.")
@@ -10877,9 +10972,8 @@ server <- function(input, output, session) {
       if (is.na(quadrants) || quadrants < 1) stop("Ingrese un número de cuadrantes mayor que cero.")
       houses <- f5_integer(input$f1_print_casas_por_cuadrante)
       if (is.na(houses) || houses < 1) stop("Ingrese un número de casas por cuadrante mayor que cero.")
-      if (!f1_quadrant_code_has_structure(input$f1_print_codigo_cuadrante_base, input$f1_print_pais) &&
-          !f1_code_has_counter(input$f1_print_codigo_cuadrante_base)) {
-        stop("Código de cuadrante inicial debe tener un correlativo para incrementar.")
+      if (!f1_quadrant_code_has_structure(input$f1_print_codigo_cuadrante_base, input$f1_print_pais)) {
+        stop("Código de cuadrante inicial debe usar el formato nuevo REI25GT0503C001.")
       }
       if (!f1_code_has_counter(input$f1_print_codigo_casa_base)) stop("Código inicial de casa debe tener letras seguidas de dígitos.")
       if (!f1_code_has_counter(input$f1_print_codigo_sustrato_base)) stop("Código inicial sustrato debe tener letras seguidas de dígitos.")

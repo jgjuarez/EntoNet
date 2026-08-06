@@ -10,7 +10,7 @@ ronda,Metadatos,texto,no,,Ronda de trabajo o colecta.
 codigo_formulario,Metadatos,texto,no,,Codigo unico impreso o asignado al formulario fisico; el campo se pre-popula con el prefijo ReiSV y el digitador completa el resto.
 fecha_colocacion,1. Colocacion de ovitrampa,fecha,si,yyyy-mm-dd,Fecha de colocacion de la ovitrampa.
 grupo_responsable_colocacion,1. Colocacion de ovitrampa,texto,no,,Grupo responsable de la colocacion.
-cuadrante,1. Colocacion de ovitrampa,texto,si,,Codigo del cuadrante; aplica a todas las ovitrampas del mismo ingreso.
+cuadrante,1. Colocacion de ovitrampa,texto,si,,Codigo del cuadrante; aplica a todas las ovitrampas del mismo ingreso. Para registros nuevos usar REI + año + pais + codigo municipio + C###, por ejemplo REI25GT0503C001. No es obligatorio para datos historicos.
 codigo_casa,1. Colocacion de ovitrampa,texto,si,,Codigo de casa; aplica a todas las ovitrampas del mismo ingreso.
 Latitud,1. Colocacion de ovitrampa,decimal,no,-90 a 90,Latitud del punto GPS en grados decimales.
 Longitud,1. Colocacion de ovitrampa,decimal,no,-180 a 180,Longitud del punto GPS en grados decimales.
