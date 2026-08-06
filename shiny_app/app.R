@@ -42,6 +42,7 @@ profile_position <- read_local_env_value("PROJECT_REI_PROFILE_POSITION")
 profile_country <- read_local_env_value("PROJECT_REI_PROFILE_COUNTRY")
 support_email <- read_local_env_value("PROJECT_REI_SUPPORT_EMAIL")
 supabase_url <- read_local_env_value("SUPABASE_URL")
+auth_redirect_url <- read_local_env_value("ENTONET_AUTH_REDIRECT_URL")
 supabase_anon_key <- read_local_env_value("SUPABASE_ANON_KEY")
 if (!nzchar(supabase_anon_key)) {
   supabase_anon_key <- read_local_env_value("SUPABASE_PUBLISHABLE_KEY")
@@ -814,6 +815,38 @@ supabase_auth_update_password <- function(access_token, password) {
   body
 }
 
+supabase_auth_send_password_recovery <- function(email) {
+  project_url <- storage_project_url()
+  redirect_url <- value_or_default(auth_redirect_url, "")
+
+  if (!nzchar(project_url)) {
+    stop("SUPABASE_URL is not configured and could not be derived from SUPABASE_DB_URL.")
+  }
+  if (!nzchar(supabase_auth_api_key)) {
+    stop("SUPABASE_ANON_KEY, SUPABASE_PUBLISHABLE_KEY, or SUPABASE_SERVICE_ROLE_KEY is not configured.")
+  }
+  if (!nzchar(redirect_url)) {
+    stop("ENTONET_AUTH_REDIRECT_URL is not configured.")
+  }
+
+  response <- request(paste0(project_url, "/auth/v1/recover")) |>
+    req_headers(
+      apikey = supabase_auth_api_key,
+      `Content-Type` = "application/json"
+    ) |>
+    req_body_json(list(email = email, redirect_to = redirect_url), auto_unbox = TRUE) |>
+    req_error(is_error = function(response) FALSE) |>
+    req_perform()
+
+  body <- resp_body_json(response, check_type = FALSE)
+  if (resp_status(response) >= 300) {
+    message <- body$error_description %||% body$msg %||% body$message %||% "No se pudo enviar el correo de recuperación."
+    stop(message)
+  }
+
+  body
+}
+
 fetch_usuario_perfil <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
   connection <- connect_to_supabase()
   on.exit(dbDisconnect(connection), add = TRUE)
@@ -966,6 +999,7 @@ landing_page <- function(login_message = NULL, language = "es") {
             textInput("login_user", tr(language, "Usuario o correo", "Username or email")),
             passwordInput("login_password", tr(language, "Contraseña", "Password")),
             actionButton("login", tr(language, "Ingresar", "Log in"), class = "btn-primary login-button"),
+            actionButton("show_password_reset", tr(language, "Restablecer contraseña", "Reset password"), class = "btn-link password-reset-link"),
             div(class = "login-help", tr(language, "Si necesita acceso, contacte al administrador del proyecto.", "If you need access, contact the project administrator."))
           )
         )
@@ -2085,10 +2119,15 @@ ui <- fluidPage(
     tags$script(src = "leaflet/leaflet.js"),
     tags$script(HTML("
       function sendSupabaseAuthHashToShiny() {
-        if (!window.location.hash || typeof Shiny === 'undefined') {
+        if (typeof Shiny === 'undefined') {
           return;
         }
-        var params = new URLSearchParams(window.location.hash.substring(1));
+        var params = new URLSearchParams('');
+        if (window.location.hash && window.location.hash.length > 1) {
+          params = new URLSearchParams(window.location.hash.substring(1));
+        } else if (window.location.search && window.location.search.length > 1) {
+          params = new URLSearchParams(window.location.search.substring(1));
+        }
         var accessToken = params.get('access_token');
         var refreshToken = params.get('refresh_token');
         var authType = params.get('type');
@@ -2097,11 +2136,11 @@ ui <- fluidPage(
           Shiny.setInputValue('supabase_auth_error', errorDescription, {priority: 'event'});
           return;
         }
-        if (accessToken && (authType === 'invite' || authType === 'recovery' || authType === 'signup')) {
+        if (accessToken && (!authType || authType === 'invite' || authType === 'recovery' || authType === 'signup')) {
           Shiny.setInputValue('supabase_auth_hash', {
             access_token: accessToken,
             refresh_token: refreshToken || '',
-            type: authType || ''
+            type: authType || 'recovery'
           }, {priority: 'event'});
           if (window.history && window.history.replaceState) {
             window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
@@ -3108,6 +3147,22 @@ ui <- fluidPage(
       .login-button:focus {
         background-color: #3d1f3a;
         border-color: #3d1f3a;
+      }
+      .password-reset-link {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        color: #4d284a;
+        font-weight: 700;
+        margin-top: 12px;
+        padding: 0;
+        text-decoration: underline;
+      }
+      .password-reset-link:hover,
+      .password-reset-link:focus {
+        background: transparent;
+        color: #2f1730;
+        text-decoration: underline;
       }
       .login-help {
         color: #5b6778;
@@ -4226,6 +4281,55 @@ server <- function(input, output, session) {
   observeEvent(input$setup_return_to_login, {
     password_setup_status(NULL)
     public_page("login")
+  })
+
+  observeEvent(input$show_password_reset, {
+    showModal(modalDialog(
+      title = "Restablecer contraseña",
+      size = "m",
+      easyClose = TRUE,
+      textInput(
+        "password_reset_email",
+        "Correo registrado",
+        value = value_or_default(input$login_user, "")
+      ),
+      div(
+        class = "alert alert-info",
+        "Recibirá un enlace para definir una nueva contraseña. El enlace regresará a EntoNet en Connect Cloud."
+      ),
+      uiOutput("password_reset_status"),
+      footer = tagList(
+        modalButton("Cancelar"),
+        actionButton("send_password_reset", "Enviar enlace", class = "btn-primary")
+      )
+    ))
+  })
+
+  password_reset_status <- reactiveVal(NULL)
+
+  output$password_reset_status <- renderUI({
+    password_reset_status()
+  })
+
+  observeEvent(input$send_password_reset, {
+    email <- trimws(value_or_default(input$password_reset_email, ""))
+    password_reset_status(NULL)
+
+    if (!nzchar(email) || !grepl("@", email, fixed = TRUE)) {
+      password_reset_status(div(class = "alert alert-warning", "Ingrese un correo válido."))
+      return()
+    }
+
+    result <- tryCatch({
+      supabase_auth_send_password_recovery(email)
+    }, error = function(error) {
+      password_reset_status(div(class = "alert alert-danger", paste("No se pudo enviar el enlace:", conditionMessage(error))))
+      NULL
+    })
+
+    if (!is.null(result)) {
+      password_reset_status(div(class = "alert alert-success", "Enlace enviado. Revise su correo y abra el enlace para definir una nueva contraseña."))
+    }
   })
 
   observeEvent(input$supabase_auth_error, {
