@@ -1407,7 +1407,11 @@ authenticated_page <- function() {
     div(
       class = "portal-shell",
       tags$aside(class = "portal-sidebar", uiOutput("portal_sidebar")),
-      tags$main(class = "portal-workspace", uiOutput("module_area"))
+      tags$main(
+        class = "portal-workspace",
+        uiOutput("connect_user_greeting"),
+        uiOutput("module_area")
+      )
     ),
     div(
       class = "institutional-footer",
@@ -4083,6 +4087,28 @@ server <- function(input, output, session) {
 
   output$header_user_label <- renderUI({
     span(value_or_default(user_profile$name, value_or_default(user_profile$username, "Usuario")))
+  })
+
+  output$connect_user_greeting <- renderUI({
+    req(logged_in())
+    identifiers <- unique(tolower(trimws(c(
+      value_or_default(session$user, ""),
+      value_or_default(user_profile$username, ""),
+      value_or_default(user_profile$email, ""),
+      value_or_default(user_profile$name, "")
+    ))))
+    identifiers <- identifiers[nzchar(identifiers)]
+    is_billy <- any(identifiers %in% c(
+      "billy",
+      "bhernandez",
+      "bahernandez",
+      "bahernandez@uvg.edu.gt"
+    ))
+    if (!is_billy) return(NULL)
+    div(
+      class = "alert alert-info",
+      "Hola Billy espero que estes teniendo un lindo día."
+    )
   })
 
   show_password_setup_modal <- function() {
