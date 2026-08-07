@@ -1940,16 +1940,16 @@ formulario_7_print_form <- function() {
           6,
           selectInput("f7_print_pais", "País", choices = c("El Salvador", "Guatemala"), selected = "El Salvador"),
           selectInput("f7_print_codigo_bioensayo_departamento", "Departamento", choices = c("Seleccione" = "")),
-          uiOutput("f7_print_codigo_bioensayo_municipio_ui")
-        ),
-        column(
-          6,
-          textInput("f7_print_codigo_bioensayo_poblacion_numero", "# Población", placeholder = "Ej. 2 o 2.1"),
+          uiOutput("f7_print_codigo_bioensayo_municipio_ui"),
           selectInput(
             "f7_print_codigo_insecticida",
             "Insecticida",
             choices = c("Seleccione" = "", "Deltametrina" = "Deltametrina", "Permetrina" = "Permetrina", "Malation" = "Malation", "DDT" = "DDT")
-          ),
+          )
+        ),
+        column(
+          6,
+          textInput("f7_print_codigo_bioensayo_poblacion_numero", "# Población", placeholder = "Ej. 2 o 2.1"),
           numericInput("f7_print_codigo_bioensayo_anio", "Año", value = as.integer(format(Sys.Date(), "%y")), min = 0, max = 99, step = 1),
           textInput("f7_print_version_formulario", "Versión del formulario"),
           textInput("f7_print_nombre_poblacion", "Nombre de población"),
