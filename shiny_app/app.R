@@ -4100,6 +4100,7 @@ server <- function(input, output, session) {
   active_area <- reactiveVal(NULL)
   active_module <- reactiveVal(NULL)
   active_capture_subdivision <- reactiveVal(NULL)
+  active_request_subdivision <- reactiveVal(NULL)
   active_dataset <- reactiveVal(NULL)
   f5_capture_steps <- c("metadatos", "datos_generales", "alimentacion", "conteo_huevecillos", "observaciones")
   f5_capture_step_labels <- c(
@@ -9571,6 +9572,7 @@ server <- function(input, output, session) {
     active_area(if (identical(active_area(), "data")) NULL else "data")
     active_module(NULL)
     active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9578,6 +9580,7 @@ server <- function(input, output, session) {
     active_area(if (identical(active_area(), "protocols")) NULL else "protocols")
     active_module(NULL)
     active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9585,6 +9588,7 @@ server <- function(input, output, session) {
     active_area(if (identical(active_area(), "training")) NULL else "training")
     active_module(NULL)
     active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9592,6 +9596,7 @@ server <- function(input, output, session) {
     active_area("data")
     active_module("capture")
     active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9644,6 +9649,7 @@ server <- function(input, output, session) {
     active_area("data")
     active_module("visualization")
     active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9651,7 +9657,36 @@ server <- function(input, output, session) {
     active_area("data")
     active_module("request")
     active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
     active_dataset(NULL)
+  })
+
+  select_request_subdivision <- function(subdivision) {
+    active_area("data")
+    active_module("request")
+    active_capture_subdivision(NULL)
+    active_request_subdivision(if (identical(active_request_subdivision(), subdivision)) NULL else subdivision)
+    active_dataset(NULL)
+  }
+
+  observeEvent(input$show_request_solicitudes, {
+    select_request_subdivision("solicitudes")
+  })
+
+  observeEvent(input$show_request_datos, {
+    select_request_subdivision("datos")
+  })
+
+  observeEvent(input$show_request_reactivos, {
+    select_request_subdivision("reactivos")
+  })
+
+  observeEvent(input$show_request_equipo, {
+    select_request_subdivision("equipo")
+  })
+
+  observeEvent(input$show_request_apoyo_tecnico, {
+    select_request_subdivision("apoyo_tecnico")
   })
 
   observeEvent(input$show_field_protocols, {
@@ -10255,6 +10290,7 @@ server <- function(input, output, session) {
     area <- active_area()
     module <- active_module()
     capture_subdivision <- active_capture_subdivision()
+    request_subdivision <- active_request_subdivision()
     category_class <- function(value) paste(
       "sidebar-category",
       if (identical(area, value)) "sidebar-category-active" else ""
@@ -10270,6 +10306,10 @@ server <- function(input, output, session) {
     subdivision_class <- function(value) paste(
       "sidebar-form-group-title",
       if (identical(capture_subdivision, value)) "sidebar-form-group-title-active" else ""
+    )
+    request_subdivision_class <- function(value) paste(
+      "sidebar-form-group-title",
+      if (identical(request_subdivision, value)) "sidebar-form-group-title-active" else ""
     )
     category_button <- function(id, label, value) {
       actionButton(
@@ -10300,7 +10340,15 @@ server <- function(input, output, session) {
           if (identical(capture_subdivision, "laboratorio")) div(class = "sidebar-form-item", "Sin formularios activos")
         ),
         actionButton("show_visualization", "Visualización de Datos", class = subitem_class("visualization")),
-        actionButton("show_request", "Solicitud de Datos", class = subitem_class("request"))
+        actionButton("show_request", "Solicitud de Datos", class = subitem_class("request")),
+        if (identical(module, "request")) div(
+          class = "sidebar-form-list",
+          actionButton("show_request_solicitudes", "Solicitudes", class = request_subdivision_class("solicitudes")),
+          actionButton("show_request_datos", "Datos", class = request_subdivision_class("datos")),
+          actionButton("show_request_reactivos", "Reactivos", class = request_subdivision_class("reactivos")),
+          actionButton("show_request_equipo", "Equipo", class = request_subdivision_class("equipo")),
+          actionButton("show_request_apoyo_tecnico", "Apoyo Técnico", class = request_subdivision_class("apoyo_tecnico"))
+        )
       ),
       category_button("show_protocols_area", "Protocolos", "protocols"),
       if (identical(area, "protocols")) div(
@@ -10420,6 +10468,39 @@ server <- function(input, output, session) {
           )
         ),
         uiOutput("visualization_results_area")
+      ))
+    }
+
+    if (identical(module, "request")) {
+      subdivision <- active_request_subdivision()
+      request_labels <- c(
+        solicitudes = "Solicitudes",
+        datos = "Datos",
+        reactivos = "Reactivos",
+        equipo = "Equipo",
+        apoyo_tecnico = "Apoyo Técnico"
+      )
+      if (is.null(subdivision)) {
+        return(div(
+          class = "module-panel",
+          h3("Solicitud de Datos"),
+          div(
+            class = "capture-subdivision-list",
+            div(class = "capture-subdivision-panel", h4("Solicitudes"), p("Gestión general de solicitudes enviadas a EntoNet.")),
+            div(class = "capture-subdivision-panel", h4("Datos"), p("Solicitudes de acceso, descarga o consulta de datos.")),
+            div(class = "capture-subdivision-panel", h4("Reactivos"), p("Solicitudes relacionadas con reactivos e insumos.")),
+            div(class = "capture-subdivision-panel", h4("Equipo"), p("Solicitudes relacionadas con equipo de campo, insectario o laboratorio.")),
+            div(class = "capture-subdivision-panel", h4("Apoyo Técnico"), p("Solicitudes de acompañamiento, soporte o asistencia técnica."))
+          )
+        ))
+      }
+      return(div(
+        class = "module-panel",
+        h3(request_labels[[subdivision]]),
+        div(
+          class = "alert alert-info",
+          "Esta subdivisión de Solicitud de Datos queda preparada para formularios o flujos futuros."
+        )
       ))
     }
 
