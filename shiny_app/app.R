@@ -5883,7 +5883,10 @@ server <- function(input, output, session) {
       "A22:G22", "H22:N22", "B23:C23", "E23:F23", "I23:J23", "L23:N23",
       "A25:N25", "A32:N32"
     )
-    if (is_synergist_print) merges <- c(merges, "A39:N39")
+    if (is_synergist_print) {
+      merges <- setdiff(merges, c("C13:G13", "C14:G14"))
+      merges <- c(merges, "C13:D13", "F13:G13", "C14:D14", "F14:G14", "A39:N39")
+    }
 
     add_row <- function(row, values, styles = rep(0L, length(values)), height = NULL) {
       cells <- lapply(seq_along(values), function(col) f1_excel_cell(row, col, values[[col]], styles[[col]]))
@@ -5903,8 +5906,8 @@ server <- function(input, output, session) {
     add_row(10, c("Fecha realización (dd/mm/aa)", "", "", "", "", "", "", "Origen", "", "Silvestre__", "", "Laboratorio__", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(11, c(if (is_synergist_print) "Sinergista" else "Insecticida", "", "", "", "", "", "", "Edad", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(12, c(if (is_synergist_print) "Dosis sinergista" else "Solvente utilizado", "", if (is_synergist_print) "" else "Etanol", "", if (is_synergist_print) "ug/mL" else "Otro:", "", "", "Código especie mosquito", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(13, c(if (is_synergist_print) "Insecticida" else "Concentración", "", "", "", "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(14, c(if (is_synergist_print) "Concentración" else "# lote insecticida", "", "", "", "", if (is_synergist_print) "ug/mL" else "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(13, c(if (is_synergist_print) "Insecticida" else "Concentración", "", "", "", if (is_synergist_print) "Solvente" else "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(14, c(if (is_synergist_print) "Concentración ug/mL" else "# lote insecticida", "", "", "", if (is_synergist_print) "# lote" else "", if (is_synergist_print) "" else "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "Generación filial", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(16, c("# Veces se han utilizado las botellas", "", "E1__", "", "E2__", "", "E3__", "", "E4__", "", "C1__", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
 
