@@ -3322,11 +3322,24 @@ ui <- fluidPage(
         padding-left: 10px;
       }
       .sidebar-form-group-title {
+        background: transparent;
+        border: 0;
+        border-radius: 5px;
         color: #293241;
+        display: block;
         font-size: 14px;
         font-weight: 800;
-        margin: 10px 0 4px;
+        margin: 6px 0 4px;
+        padding: 9px 10px;
+        text-align: left;
         text-transform: uppercase;
+        width: 100%;
+      }
+      .sidebar-form-group-title:hover,
+      .sidebar-form-group-title:focus,
+      .sidebar-form-group-title-active {
+        background: #ffffff;
+        color: #006f72;
       }
       .sidebar-form-item {
         background: transparent;
@@ -4086,6 +4099,7 @@ server <- function(input, output, session) {
   submission_status <- reactiveVal("No se ha enviado ningún registro en esta sesión.")
   active_area <- reactiveVal(NULL)
   active_module <- reactiveVal(NULL)
+  active_capture_subdivision <- reactiveVal(NULL)
   active_dataset <- reactiveVal(NULL)
   f5_capture_steps <- c("metadatos", "datos_generales", "alimentacion", "conteo_huevecillos", "observaciones")
   f5_capture_step_labels <- c(
@@ -9556,32 +9570,63 @@ server <- function(input, output, session) {
   observeEvent(input$show_data_area, {
     active_area(if (identical(active_area(), "data")) NULL else "data")
     active_module(NULL)
+    active_capture_subdivision(NULL)
     active_dataset(NULL)
   })
 
   observeEvent(input$show_protocols_area, {
     active_area(if (identical(active_area(), "protocols")) NULL else "protocols")
     active_module(NULL)
+    active_capture_subdivision(NULL)
     active_dataset(NULL)
   })
 
   observeEvent(input$show_training_area, {
     active_area(if (identical(active_area(), "training")) NULL else "training")
     active_module(NULL)
+    active_capture_subdivision(NULL)
     active_dataset(NULL)
   })
 
   observeEvent(input$show_capture, {
     active_area("data")
     active_module("capture")
+    active_capture_subdivision(NULL)
+    active_dataset(NULL)
   })
+
+  select_capture_subdivision <- function(subdivision) {
+    active_area("data")
+    active_module("capture")
+    active_capture_subdivision(if (identical(active_capture_subdivision(), subdivision)) NULL else subdivision)
+    active_dataset(NULL)
+  }
 
   select_capture_dataset <- function(dataset) {
     active_area("data")
     active_module("capture")
+    active_capture_subdivision(switch(
+      dataset,
+      formulario_1_colocacion_retiro_ovitrampa = "campo",
+      formulario_5_alimentacion_conteo = "insectario",
+      formulario_7_bioensayo_botella_cdc = "insectario",
+      NULL
+    ))
     active_dataset(dataset)
     submission_status("No se ha enviado ningún registro en esta sesión.")
   }
+
+  observeEvent(input$show_capture_campo, {
+    select_capture_subdivision("campo")
+  })
+
+  observeEvent(input$show_capture_insectario, {
+    select_capture_subdivision("insectario")
+  })
+
+  observeEvent(input$show_capture_laboratorio, {
+    select_capture_subdivision("laboratorio")
+  })
 
   observeEvent(input$select_formulario_1_capture, {
     select_capture_dataset("formulario_1_colocacion_retiro_ovitrampa")
@@ -9598,12 +9643,14 @@ server <- function(input, output, session) {
   observeEvent(input$show_visualization, {
     active_area("data")
     active_module("visualization")
+    active_capture_subdivision(NULL)
     active_dataset(NULL)
   })
 
   observeEvent(input$show_request, {
     active_area("data")
     active_module("request")
+    active_capture_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -10207,6 +10254,7 @@ server <- function(input, output, session) {
   output$portal_sidebar <- renderUI({
     area <- active_area()
     module <- active_module()
+    capture_subdivision <- active_capture_subdivision()
     category_class <- function(value) paste(
       "sidebar-category",
       if (identical(area, value)) "sidebar-category-active" else ""
@@ -10218,6 +10266,10 @@ server <- function(input, output, session) {
     form_item_class <- function(value) paste(
       "sidebar-form-item",
       if (identical(active_dataset(), value)) "sidebar-form-item-active" else ""
+    )
+    subdivision_class <- function(value) paste(
+      "sidebar-form-group-title",
+      if (identical(capture_subdivision, value)) "sidebar-form-group-title-active" else ""
     )
     category_button <- function(id, label, value) {
       actionButton(
@@ -10235,13 +10287,17 @@ server <- function(input, output, session) {
         actionButton("show_capture", "Captura de Datos", class = subitem_class("capture")),
         if (identical(module, "capture")) div(
           class = "sidebar-form-list",
-          div(class = "sidebar-form-group-title", "Campo"),
-          actionButton("select_formulario_1_capture", "Formulario 1: Colocación y retiro", class = form_item_class("formulario_1_colocacion_retiro_ovitrampa")),
-          div(class = "sidebar-form-group-title", "Insectario"),
-          actionButton("select_formulario_5_capture", "Formulario 5: Alimentación conteo", class = form_item_class("formulario_5_alimentacion_conteo")),
-          actionButton("select_formulario_7_capture", "Formulario 7: Bioensayo CDC", class = form_item_class("formulario_7_bioensayo_botella_cdc")),
-          div(class = "sidebar-form-group-title", "Laboratorio"),
-          div(class = "sidebar-form-item", "Sin formularios activos")
+          actionButton("show_capture_campo", "Campo", class = subdivision_class("campo")),
+          if (identical(capture_subdivision, "campo")) tagList(
+            actionButton("select_formulario_1_capture", "Formulario 1: Colocación y retiro", class = form_item_class("formulario_1_colocacion_retiro_ovitrampa"))
+          ),
+          actionButton("show_capture_insectario", "Insectario", class = subdivision_class("insectario")),
+          if (identical(capture_subdivision, "insectario")) tagList(
+            actionButton("select_formulario_5_capture", "Formulario 5: Alimentación conteo", class = form_item_class("formulario_5_alimentacion_conteo")),
+            actionButton("select_formulario_7_capture", "Formulario 7: Bioensayo CDC", class = form_item_class("formulario_7_bioensayo_botella_cdc"))
+          ),
+          actionButton("show_capture_laboratorio", "Laboratorio", class = subdivision_class("laboratorio")),
+          if (identical(capture_subdivision, "laboratorio")) div(class = "sidebar-form-item", "Sin formularios activos")
         ),
         actionButton("show_visualization", "Visualización de Datos", class = subitem_class("visualization")),
         actionButton("show_request", "Solicitud de Datos", class = subitem_class("request"))
@@ -10379,8 +10435,18 @@ server <- function(input, output, session) {
 
   output$active_dataset_header <- renderUI({
     dataset <- active_dataset()
+    subdivision <- active_capture_subdivision()
 
     if (is.null(dataset)) {
+      if (identical(subdivision, "campo")) {
+        return(h3(class = "capture-dataset-title", "Campo"))
+      }
+      if (identical(subdivision, "insectario")) {
+        return(h3(class = "capture-dataset-title", "Insectario"))
+      }
+      if (identical(subdivision, "laboratorio")) {
+        return(h3(class = "capture-dataset-title", "Laboratorio"))
+      }
       return(div(
         class = "capture-subdivision-list",
         div(
@@ -10429,8 +10495,18 @@ server <- function(input, output, session) {
 
   output$data_entry_area <- renderUI({
     dataset <- active_dataset()
+    subdivision <- active_capture_subdivision()
 
     if (is.null(dataset)) {
+      if (identical(subdivision, "campo")) {
+        return(div(class = "alert alert-info", "Seleccione Formulario 1 en el menú lateral."))
+      }
+      if (identical(subdivision, "insectario")) {
+        return(div(class = "alert alert-info", "Seleccione Formulario 5 o Formulario 7 en el menú lateral."))
+      }
+      if (identical(subdivision, "laboratorio")) {
+        return(div(class = "alert alert-info", "Laboratorio no tiene formularios activos por el momento."))
+      }
       return(NULL)
     }
 
