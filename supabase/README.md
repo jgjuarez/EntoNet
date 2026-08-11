@@ -21,7 +21,8 @@ Orden sugerido de ejecucion:
 15. `019_fase_1_institucion_uvg.sql`
 16. `023_formulario_7_sinergistas_60min.sql`
 17. `024_formulario_7_sinergista_dosis.sql`
-18. Scripts futuros de catalogos, permisos y vistas.
+18. `025_formulario_7_rename_capture_columns.sql`
+19. Scripts futuros de catalogos, permisos y vistas.
 
 Para ejecutar todos los scripts desde la raiz del repositorio:
 
@@ -52,10 +53,8 @@ Formulario 7 usa un modelo normalizado alineado con el ingreso individual:
 - `formulario_7_bioensayo_comentario_intake`: un comentario asociado.
 
 El CSV oficial de Formulario 7 usa 118 columnas visibles para carga y descarga.
-La aplicación traduce nombres operativos como `nombre_quien_ingreso`,
-`bioensayo_diagnostica_1x`, `dosis_intensidad_ug_ml`, `insecticida` y
-`lote_insecticida` hacia las columnas internas normalizadas antes de guardar en
-Supabase.
+La tabla principal usa esos mismos nombres operativos para evitar confusión al
+descargar datos desde la aplicación o directamente desde Supabase.
 
 Formulario 1 usa un modelo encabezado-detalle:
 
