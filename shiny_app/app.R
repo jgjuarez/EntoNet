@@ -71,6 +71,18 @@ value_or_default <- function(value, default) {
 
 default_institution_id <- value_or_default(read_local_env_value("ENTONET_DEFAULT_INSTITUTION_ID"), "UVG")
 
+formulario_7_insecticide_choices <- c(
+  "Seleccione" = "",
+  "DDT" = "DDT",
+  "Permetrina" = "Permetrina",
+  "Deltametrina" = "Deltametrina",
+  "Bendiocarb" = "Bendiocarb",
+  "Malatión" = "Malatión",
+  "Alfa-cipermetrina" = "Alfa-cipermetrina",
+  "Lambda-cialotrina" = "Lambda-cialotrina",
+  "Temefos" = "Temefos"
+)
+
 tr <- function(language, spanish, english) {
   if (identical(language, "en")) english else spanish
 }
@@ -178,13 +190,11 @@ sample_collection_sites <- data.frame(
 # Ubicaciones aproximadas para el prototipo de visualización del Formulario 7.
 # En el modelo definitivo estas coordenadas serán reemplazadas por los puntos
 # reales relacionados desde los formularios de colecta y crianza.
-formulario_7_el_salvador_locations <- data.frame(
-  codigo_departamento_num = c(2L, 3L, 5L, 6L),
-  codigo_municipio_num = c(201L, 301L, 501L, 601L),
-  departamento = c("Santa Ana", "Sonsonate", "La Libertad", "San Salvador"),
-  municipio = c("Santa Ana", "Sonsonate", "La Libertad", "San Salvador"),
-  latitude = c(13.9942, 13.7189, 13.4883, 13.6929),
-  longitude = c(-89.5597, -89.7240, -89.3222, -89.2182),
+formulario_7_visualization_locations <- data.frame(
+  pais = c("El Salvador", "Guatemala", "Guatemala", "Guatemala"),
+  codigo_municipio = c("0102", "0920", "0921", "0922"),
+  latitude = c(13.8617, 14.7040, 14.6196, 14.6325),
+  longitude = c(-89.8016, -91.8640, -91.8356, -91.8654),
   stringsAsFactors = FALSE
 )
 
@@ -1872,7 +1882,7 @@ formulario_7_capture_form <- function() {
                 "input.f7_codigo_bioensayo_help % 2 == 1",
                 div(
                   class = "f7-help-message",
-                  "Para registros nuevos, genere este código antes de ingresar datos desde la sección Imprimir formulario del Formulario 7. El código parte del código de cuadrante del Formulario 1: REI + año + país + departamento + municipio + cuadrante. Al consolidar población, el cuadrante cambia a P#. En bioensayo se usa: REI + año + país + departamento + municipio + P# + código de sinergista solo si aplica (DEF, PBO o DM) + insecticida (DEL, PER, MAL o DDT) + correlativo incremental + generación filial (F#). Ejemplo: REI26GT0920P2DEFDEL1F1. Para datos antiguos puede ingresar el código histórico tal como aparece en el formulario."
+                  "Para registros nuevos, genere este código antes de ingresar datos desde la sección Imprimir formulario del Formulario 7. El código parte del código de cuadrante del Formulario 1: REI + año + país + departamento + municipio + cuadrante. Al consolidar población, el cuadrante cambia a P#. En bioensayo se usa: REI + año + país + departamento + municipio + P# + código de sinergista solo si aplica (DEF, PBO o DM) + insecticida (DDT, PER, DEL, BEN, MAL, ALF, LAM o TEM) + correlativo incremental + generación filial (F#). Ejemplo: REI26GT0920P2DEFDEL1F1. Para datos antiguos puede ingresar el código histórico tal como aparece en el formulario."
                 )
               )
             ),
@@ -1929,7 +1939,7 @@ formulario_7_capture_form <- function() {
             selectInput(
               "f7_insecticida",
               "Insecticida *",
-              choices = c("Seleccione" = "", "Deltametrina" = "Deltametrina", "Permetrina" = "Permetrina", "Malation" = "Malation", "DDT" = "DDT")
+              choices = formulario_7_insecticide_choices
             ),
             selectInput("f7_solvente_utilizado", "Solvente utilizado *", choices = c("Etanol", "Otro")),
             conditionalPanel("input.f7_solvente_utilizado == 'Otro'", textInput("f7_solvente_otro", "Especifique el solvente *")),
@@ -2045,7 +2055,7 @@ formulario_7_print_form <- function() {
           selectInput(
             "f7_print_insecticida",
             "Insecticida",
-            choices = c("Seleccione" = "", "Deltametrina" = "Deltametrina", "Permetrina" = "Permetrina", "Malation" = "Malation", "DDT" = "DDT")
+            choices = formulario_7_insecticide_choices
           )
         ),
         column(
@@ -3863,7 +3873,7 @@ ui <- fluidPage(
       .f7-viz-kpi-grid {
         display: grid;
         gap: 14px;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
         margin-top: 18px;
       }
       .f7-viz-kpi-card {
@@ -4234,6 +4244,7 @@ server <- function(input, output, session) {
   active_module <- reactiveVal(NULL)
   active_capture_subdivision <- reactiveVal(NULL)
   active_request_subdivision <- reactiveVal(NULL)
+  active_request_data_subdivision <- reactiveVal(NULL)
   active_dataset <- reactiveVal(NULL)
   f5_capture_steps <- c("metadatos", "datos_generales", "alimentacion", "conteo_huevecillos", "observaciones")
   f5_capture_step_labels <- c(
@@ -4330,6 +4341,186 @@ server <- function(input, output, session) {
       "Hola Billy espero que estes teniendo un lindo día."
     )
   })
+
+  request_user_role <- function() {
+    trimws(value_or_default(user_profile$position, ""))
+  }
+
+  request_is_local_review_session <- function() {
+    host <- value_or_default(session$clientData$url_hostname, "")
+    isTRUE(skip_login) || host %in% c("127.0.0.1", "localhost", "::1")
+  }
+
+  request_is_global_admin <- function() {
+    if (request_is_local_review_session()) return(TRUE)
+    role <- tolower(request_user_role())
+    email <- tolower(value_or_default(user_profile$email, ""))
+    username <- tolower(value_or_default(user_profile$username, ""))
+    grepl("administrador", role) && (
+      grepl("jgjuarez|jjuarez", email) ||
+        grepl("jgjuarez|jjuarez", username) ||
+        identical(email, "jjuarezvaldez@gmail.com")
+    )
+  }
+
+  request_is_admin <- function() {
+    grepl("administrador", tolower(request_user_role()))
+  }
+
+  request_is_supervisor <- function() {
+    grepl("supervisor", tolower(request_user_role()))
+  }
+
+  request_allowed_data_subdivisions <- reactive({
+    if (request_is_global_admin()) return(c("campo", "insectario", "laboratorio"))
+    if (request_is_admin()) return(c("campo", "insectario", "laboratorio"))
+    if (request_is_supervisor()) return(c("campo", "insectario"))
+    character()
+  })
+
+  request_filter_country <- function() {
+    if (request_is_global_admin()) {
+      selected <- value_or_default(input$request_download_country, "all")
+      if (identical(selected, "all")) return(NULL)
+      return(selected)
+    }
+    value_or_default(user_profile$country, "País no configurado")
+  }
+
+  request_filter_institution <- function() {
+    if (request_is_global_admin()) {
+      selected <- value_or_default(input$request_download_institution, "all")
+      if (identical(selected, "all")) return(NULL)
+      return(selected)
+    }
+    value_or_default(user_profile$institution, default_institution_id)
+  }
+
+  request_data_dataset_choices <- function(subdivision) {
+    switch(
+      subdivision,
+      campo = c("Formulario 1: Colocación y retiro de ovitrampa" = "formulario_1"),
+      insectario = c(
+        "Formulario 5: Alimentación y conteo" = "formulario_5",
+        "Formulario 7: Bioensayo de botella CDC" = "formulario_7"
+      ),
+      laboratorio = character(),
+      character()
+    )
+  }
+
+  request_append_scope_filters <- function(where_clauses, params, table_alias = "") {
+    prefix <- if (nzchar(table_alias)) paste0(table_alias, ".") else ""
+    country <- request_filter_country()
+    institution <- request_filter_institution()
+    if (!is.null(country) && nzchar(country)) {
+      where_clauses <- c(where_clauses, paste0(prefix, "pais = $", length(params) + 1L))
+      params <- c(params, list(country))
+    }
+    if (!is.null(institution) && nzchar(institution)) {
+      where_clauses <- c(where_clauses, paste0(prefix, "id_institucion = $", length(params) + 1L))
+      params <- c(params, list(institution))
+    }
+    list(where = where_clauses, params = params)
+  }
+
+  request_where_sql <- function(where_clauses) {
+    if (!length(where_clauses)) return("")
+    paste("where", paste(where_clauses, collapse = " and "))
+  }
+
+  request_fetch_formulario_1 <- function(connection) {
+    filters <- request_append_scope_filters(character(), list(), "h")
+    query <- paste(
+      "select h.formulario_codigo, h.formulario_nombre, h.fecha_registro, h.pais, h.id_institucion, h.departamento, h.municipio,",
+      "h.ciclo, h.ronda, h.codigo_formulario, h.fecha_colocacion, h.grupo_responsable_colocacion,",
+      "h.cuadrante, h.codigo_casa, h.latitud as \"Latitud\", h.longitud as \"Longitud\", h.codigo_gps,",
+      "h.ovitrampas_colocadas as \"Ovitrampas_colocadas\", d.codigo_sustrato, h.fecha_retiro,",
+      "h.grupo_responsable_retiro, h.ovitrampas_retiradas as \"Ovitrampas_retiradas\",",
+      "h.retiro_buen_estado, h.retiro_sin_agua, h.retiro_sin_sustrato, h.retiro_sin_ovitrampa,",
+      "h.retiro_movida, h.retiro_volteada, h.retiro_casa_cerrada, h.retiro_casa_cerrada_descripcion,",
+      "h.fuente_formulario, h.creado_por, h.creado_en, h.actualizado_en",
+      "from public.formulario_1_ovitrampa_intake h",
+      "left join public.formulario_1_ovitrampa_detalle_intake d on d.intake_id = h.intake_id",
+      request_where_sql(filters$where),
+      "order by h.fecha_registro desc, h.codigo_formulario, h.cuadrante, h.codigo_casa, d.codigo_sustrato"
+    )
+    rows <- dbGetQuery(connection, query, params = filters$params)
+    rows[intersect(formulario_1_intake_columns, names(rows))]
+  }
+
+  request_fetch_formulario_5 <- function(connection) {
+    filters <- request_append_scope_filters(character(), list())
+    query <- paste(
+      "select *",
+      "from public.formulario_5_alimentacion_conteo_intake",
+      request_where_sql(filters$where),
+      "order by fecha_registro desc, intake_id desc"
+    )
+    dbGetQuery(connection, query, params = filters$params)
+  }
+
+  request_fetch_formulario_7 <- function(connection) {
+    filters <- request_append_scope_filters(character(), list(), "h")
+    query <- paste(
+      "select h.*",
+      "from public.formulario_7_bioensayo_intake h",
+      request_where_sql(filters$where),
+      "order by h.fecha_registro desc, h.intake_id desc"
+    )
+    header <- dbGetQuery(connection, query, params = filters$params)
+    if (!nrow(header)) return(formulario_7_internal_to_csv(formulario_7_template[0, , drop = FALSE]))
+
+    for (column in setdiff(formulario_7_intake_columns, names(header))) header[[column]] <- NA
+    ids <- as.integer(header$intake_id)
+    placeholders <- paste0("$", seq_along(ids), collapse = ", ")
+    results <- dbGetQuery(
+      connection,
+      paste(
+        "select intake_id, fase, botella, tiempo_minutos, hora_lectura, vivos, incapacitados",
+        "from public.formulario_7_bioensayo_resultado_intake",
+        "where intake_id in (", placeholders, ")"
+      ),
+      params = as.list(ids)
+    )
+    comments <- dbGetQuery(
+      connection,
+      paste(
+        "select intake_id, comentario, nombre as comentario_nombre",
+        "from public.formulario_7_bioensayo_comentario_intake",
+        "where intake_id in (", placeholders, ")"
+      ),
+      params = as.list(ids)
+    )
+    row_index <- setNames(seq_len(nrow(header)), as.character(header$intake_id))
+    if (nrow(results)) {
+      for (index in seq_len(nrow(results))) {
+        row <- results[index, ]
+        target <- row_index[[as.character(row$intake_id)]]
+        bottle <- as.character(row$botella)
+        minutes <- as.integer(row$tiempo_minutos)
+        if (is.na(target) || !nzchar(bottle) || is.na(minutes)) next
+        if (minutes == 1440L) {
+          header[[paste0("resultado_hora_lectura_24h_", bottle)]][[target]] <- as.character(row$hora_lectura)
+          header[[paste0("resultado_24h_", bottle, "_vivos")]][[target]] <- row$vivos
+          header[[paste0("resultado_24h_", bottle, "_incapacitados")]][[target]] <- row$incapacitados
+        } else {
+          if (minutes == 0L) header[[paste0("resultado_hora_inicio_", bottle)]][[target]] <- as.character(row$hora_lectura)
+          header[[paste0("resultado_", minutes, "min_", bottle, "_vivos")]][[target]] <- row$vivos
+          header[[paste0("resultado_", minutes, "min_", bottle, "_incapacitados")]][[target]] <- row$incapacitados
+        }
+      }
+    }
+    if (nrow(comments)) {
+      for (index in seq_len(nrow(comments))) {
+        target <- row_index[[as.character(comments$intake_id[[index]])]]
+        if (is.na(target)) next
+        header$comentario[[target]] <- comments$comentario[[index]]
+        header$comentario_nombre[[target]] <- comments$comentario_nombre[[index]]
+      }
+    }
+    formulario_7_internal_to_csv(header)
+  }
 
   show_password_setup_modal <- function() {
     showModal(modalDialog(
@@ -4743,6 +4934,9 @@ server <- function(input, output, session) {
     user_profile$refresh_token <- ""
     active_area(NULL)
     active_module(NULL)
+    active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
     submission_status("No se ha enviado ningún registro en esta sesión.")
   })
@@ -5011,6 +5205,10 @@ server <- function(input, output, session) {
     if (cleaned %in% c("PER", "PERMETRINA")) return("PER")
     if (cleaned %in% c("MAL", "MALATION", "MALATHION")) return("MAL")
     if (cleaned %in% c("DDT")) return("DDT")
+    if (cleaned %in% c("BEN", "BENDIOCARB")) return("BEN")
+    if (cleaned %in% c("ALF", "ALFA-CIPERMETRINA", "ALFACIPERMETRINA")) return("ALF")
+    if (cleaned %in% c("LAM", "LAMBDA-CIALOTRINA", "LAMBDACIALOTRINA")) return("LAM")
+    if (cleaned %in% c("TEM", "TEMEFOS")) return("TEM")
     NA_character_
   }
 
@@ -9705,6 +9903,7 @@ server <- function(input, output, session) {
     active_module(NULL)
     active_capture_subdivision(NULL)
     active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9713,6 +9912,7 @@ server <- function(input, output, session) {
     active_module(NULL)
     active_capture_subdivision(NULL)
     active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9721,6 +9921,7 @@ server <- function(input, output, session) {
     active_module(NULL)
     active_capture_subdivision(NULL)
     active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9729,6 +9930,7 @@ server <- function(input, output, session) {
     active_module("capture")
     active_capture_subdivision(NULL)
     active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9782,6 +9984,7 @@ server <- function(input, output, session) {
     active_module("visualization")
     active_capture_subdivision(NULL)
     active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9790,6 +9993,7 @@ server <- function(input, output, session) {
     active_module("request")
     active_capture_subdivision(NULL)
     active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
   })
 
@@ -9798,6 +10002,7 @@ server <- function(input, output, session) {
     active_module("request")
     active_capture_subdivision(NULL)
     active_request_subdivision(if (identical(active_request_subdivision(), subdivision)) NULL else subdivision)
+    active_request_data_subdivision(NULL)
     active_dataset(NULL)
   }
 
@@ -9815,6 +10020,27 @@ server <- function(input, output, session) {
 
   observeEvent(input$show_request_apoyo_tecnico, {
     select_request_subdivision("apoyo_tecnico")
+  })
+
+  select_request_data_subdivision <- function(subdivision) {
+    active_area("data")
+    active_module("request")
+    active_capture_subdivision(NULL)
+    active_request_subdivision("datos")
+    active_request_data_subdivision(if (identical(active_request_data_subdivision(), subdivision)) NULL else subdivision)
+    active_dataset(NULL)
+  }
+
+  observeEvent(input$show_request_data_campo, {
+    select_request_data_subdivision("campo")
+  })
+
+  observeEvent(input$show_request_data_insectario, {
+    select_request_data_subdivision("insectario")
+  })
+
+  observeEvent(input$show_request_data_laboratorio, {
+    select_request_data_subdivision("laboratorio")
   })
 
   observeEvent(input$show_field_protocols, {
@@ -9856,56 +10082,56 @@ server <- function(input, output, session) {
     if (identical(query$dataset, "formulario_7_bioensayo_botella_cdc")) {
       f7_visualization_records(data.frame())
       f7_visualization_error(NULL)
-      if (identical(query$country, "El Salvador")) {
-        connection <- NULL
-        tryCatch({
-          connection <- connect_to_supabase()
-          records <- dbGetQuery(
-            connection,
-            "
-              select
-                intake_id, codigo_bioensayo, fecha_realizacion_bioensayo,
-                nombre_poblacion, bioensayo_intensidad, bioensayo_diagnostica_1x,
-                sinergista_def, sinergista_pbo, sinergista_dm, resultado_diagnostico,
-                insecticida, codigo_departamento, codigo_municipio, review_status
-              from public.formulario_7_bioensayo_intake
-              where pais = $1
-              order by fecha_realizacion_bioensayo, intake_id
-            ",
-            params = list("El Salvador")
+      connection <- NULL
+      tryCatch({
+        connection <- connect_to_supabase()
+        records <- dbGetQuery(
+          connection,
+          "
+            select
+              f.intake_id, f.codigo_bioensayo, f.fecha_realizacion_bioensayo,
+              f.nombre_poblacion, f.bioensayo_intensidad, f.bioensayo_diagnostica_1x,
+              f.sinergista_def, f.sinergista_pbo, f.sinergista_dm, f.resultado_diagnostico,
+              f.insecticida, f.codigo_departamento, f.codigo_municipio, f.review_status,
+              coalesce(d.departamento, f.codigo_departamento) as departamento,
+              coalesce(m.municipio, f.codigo_municipio) as municipio
+            from public.formulario_7_bioensayo_intake f
+            left join public.catalogo_ubicacion_departamento d
+              on d.pais = f.pais and d.codigo_departamento = f.codigo_departamento
+            left join public.catalogo_ubicacion_municipio m
+              on m.pais = f.pais and m.codigo_municipio = f.codigo_municipio
+            where f.pais = $1
+            order by f.fecha_realizacion_bioensayo, f.intake_id
+          ",
+          params = list(query$country)
+        )
+        if (nrow(records)) {
+          records$fecha_realizacion_bioensayo <- as.Date(records$fecha_realizacion_bioensayo)
+          records$tipo_bioensayo <- ifelse(
+            records$bioensayo_diagnostica_1x,
+            "Diagnóstica 1X",
+            ifelse(
+              !is.na(records$bioensayo_intensidad),
+              paste("Intensidad", records$bioensayo_intensidad),
+              "Sinergistas"
+            )
           )
-          if (nrow(records)) {
-            records$fecha_realizacion_bioensayo <- as.Date(records$fecha_realizacion_bioensayo)
-            records$tipo_bioensayo <- ifelse(
-              records$bioensayo_diagnostica_1x,
-              "Diagnóstica 1X",
-              ifelse(
-                !is.na(records$bioensayo_intensidad),
-                paste("Intensidad", records$bioensayo_intensidad),
-                "Sinergistas"
-              )
-            )
-            records$codigo_departamento_num <- suppressWarnings(as.integer(records$codigo_departamento))
-            records$codigo_municipio_num <- suppressWarnings(as.integer(records$codigo_municipio))
-            location_key <- paste(records$codigo_departamento_num, records$codigo_municipio_num, sep = "|")
-            reference_key <- paste(
-              formulario_7_el_salvador_locations$codigo_departamento_num,
-              formulario_7_el_salvador_locations$codigo_municipio_num,
-              sep = "|"
-            )
-            location_index <- match(location_key, reference_key)
-            records$departamento <- formulario_7_el_salvador_locations$departamento[location_index]
-            records$municipio <- formulario_7_el_salvador_locations$municipio[location_index]
-            records$latitude <- formulario_7_el_salvador_locations$latitude[location_index]
-            records$longitude <- formulario_7_el_salvador_locations$longitude[location_index]
-          }
-          f7_visualization_records(records)
-        }, error = function(error) {
-          f7_visualization_error(conditionMessage(error))
-        }, finally = {
-          if (!is.null(connection)) dbDisconnect(connection)
-        })
-      }
+          location_key <- paste(query$country, records$codigo_municipio, sep = "|")
+          reference_key <- paste(
+            formulario_7_visualization_locations$pais,
+            formulario_7_visualization_locations$codigo_municipio,
+            sep = "|"
+          )
+          location_index <- match(location_key, reference_key)
+          records$latitude <- formulario_7_visualization_locations$latitude[location_index]
+          records$longitude <- formulario_7_visualization_locations$longitude[location_index]
+        }
+        f7_visualization_records(records)
+      }, error = function(error) {
+        f7_visualization_error(conditionMessage(error))
+      }, finally = {
+        if (!is.null(connection)) dbDisconnect(connection)
+      })
     }
 
     sites <- sample_collection_sites[
@@ -9939,6 +10165,11 @@ server <- function(input, output, session) {
     records <- f7_visualization_records()
     if (!nrow(records)) return(NULL)
     dates <- records$fecha_realizacion_bioensayo
+    filter_choices <- function(values, all_label = "Todos") {
+      values <- sort(unique(stats::na.omit(as.character(values))))
+      values <- values[nzchar(trimws(values))]
+      c(setNames("all", all_label), setNames(values, values))
+    }
     tagList(
       fluidRow(
         column(
@@ -9958,7 +10189,7 @@ server <- function(input, output, session) {
           selectInput(
             "f7_viz_project",
             "Código de bioensayo",
-            choices = c("Todos" = "all", sort(unique(records$codigo_bioensayo)))
+            choices = filter_choices(records$codigo_bioensayo)
           )
         ),
         column(
@@ -9966,7 +10197,7 @@ server <- function(input, output, session) {
           selectInput(
             "f7_viz_type",
             "Tipo de bioensayo",
-            choices = c("Todos" = "all", sort(unique(records$tipo_bioensayo)))
+            choices = filter_choices(records$tipo_bioensayo)
           )
         )
       ),
@@ -9974,9 +10205,25 @@ server <- function(input, output, session) {
         column(
           4,
           selectInput(
+            "f7_viz_department",
+            "Departamento",
+            choices = filter_choices(records$departamento)
+          )
+        ),
+        column(
+          4,
+          selectInput(
+            "f7_viz_municipality",
+            "Municipio",
+            choices = filter_choices(records$municipio)
+          )
+        ),
+        column(
+          4,
+          selectInput(
             "f7_viz_insecticide",
             "Insecticida",
-            choices = c("Todos" = "all", sort(unique(records$insecticida)))
+            choices = filter_choices(records$insecticida)
           )
         ),
         column(
@@ -9984,7 +10231,7 @@ server <- function(input, output, session) {
           selectInput(
             "f7_viz_population",
             "Población",
-            choices = c("Todas" = "all", sort(unique(records$nombre_poblacion)))
+            choices = filter_choices(records$nombre_poblacion, "Todas")
           )
         ),
         column(
@@ -10029,6 +10276,8 @@ server <- function(input, output, session) {
     selected_filters <- list(
       codigo_bioensayo = input$f7_viz_project,
       tipo_bioensayo = input$f7_viz_type,
+      departamento = input$f7_viz_department,
+      municipio = input$f7_viz_municipality,
       insecticida = input$f7_viz_insecticide,
       nombre_poblacion = input$f7_viz_population
     )
@@ -10054,15 +10303,15 @@ server <- function(input, output, session) {
     records <- records[!is.na(records$latitude) & !is.na(records$longitude), , drop = FALSE]
     if (!nrow(records)) return(data.frame())
     group_key <- paste(
-      records$codigo_departamento_num,
-      records$codigo_municipio_num,
+      records$codigo_departamento,
+      records$codigo_municipio,
       records$nombre_poblacion,
       sep = "|"
     )
     groups <- split(records, group_key)
     points <- do.call(rbind, lapply(groups, function(group) {
       data.frame(
-        location_id = paste(group$codigo_departamento_num[[1]], group$codigo_municipio_num[[1]], group$nombre_poblacion[[1]], sep = "|"),
+        location_id = paste(group$codigo_departamento[[1]], group$codigo_municipio[[1]], group$nombre_poblacion[[1]], sep = "|"),
         departamento = group$departamento[[1]],
         municipio = group$municipio[[1]],
         nombre_poblacion = group$nombre_poblacion[[1]],
@@ -10098,19 +10347,35 @@ server <- function(input, output, session) {
 
   f7_visualization_insecticide_counts <- reactive({
     records <- f7_visualization_filtered()
-    insecticide_levels <- c("Deltametrina", "Permetrina", "DDT", "Malathion", "Bendiocarb")
+    insecticide_levels <- c("DDT", "Permetrina", "Deltametrina", "Bendiocarb", "Malatión", "Alfa-cipermetrina", "Lambda-cialotrina", "Temefos")
     result_levels <- c("Resistencia", "Sospecha Resistencia", "Susceptible")
     insecticide_codes <- toupper(trimws(as.character(records$insecticida)))
     insecticide <- ifelse(
-      grepl("DEL|DELTAMETRINA", insecticide_codes),
-      "Deltametrina",
+      grepl("DDT", insecticide_codes),
+      "DDT",
       ifelse(
         grepl("PER|PERMETRINA", insecticide_codes),
         "Permetrina",
         ifelse(
-          grepl("DDT", insecticide_codes),
-          "DDT",
-          ifelse(grepl("MAL|MALATHION", insecticide_codes), "Malathion", ifelse(grepl("BEN|BENDIOCARB", insecticide_codes), "Bendiocarb", NA_character_))
+          grepl("DEL|DELTAMETRINA", insecticide_codes),
+          "Deltametrina",
+          ifelse(
+            grepl("BEN|BENDIOCARB", insecticide_codes),
+            "Bendiocarb",
+            ifelse(
+              grepl("MAL|MALATION|MALATHION|MALATIÓN", insecticide_codes),
+              "Malatión",
+              ifelse(
+                grepl("ALF|ALFA", insecticide_codes),
+                "Alfa-cipermetrina",
+                ifelse(
+                  grepl("LAM|LAMBDA", insecticide_codes),
+                  "Lambda-cialotrina",
+                  ifelse(grepl("TEM|TEMEFOS", insecticide_codes), "Temefos", NA_character_)
+                )
+              )
+            )
+          )
         )
       )
     )
@@ -10132,23 +10397,31 @@ server <- function(input, output, session) {
   output$f7_visualization_kpis <- renderUI({
     records <- f7_visualization_filtered()
     mapped <- records[!is.na(records$latitude) & !is.na(records$longitude), , drop = FALSE]
-    municipalities <- if (nrow(mapped)) length(unique(paste(mapped$codigo_departamento_num, mapped$codigo_municipio_num))) else 0L
+    municipalities <- if (nrow(records)) length(unique(paste(records$codigo_departamento, records$codigo_municipio))) else 0L
+    mapped_municipalities <- if (nrow(mapped)) length(unique(paste(mapped$codigo_departamento, mapped$codigo_municipio))) else 0L
     div(
       class = "f7-viz-kpi-grid",
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Bioensayos"), span(class = "f7-viz-kpi-value", nrow(records))),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Poblaciones"), span(class = "f7-viz-kpi-value", length(unique(records$nombre_poblacion)))),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Municipios representados"), span(class = "f7-viz-kpi-value", municipalities)),
+      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Municipios en mapa"), span(class = "f7-viz-kpi-value", mapped_municipalities)),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Resultados resistentes"), span(class = "f7-viz-kpi-value", sum(records$resultado_diagnostico == "Resistente", na.rm = TRUE)))
     )
   })
 
   output$f7_visualization_map <- renderLeaflet({
     points <- f7_visualization_map_points()
+    center <- switch(
+      value_or_default(input$visualization_country, "Guatemala"),
+      "El Salvador" = list(lng = -88.95, lat = 13.75, zoom = 8),
+      "Guatemala" = list(lng = -90.35, lat = 15.45, zoom = 7),
+      list(lng = -89.5, lat = 14.6, zoom = 6)
+    )
     map <- leaflet() |>
       addProviderTiles(providers$CartoDB.Positron) |>
-      setView(lng = -89.20, lat = 13.75, zoom = 8) |>
+      setView(lng = center$lng, lat = center$lat, zoom = center$zoom) |>
       addControl(
-        html = "Ubicaciones aproximadas para datos ficticios. Las coordenadas reales vendrán del formulario de colecta.",
+        html = "Ubicaciones aproximadas por municipio. Las coordenadas reales vendrán del vínculo con colecta y crianza.",
         position = "bottomleft"
       )
     if (!nrow(points)) {
@@ -10312,17 +10585,11 @@ server <- function(input, output, session) {
     }
 
     if (identical(query$dataset, "formulario_7_bioensayo_botella_cdc")) {
-      if (!identical(query$country, "El Salvador")) {
-        return(div(
-          class = "alert alert-warning",
-          "El mapa piloto del Formulario 7 está disponible por ahora para El Salvador. Seleccione El Salvador y presione Buscar."
-        ))
-      }
       return(tagList(
         div(
           class = "visualization-results-card",
-          h4("Mapa de bioensayos y poblaciones - El Salvador"),
-          p("Utilice los filtros para explorar los registros del Formulario 7. Los puntos actuales son ubicaciones aproximadas de las poblaciones ficticias y no coordenadas reales de trampas."),
+          h4(paste("Mapa de bioensayos y poblaciones -", query$country)),
+          p("Utilice los filtros para explorar los registros del Formulario 7. Los puntos actuales son centroides aproximados por municipio; los registros sin coordenada aproximada permanecen disponibles en las tablas."),
           uiOutput("f7_visualization_filters")
         ),
         uiOutput("f7_visualization_error_message"),
@@ -10347,6 +10614,11 @@ server <- function(input, output, session) {
             h4("Tabla resumen"),
             tableOutput("f7_visualization_diagnostic_summary_table")
           )
+        ),
+        div(
+          class = "visualization-results-card",
+          h4("Registros filtrados"),
+          tableOutput("f7_visualization_table")
         )
       ))
     }
@@ -10419,6 +10691,7 @@ server <- function(input, output, session) {
     module <- active_module()
     capture_subdivision <- active_capture_subdivision()
     request_subdivision <- active_request_subdivision()
+    request_data_subdivision <- active_request_data_subdivision()
     category_class <- function(value) paste(
       "sidebar-category",
       if (identical(area, value)) "sidebar-category-active" else ""
@@ -10438,6 +10711,10 @@ server <- function(input, output, session) {
     request_subdivision_class <- function(value) paste(
       "sidebar-form-group-title",
       if (identical(request_subdivision, value)) "sidebar-form-group-title-active" else ""
+    )
+    request_data_subdivision_class <- function(value) paste(
+      "sidebar-form-item",
+      if (identical(request_data_subdivision, value)) "sidebar-form-item-active" else ""
     )
     category_button <- function(id, label, value) {
       actionButton(
@@ -10472,6 +10749,11 @@ server <- function(input, output, session) {
         if (identical(module, "request")) div(
           class = "sidebar-form-list",
           actionButton("show_request_datos", "Datos", class = request_subdivision_class("datos")),
+          if (identical(request_subdivision, "datos")) tagList(
+            actionButton("show_request_data_campo", "Campo", class = request_data_subdivision_class("campo")),
+            actionButton("show_request_data_insectario", "Insectario", class = request_data_subdivision_class("insectario")),
+            actionButton("show_request_data_laboratorio", "Laboratorio", class = request_data_subdivision_class("laboratorio"))
+          ),
           actionButton("show_request_reactivos", "Reactivos", class = request_subdivision_class("reactivos")),
           actionButton("show_request_equipo", "Equipo", class = request_subdivision_class("equipo")),
           actionButton("show_request_apoyo_tecnico", "Apoyo Técnico", class = request_subdivision_class("apoyo_tecnico"))
@@ -10600,6 +10882,7 @@ server <- function(input, output, session) {
 
     if (identical(module, "request")) {
       subdivision <- active_request_subdivision()
+      data_subdivision <- active_request_data_subdivision()
       request_labels <- c(
         datos = "Datos",
         reactivos = "Reactivos",
@@ -10616,6 +10899,104 @@ server <- function(input, output, session) {
             div(class = "capture-subdivision-panel", h4("Reactivos"), p("Solicitudes relacionadas con reactivos e insumos.")),
             div(class = "capture-subdivision-panel", h4("Equipo"), p("Solicitudes relacionadas con equipo de campo, insectario o laboratorio.")),
             div(class = "capture-subdivision-panel", h4("Apoyo Técnico"), p("Solicitudes de acompañamiento, soporte o asistencia técnica."))
+          )
+        ))
+      }
+      if (identical(subdivision, "datos")) {
+        allowed_subdivisions <- request_allowed_data_subdivisions()
+        data_labels <- c(campo = "Campo", insectario = "Insectario", laboratorio = "Laboratorio")
+        if (!length(allowed_subdivisions)) {
+          return(div(
+            class = "module-panel",
+            h3("Datos"),
+            div(
+              class = "alert alert-warning",
+              "Su perfil actual no tiene permisos de descarga. Solicite acceso a un administrador de EntoNet."
+            )
+          ))
+        }
+        if (is.null(data_subdivision)) {
+          return(div(
+            class = "module-panel",
+            h3("Datos"),
+            p("Seleccione el área de datos que desea descargar. Las opciones disponibles dependen de su perfil, institución y país."),
+            div(
+              class = "capture-subdivision-list",
+              div(class = "capture-subdivision-panel", h4("Campo"), p("Datos de captura en campo, incluyendo colocación y retiro de ovitrampas.")),
+              div(class = "capture-subdivision-panel", h4("Insectario"), p("Datos de cría, alimentación, conteo y bioensayos.")),
+              div(class = "capture-subdivision-panel", h4("Laboratorio"), p("Datos de laboratorio disponibles solo para perfiles autorizados."))
+            ),
+            div(
+              class = "alert alert-info",
+              "Use el menú lateral debajo de Datos para seleccionar Campo, Insectario o Laboratorio."
+            )
+          ))
+        }
+        if (!(data_subdivision %in% allowed_subdivisions)) {
+          return(div(
+            class = "module-panel",
+            h3(data_labels[[data_subdivision]]),
+            div(
+              class = "alert alert-warning",
+              "Su perfil no tiene permiso para descargar datos de esta área."
+            )
+          ))
+        }
+        dataset_choices <- request_data_dataset_choices(data_subdivision)
+        if (!length(dataset_choices)) {
+          return(div(
+            class = "module-panel",
+            h3(data_labels[[data_subdivision]]),
+            div(
+              class = "alert alert-info",
+              "Esta área aún no tiene conjuntos de datos activos para descarga."
+            )
+          ))
+        }
+        return(div(
+          class = "module-panel",
+          h3(paste("Datos -", data_labels[[data_subdivision]])),
+          p("Descargue datos de acuerdo con su perfil. Los supervisores descargan únicamente la información de su país e institución."),
+          div(
+            class = "selector-box",
+            fluidRow(
+              column(
+                4,
+                selectInput(
+                  "request_download_dataset",
+                  "Conjunto de datos",
+                  choices = dataset_choices
+                )
+              ),
+              column(
+                4,
+                if (request_is_global_admin()) {
+                  selectInput("request_download_country", "País", choices = c("Todos" = "all", country_choices), selected = "all")
+                } else {
+                  div(class = "form-group", tags$label("País"), tags$p(class = "form-control-static", value_or_default(user_profile$country, "País no configurado")))
+                }
+              ),
+              column(
+                4,
+                if (request_is_global_admin()) {
+                  selectInput("request_download_institution", "Institución", choices = c("Todas" = "all", default_institution_id), selected = "all")
+                } else {
+                  div(class = "form-group", tags$label("Institución"), tags$p(class = "form-control-static", value_or_default(user_profile$institution, default_institution_id)))
+                }
+              )
+            ),
+            div(
+              class = "submit-row",
+              downloadButton("download_request_data_csv", "Descargar CSV", class = "btn-primary")
+            )
+          ),
+          div(
+            class = "alert alert-info",
+            tags$strong("Perfil activo: "),
+            value_or_default(user_profile$position, "Rol no configurado"),
+            " · ",
+            tags$strong("Alcance: "),
+            if (request_is_global_admin()) "todos los países e instituciones" else paste(value_or_default(user_profile$country, "País no configurado"), "-", value_or_default(user_profile$institution, default_institution_id))
           )
         ))
       }
@@ -12484,46 +12865,57 @@ server <- function(input, output, session) {
     })
   })
 
-  output$download_csv <- downloadHandler(
+  output$download_request_data_csv <- downloadHandler(
     filename = function() {
-      dataset <- input$request_dataset
+      dataset <- value_or_default(input$request_download_dataset, "datos")
       date_stamp <- format(Sys.Date(), "%Y%m%d")
-
-      switch(
-        dataset,
-        egg_intake = paste0("entonet_ovipostura_registros_pendientes_", date_stamp, ".csv"),
-        paste0("entonet_ovipostura_observaciones_", date_stamp, ".csv")
+      scope_country <- request_filter_country()
+      scope_institution <- request_filter_institution()
+      scope <- paste(
+        if (is.null(scope_country)) "todos_paises" else gsub("[^A-Za-z0-9]+", "_", tolower(scope_country)),
+        if (is.null(scope_institution)) "todas_instituciones" else gsub("[^A-Za-z0-9]+", "_", tolower(scope_institution)),
+        sep = "_"
       )
+      dataset_name <- switch(
+        dataset,
+        formulario_1 = "formulario_1_campo",
+        formulario_5 = "formulario_5_insectario",
+        formulario_7 = "formulario_7_insectario",
+        "datos_entonet"
+      )
+      paste0(dataset_name, "_", scope, "_", date_stamp, ".csv")
     },
     content = function(file) {
-      dataset <- input$request_dataset
-      query <- switch(
-        dataset,
-        egg_intake = "
-          select *
-          from rei.egg_count_intake
-          order by submitted_at desc
-        ",
-        "
-          select *
-          from rei.egg_count_observations
-          order by observation_id
-        "
-      )
+      subdivision <- active_request_data_subdivision()
+      allowed_subdivisions <- request_allowed_data_subdivisions()
+      if (is.null(subdivision) || !(subdivision %in% allowed_subdivisions)) {
+        stop("Su perfil no tiene permiso para descargar datos de esta área.")
+      }
+
+      dataset <- value_or_default(input$request_download_dataset, "")
+      allowed_datasets <- unname(request_data_dataset_choices(subdivision))
+      if (!nzchar(dataset) || !(dataset %in% allowed_datasets)) {
+        stop("Seleccione un conjunto de datos permitido para su perfil.")
+      }
 
       connection <- NULL
       data <- data.frame()
-
       tryCatch({
         connection <- connect_to_supabase()
-        data <- dbGetQuery(connection, query)
+        data <- switch(
+          dataset,
+          formulario_1 = request_fetch_formulario_1(connection),
+          formulario_5 = request_fetch_formulario_5(connection),
+          formulario_7 = request_fetch_formulario_7(connection),
+          data.frame()
+        )
       }, finally = {
         if (!is.null(connection)) {
           dbDisconnect(connection)
         }
       })
 
-      write.csv(data, file, row.names = FALSE, na = "")
+      write.csv(data, file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
     }
   )
 
