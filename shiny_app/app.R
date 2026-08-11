@@ -677,6 +677,7 @@ formulario_7_header_columns <- c(
   "formulario_codigo", "formulario_nombre", "fecha_registro", "codigo_bioensayo", "nombre_poblacion",
   "pais", "id_institucion", "codigo_departamento", "codigo_municipio", "modalidad_bioensayo",
   "dosis_diagnostica_1x", "dosis_intensidad", "sinergista_def", "sinergista_pbo", "sinergista_dm",
+  "sinergista_tipo", "dosis_sinergista_ug_ml",
   "resultado_diagnostico", "fecha_realizacion_bioensayo", "codigo_insecticida", "solvente_utilizado",
   "solvente_otro", "dosis_ug_ml", "codigo_dosis", "fecha_revestimiento_botellas",
   "numero_usos_botella_e1", "numero_usos_botella_e2", "numero_usos_botella_e3",
@@ -1725,6 +1726,9 @@ formulario_7_bottle_panel <- function(bottle) {
   reading_rows <- lapply(c(0, 15, 30, 45), function(minutes) {
     formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), paste(minutes, "minutos"))
   })
+  insecticide_after_synergist_rows <- lapply(c(15, 30, 45), function(minutes) {
+    formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), paste(minutes, "minutos"))
+  })
 
   tagList(
     textInput(
@@ -1744,11 +1748,19 @@ formulario_7_bottle_panel <- function(bottle) {
     ),
     conditionalPanel(
       "input.f7_tipo_bioensayo == 'sinergistas'",
+      h4("8. Sinergista"),
       div(
         class = "alert alert-info",
-        "Ensayo con sinergistas: registre únicamente la lectura a los 60 minutos. No aplica lectura a 24 horas."
+        "Registre la lectura del sinergista a los 60 minutos antes de aplicar el insecticida."
       ),
-      formulario_7_count_pair(paste0("resultado_60min_", bottle), "60 minutos")
+      formulario_7_count_pair(paste0("resultado_60min_", bottle), "60 minutos"),
+      tags$hr(),
+      h4("9. Lectura por botella"),
+      div(
+        class = "alert alert-info",
+        "Después del sinergista se registra la dosis diagnóstica 1X del insecticida a 15, 30 y 45 minutos. No aplica lectura a 24 horas."
+      ),
+      insecticide_after_synergist_rows
     )
   )
 }
@@ -1826,7 +1838,8 @@ formulario_7_capture_form <- function() {
             ),
             conditionalPanel(
               "input.f7_tipo_bioensayo == 'sinergistas'",
-              checkboxGroupInput("f7_sinergistas", "Sinergistas *", choices = c("DEF" = "def", "PBO" = "pbo", "DM" = "dm"), inline = TRUE)
+              selectInput("f7_sinergista_tipo", "Sinergista *", choices = c("Seleccione" = "", "DEF" = "DEF", "PBO" = "PBO", "DM" = "DM")),
+              numericInput("f7_dosis_sinergista_ug_ml", "Dosis sinergista (µg/ml) *", value = NA, min = 0)
             ),
             dateInput("f7_fecha_registro", "Fecha de registro *", value = Sys.Date())
           )
@@ -5867,6 +5880,7 @@ server <- function(input, output, session) {
       "A22:G22", "H22:N22", "B23:C23", "E23:F23", "I23:J23", "L23:N23",
       "A25:N25", "A32:N32"
     )
+    if (is_synergist_print) merges <- c(merges, "A39:N39")
 
     add_row <- function(row, values, styles = rep(0L, length(values)), height = NULL) {
       cells <- lapply(seq_along(values), function(col) f1_excel_cell(row, col, values[[col]], styles[[col]]))
@@ -5884,10 +5898,10 @@ server <- function(input, output, session) {
 
     add_row(9, c("3. INFORMACIÓN DEL BIOENSAYO", rep("", 6), "4. INFORMACIÓN DEL MATERIAL BIOLÓGICO", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
     add_row(10, c("Fecha realización (dd/mm/aa)", "", "", "", "", "", "", "Origen", "", "Silvestre__", "", "Laboratorio__", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(11, c("Código insecticida", "", "", "", "", "", "", "Edad", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(12, c("Solvente utilizado", "", "Etanol", "", "Otro:", "", "", "Código especie mosquito", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(13, c("Dosis", "", "", "", "", "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(14, c("Código de dosis", "", "", "", "", "", "", "Generación filial", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(11, c(if (is_synergist_print) "Sinergista" else "Código insecticida", "", "", "", "", "", "", "Edad", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(12, c(if (is_synergist_print) "Dosis sinergista" else "Solvente utilizado", "", if (is_synergist_print) "" else "Etanol", "", if (is_synergist_print) "ug/mL" else "Otro:", "", "", "Código especie mosquito", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(13, c(if (is_synergist_print) "Código insecticida" else "Dosis", "", "", "", "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(14, c(if (is_synergist_print) "Dosis insecticida" else "Código de dosis", "", "", "", "", if (is_synergist_print) "ug/mL" else "", "", "Generación filial", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(16, c("# Veces se han utilizado", "", "E1__", "", "E2__", "", "E3__", "", "E4__", "", "C1__", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
 
@@ -5904,24 +5918,29 @@ server <- function(input, output, session) {
     add_row(23, c("Temp. inicial", "", "", "Temp. final", "", "", "", "Hora inicial (hh:mm)", "", "", "Hora final (hh:mm)", "", "", ""), c(16L, 17L, 17L, 16L, 17L, 17L, 17L, 16L, 17L, 17L, 16L, 17L, 17L, 17L), 21)
     add_row(24, c("HR inicial", "", "", "HR final", "", "", "", "", "", "", "", "", "", ""), c(16L, 17L, 17L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
 
-    add_row(25, c("8. LECTURAS POR BOTELLA", rep("", 13)), c(15L, rep(15L, 13)), 18)
-    add_row(
-      26,
-      if (is_synergist_print) {
-        c("BOTELLA", "INICIO (hh:mm)", "60 V", "60 I", "OBS.", "", "", "", "", "", "", "", "", "")
-      } else {
-        c("BOTELLA", "INICIO (hh:mm)", "0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS.")
-      },
-      rep(16L, 14),
-      24
-    )
     bottle_labels <- c("E1", "E2", "E3", "E4", "C1")
-    for (index in seq_along(bottle_labels)) {
-      add_row(26L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
+    if (is_synergist_print) {
+      add_row(25, c("8. SINERGISTA", rep("", 13)), c(15L, rep(15L, 13)), 18)
+      add_row(26, c("BOTELLA", "INICIO (hh:mm)", "60 V", "60 I", "OBS.", "", "", "", "", "", "", "", "", ""), rep(16L, 14), 24)
+      for (index in seq_along(bottle_labels)) {
+        add_row(26L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
+      }
+      add_row(32, c("9. LECTURA POR BOTELLA", rep("", 13)), c(15L, rep(15L, 13)), 18)
+      add_row(33, c("BOTELLA", "INICIO (hh:mm)", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "OBS.", "", "", "", "", ""), rep(16L, 14), 24)
+      for (index in seq_along(bottle_labels)) {
+        add_row(33L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
+      }
+      add_row(39, c("COMENTARIO", rep("", 13)), c(15L, rep(15L, 13)), 18)
+      add_row(40, c("", rep("", 13)), rep(17L, 14), 34)
+    } else {
+      add_row(25, c("8. LECTURAS POR BOTELLA", rep("", 13)), c(15L, rep(15L, 13)), 18)
+      add_row(26, c("BOTELLA", "INICIO (hh:mm)", "0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS."), rep(16L, 14), 24)
+      for (index in seq_along(bottle_labels)) {
+        add_row(26L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
+      }
+      add_row(32, c("COMENTARIO", rep("", 13)), c(15L, rep(15L, 13)), 18)
+      add_row(33, c("", rep("", 13)), rep(17L, 14), 34)
     }
-
-    add_row(32, c("COMENTARIO", rep("", 13)), c(15L, rep(15L, 13)), 18)
-    add_row(33, c("", rep("", 13)), rep(17L, 14), 34)
 
     merge_xml <- paste0(
       '<mergeCells count="', length(merges), '">',
@@ -5951,6 +5970,8 @@ server <- function(input, output, session) {
     file, pais, departamento, municipio, codigo_bioensayo, nombre_poblacion,
     tipo_bioensayo, version_formulario
   ) {
+    is_synergist_print <- grepl("^Sinergista", value_or_default(tipo_bioensayo, ""), ignore.case = TRUE)
+    last_print_row <- if (is_synergist_print) 40L else 33L
     root <- tempfile("f7_print_xlsx_")
     dir.create(root, recursive = TRUE)
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -5997,7 +6018,7 @@ server <- function(input, output, session) {
       '<sheets><sheet name="Formulario 7" sheetId="1" r:id="rId1"/></sheets>',
       '<definedNames>',
       '<definedName name="_xlnm.Print_Titles" localSheetId="0">\'Formulario 7\'!$1:$4</definedName>',
-      '<definedName name="_xlnm.Print_Area" localSheetId="0">\'Formulario 7\'!$A$1:$N$33</definedName>',
+      '<definedName name="_xlnm.Print_Area" localSheetId="0">\'Formulario 7\'!$A$1:$N$', last_print_row, '</definedName>',
       '</definedNames>',
       '</workbook>'
     ))
@@ -8039,7 +8060,7 @@ server <- function(input, output, session) {
       "edad_indefinida", "generacion_filial_indefinida"
     )
     numeric_columns <- c(
-      "dosis_ug_ml", paste0("numero_usos_botella_", c("e1", "e2", "e3", "e4", "c1")), "edad_dias",
+      "dosis_ug_ml", "dosis_sinergista_ug_ml", paste0("numero_usos_botella_", c("e1", "e2", "e3", "e4", "c1")), "edad_dias",
       "temperatura_inicial_c", "temperatura_final_c", "humedad_relativa_inicial_pct", "humedad_relativa_final_pct",
       grep("_(vivos|incapacitados)$", formulario_7_intake_columns, value = TRUE)
     )
@@ -8111,6 +8132,7 @@ server <- function(input, output, session) {
       formulario_codigo = "F7", modalidad_bioensayo = c("Exploratorio", "Completa"), solvente_utilizado = c("Etanol", "Otro"),
       origen_material = c("Silvestre", "Laboratorio"), pais = c("El Salvador", "Guatemala"),
       dosis_intensidad = c("1X", "2X", "5X", "10X"),
+      sinergista_tipo = c("DEF", "PBO", "DM"),
       resultado_diagnostico = c("Suceptible", "Sospecha de Resistencia", "Resistente")
     )
     for (column in names(allowed)) {
@@ -8138,6 +8160,13 @@ server <- function(input, output, session) {
         if (is_diagnostic || has_synergist) details <- c(details, paste("Fila", row, ": Intensidad no puede combinarse con Diagnóstica 1X o Sinergistas."))
       } else if (!is.na(data$dosis_intensidad[[row]])) {
         details <- c(details, paste("Fila", row, ": dosis_intensidad solo corresponde al Tipo de Bioensayo Intensidad."))
+      }
+      if (has_synergist) {
+        if (is.na(data$sinergista_tipo[[row]])) details <- c(details, paste("Fila", row, ": indique sinergista_tipo DEF, PBO o DM."))
+        if (is.na(data$dosis_sinergista_ug_ml[[row]])) details <- c(details, paste("Fila", row, ": indique dosis_sinergista_ug_ml."))
+      } else {
+        data$sinergista_tipo[[row]] <- NA_character_
+        data$dosis_sinergista_ug_ml[[row]] <- NA_real_
       }
       if (identical(data$solvente_utilizado[[row]], "Otro") && is.na(data$solvente_otro[[row]])) details <- c(details, paste("Fila", row, ": especifique el otro solvente."))
       if (identical(data$solvente_utilizado[[row]], "Etanol")) data$solvente_otro[[row]] <- NA_character_
@@ -8170,6 +8199,14 @@ server <- function(input, output, session) {
           hora_lectura = row[[paste0("resultado_hora_inicio_", bottle)]],
           vivos = row[[paste0(base, "_vivos")]], incapacitados = row[[paste0(base, "_incapacitados")]], stringsAsFactors = FALSE
         )
+        for (minutes in c(15, 30, 45)) {
+          base <- paste0("resultado_", minutes, "min_", bottle)
+          if (!is.na(row[[paste0(base, "_vivos")]])) results[[length(results) + 1]] <- data.frame(
+            fase = "bioensayo", botella = bottle, tiempo_minutos = minutes,
+            hora_lectura = row[[paste0("resultado_hora_inicio_", bottle)]],
+            vivos = row[[paste0(base, "_vivos")]], incapacitados = row[[paste0(base, "_incapacitados")]], stringsAsFactors = FALSE
+          )
+        }
         next
       }
       for (minutes in c(0, 15, 30, 45)) {
@@ -8258,7 +8295,7 @@ server <- function(input, output, session) {
     "fecha_registro", "fecha_realizacion_bioensayo", "fecha_revestimiento_botellas", "fecha_separacion"
   )
   f7_review_numeric_fields <- c(
-    "dosis_ug_ml", paste0("numero_usos_botella_", c("e1", "e2", "e3", "e4", "c1")), "edad_dias",
+    "dosis_ug_ml", "dosis_sinergista_ug_ml", paste0("numero_usos_botella_", c("e1", "e2", "e3", "e4", "c1")), "edad_dias",
     "temperatura_inicial_c", "temperatura_final_c", "humedad_relativa_inicial_pct", "humedad_relativa_final_pct",
     grep("_(vivos|incapacitados)$", formulario_7_intake_columns, value = TRUE)
   )
@@ -8270,6 +8307,7 @@ server <- function(input, output, session) {
       codigo_bioensayo = "Código de bioensayo",
       dosis_diagnostica_1x = "Diagnóstica 1X", dosis_intensidad = "Dosis de intensidad",
       sinergista_def = "Sinergista DEF", sinergista_pbo = "Sinergista PBO", sinergista_dm = "Sinergista DM",
+      sinergista_tipo = "Sinergista", dosis_sinergista_ug_ml = "Dosis sinergista (µg/mL)",
       resultado_diagnostico = "Resultado diagnóstico", dosis_ug_ml = "Dosis (µg/mL)",
       humedad_relativa_inicial_pct = "Humedad relativa inicial (%)",
       humedad_relativa_final_pct = "Humedad relativa final (%)",
@@ -8290,7 +8328,7 @@ server <- function(input, output, session) {
     if (field %in% c(
       "formulario_codigo", "formulario_nombre", "fecha_registro", "codigo_bioensayo", "nombre_poblacion",
       "modalidad_bioensayo", "dosis_diagnostica_1x", "dosis_intensidad", "sinergista_def", "sinergista_pbo",
-      "sinergista_dm", "resultado_diagnostico", "pais", "codigo_departamento", "codigo_municipio"
+      "sinergista_dm", "sinergista_tipo", "dosis_sinergista_ug_ml", "resultado_diagnostico", "pais", "codigo_departamento", "codigo_municipio"
     )) return("Información general")
     if (field %in% c(
       "fecha_realizacion_bioensayo", "codigo_insecticida", "solvente_utilizado", "solvente_otro",
@@ -8946,7 +8984,7 @@ server <- function(input, output, session) {
     }
     selected_bioassay_type <- value_or_default(input$f7_tipo_bioensayo, "diagnostica_1x")
     selected_modality <- if (identical(selected_bioassay_type, "intensidad")) value_or_default(input$f7_modalidad_bioensayo, "Exploratorio") else NA_character_
-    selected_synergists <- if (identical(selected_bioassay_type, "sinergistas")) value_or_default(input$f7_sinergistas, character()) else character()
+    selected_synergist <- if (identical(selected_bioassay_type, "sinergistas")) value_or_default(input$f7_sinergista_tipo, NA_character_) else NA_character_
     diagnostic_result <- if (identical(selected_bioassay_type, "diagnostica_1x")) value_or_default(input$f7_resultado_diagnostico, NA_character_) else NA_character_
     if (identical(value_or_default(input$f7_codigo_municipio, ""), "__manual__")) {
       values$codigo_municipio <- gsub("[^0-9]+", "", value_or_default(input$f7_codigo_municipio_manual, ""))
@@ -8954,21 +8992,24 @@ server <- function(input, output, session) {
     values$modalidad_bioensayo <- selected_modality
     values$dosis_diagnostica_1x <- as.character(identical(selected_bioassay_type, "diagnostica_1x"))
     values$dosis_intensidad <- if (identical(selected_bioassay_type, "intensidad") && identical(selected_modality, "Completa")) input$f7_dosis_intensidad else NA_character_
-    values$sinergista_def <- as.character("def" %in% selected_synergists)
-    values$sinergista_pbo <- as.character("pbo" %in% selected_synergists)
-    values$sinergista_dm <- as.character("dm" %in% selected_synergists)
+    values$sinergista_tipo <- selected_synergist
+    values$sinergista_def <- as.character(identical(selected_synergist, "DEF"))
+    values$sinergista_pbo <- as.character(identical(selected_synergist, "PBO"))
+    values$sinergista_dm <- as.character(identical(selected_synergist, "DM"))
     values$resultado_diagnostico <- diagnostic_result
     values$codigo_bioensayo <- formulario_7_codigo_bioensayo_final(
       values$codigo_bioensayo, values$dosis_diagnostica_1x, values$modalidad_bioensayo, values$dosis_intensidad,
       values$sinergista_def, values$sinergista_pbo, values$sinergista_dm
     )
     if (identical(selected_bioassay_type, "sinergistas")) {
-      non_synergist_results <- grep("resultado_(0|15|30|45)min_|resultado_hora_lectura_24h_|resultado_24h_", formulario_7_result_columns, value = TRUE)
+      non_synergist_results <- grep("resultado_0min_|resultado_hora_lectura_24h_|resultado_24h_", formulario_7_result_columns, value = TRUE)
       values[non_synergist_results] <- NA_character_
       values$codigo_revision_24h <- NA_character_
     } else {
       synergist_results <- grep("resultado_60min_", formulario_7_result_columns, value = TRUE)
       values[synergist_results] <- NA_character_
+      values$sinergista_tipo <- NA_character_
+      values$dosis_sinergista_ug_ml <- NA_character_
     }
     values$edad_indefinida <- as.character(isTRUE(input$f7_edad_indefinida))
     values$generacion_filial_indefinida <- as.character(isTRUE(input$f7_generacion_filial_indefinida))
@@ -9001,7 +9042,12 @@ server <- function(input, output, session) {
         if (missing_value("modalidad_bioensayo")) errors <- c(errors, "Seleccione Intensidad Exploratorio o Completa.")
         if (identical(input$f7_modalidad_bioensayo, "Completa") && missing_value("dosis_intensidad")) errors <- c(errors, "Seleccione la dosis de intensidad 1X, 2X, 5X o 10X.")
       }
-      if (identical(input$f7_tipo_bioensayo, "sinergistas") && length(value_or_default(input$f7_sinergistas, character())) == 0) errors <- c(errors, "Seleccione al menos un sinergista: DEF, PBO o DM.")
+      if (identical(input$f7_tipo_bioensayo, "sinergistas")) {
+        if (missing_value("sinergista_tipo")) errors <- c(errors, "Seleccione el sinergista: DEF, PBO o DM.")
+        if (missing_value("dosis_sinergista_ug_ml")) errors <- c(errors, "Indique la dosis del sinergista.")
+        synergist_dose <- suppressWarnings(as.numeric(value("dosis_sinergista_ug_ml")))
+        if (!missing_value("dosis_sinergista_ug_ml") && (is.na(synergist_dose) || synergist_dose < 0)) errors <- c(errors, "La dosis del sinergista debe ser un número igual o mayor que cero.")
+      }
     }
 
     if (identical(step, "informacion_bioensayo")) {

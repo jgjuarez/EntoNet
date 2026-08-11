@@ -20,7 +20,8 @@ Orden sugerido de ejecucion:
 14. `018_catalogo_ubicacion_compartido.sql`
 15. `019_fase_1_institucion_uvg.sql`
 16. `023_formulario_7_sinergistas_60min.sql`
-17. Scripts futuros de catalogos, permisos y vistas.
+17. `024_formulario_7_sinergista_dosis.sql`
+18. Scripts futuros de catalogos, permisos y vistas.
 
 Para ejecutar todos los scripts desde la raiz del repositorio:
 
@@ -47,7 +48,7 @@ Catálogos compartidos:
 Formulario 7 usa un modelo normalizado alineado con el ingreso individual:
 
 - `formulario_7_bioensayo_intake`: información general, bioensayo, material, responsables, condiciones y estado de revisión. `codigo_bioensayo` es el identificador del registro.
-- `formulario_7_bioensayo_resultado_intake`: lecturas por botella y tiempo.
+- `formulario_7_bioensayo_resultado_intake`: lecturas por botella y tiempo. Para sinergistas se registra primero la lectura de 60 minutos del sinergista y luego la lectura del insecticida a 15, 30 y 45 minutos.
 - `formulario_7_bioensayo_comentario_intake`: un comentario asociado.
 
 Formulario 1 usa un modelo encabezado-detalle:
