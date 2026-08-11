@@ -3389,6 +3389,64 @@ ui <- fluidPage(
         font-size: 14px;
         margin: 0;
       }
+      .capture-code-guide {
+        border: 1px solid #d8e3e6;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        max-width: 920px;
+        padding: 18px;
+      }
+      .capture-code-guide h4 {
+        font-size: 18px;
+        font-weight: 800;
+        margin: 0 0 10px;
+      }
+      .capture-code-guide p,
+      .capture-code-guide li {
+        color: #5f6b78;
+        font-size: 14px;
+      }
+      .capture-code-pattern {
+        background: #f6f8f9;
+        border: 1px solid #d8e3e6;
+        border-radius: 6px;
+        color: #293241;
+        font-family: Menlo, Monaco, Consolas, monospace;
+        font-size: 13px;
+        margin: 8px 0;
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+      }
+      .capture-code-flow {
+        align-items: stretch;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 1fr auto 1fr auto 1fr;
+        margin-top: 14px;
+      }
+      .capture-code-flow-step {
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .capture-code-flow-step strong {
+        color: #293241;
+        display: block;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+      .capture-code-flow-step span {
+        color: #5f6b78;
+        display: block;
+        font-size: 13px;
+      }
+      .capture-code-flow-arrow {
+        align-self: center;
+        color: #006f72;
+        font-size: 22px;
+        font-weight: 800;
+      }
       .formulario-1-capture-layout {
         align-items: start;
         display: grid;
@@ -4047,6 +4105,12 @@ ui <- fluidPage(
         }
         .impact-component-card:last-child {
           grid-column: auto;
+        }
+        .capture-code-flow {
+          grid-template-columns: 1fr;
+        }
+        .capture-code-flow-arrow {
+          text-align: center;
         }
         .impact-training-panel {
           grid-template-columns: 1fr;
@@ -10518,8 +10582,42 @@ server <- function(input, output, session) {
       if (identical(subdivision, "laboratorio")) {
         return(h3(class = "capture-dataset-title", "Laboratorio"))
       }
-      return(div(
-        class = "capture-subdivision-list",
+      return(tagList(
+        div(
+          class = "capture-code-guide",
+          h4("Construcción de códigos"),
+          p("Los códigos se construyen en secuencia para mantener la trazabilidad desde el campo hasta los bioensayos."),
+          tags$ul(
+            tags$li(tags$strong("Código cuadrante: "), "REI + año + país + código departamento/municipio + C###. Ejemplo: ", tags$code("REI25GT0503C001")),
+            tags$li(tags$strong("Código población: "), "se deriva del código territorial del cuadrante y reemplaza el cuadrante por P#. Ejemplo: ", tags$code("REI25GT0503P2")),
+            tags$li(tags$strong("Código bioensayo: "), "REI + año + país + código departamento/municipio + P# + sinergista si aplica + insecticida + correlativo + generación filial. Ejemplo: ", tags$code("REI26GT0920P2DEFDEL1F1"))
+          ),
+          div(
+            class = "capture-code-flow",
+            div(
+              class = "capture-code-flow-step",
+              strong("1. Campo"),
+              span("Se define el código cuadrante desde país, ubicación y número de cuadrante."),
+              div(class = "capture-code-pattern", "REI + AA + PAIS + DEP/MUNI + C###")
+            ),
+            div(class = "capture-code-flow-arrow", "->"),
+            div(
+              class = "capture-code-flow-step",
+              strong("2. Población"),
+              span("Uno o más cuadrantes forman una población para evaluación."),
+              div(class = "capture-code-pattern", "REI + AA + PAIS + DEP/MUNI + P#")
+            ),
+            div(class = "capture-code-flow-arrow", "->"),
+            div(
+              class = "capture-code-flow-step",
+              strong("3. Bioensayo"),
+              span("La población se combina con sinergista, insecticida, correlativo y generación filial."),
+              div(class = "capture-code-pattern", "REI + AA + PAIS + DEP/MUNI + P# + SIN + INS + # + F#")
+            )
+          )
+        ),
+        div(
+          class = "capture-subdivision-list",
         div(
           class = "capture-subdivision-panel",
           h4("Campo"),
@@ -10534,6 +10632,7 @@ server <- function(input, output, session) {
           class = "capture-subdivision-panel",
           h4("Laboratorio"),
           p("Sin formularios activos por el momento.")
+        )
         )
       ))
     }
