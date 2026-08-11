@@ -5905,7 +5905,7 @@ server <- function(input, output, session) {
     add_row(12, c(if (is_synergist_print) "Dosis sinergista" else "Solvente utilizado", "", if (is_synergist_print) "" else "Etanol", "", if (is_synergist_print) "ug/mL" else "Otro:", "", "", "Código especie mosquito", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(13, c(if (is_synergist_print) "Insecticida" else "Concentración", "", "", "", "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(14, c(if (is_synergist_print) "Concentración" else "# lote insecticida", "", "", "", "", if (is_synergist_print) "ug/mL" else "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "Generación filial", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(16, c("# Veces se han utilizado las botellas", "", "E1__", "", "E2__", "", "E3__", "", "E4__", "", "C1__", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
 
     add_row(18, c("5. RESPONSABLES", rep("", 13)), c(15L, rep(15L, 13)), 18)
