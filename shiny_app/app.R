@@ -714,7 +714,26 @@ formulario_7_intake_columns <- c(
   formulario_7_comment_columns,
   "fuente_formulario", "creado_por", "creado_en", "actualizado_en"
 )
-formulario_7_csv_columns <- formulario_7_intake_columns
+formulario_7_csv_columns <- c(
+  "formulario_codigo", "formulario_nombre", "fecha_registro", "codigo_bioensayo",
+  "pais", "id_institucion", "codigo_departamento", "codigo_municipio",
+  "nombre_poblacion", "nombre_quien_ingreso", "bioensayo_diagnostica_1x",
+  "bioensayo_intensidad", "dosis_intensidad_ug_ml", "sinergista_def",
+  "sinergista_pbo", "sinergista_dm", "dosis_sinergista_ug_ml",
+  "resultado_diagnostico", "fecha_realizacion_bioensayo", "insecticida",
+  "solvente_utilizado", "solvente_otro", "lote_insecticida",
+  "fecha_revestimiento_botellas", "numero_usos_botella_e1",
+  "numero_usos_botella_e2", "numero_usos_botella_e3", "numero_usos_botella_e4",
+  "numero_usos_botella_c1", "origen_material", "edad_dias", "edad_indefinida",
+  "codigo_especie_mosquito", "fecha_separacion", "hora_separacion",
+  "generacion_filial", "generacion_filial_indefinida",
+  "codigo_responsable_revestimiento", "codigo_responsable_bioensayo",
+  "codigo_revision_24h", "temperatura_inicial_c", "temperatura_final_c",
+  "humedad_relativa_inicial_pct", "humedad_relativa_final_pct",
+  "hora_inicio_bioensayo", "hora_final_bioensayo",
+  formulario_7_result_columns,
+  formulario_7_comment_columns
+)
 
 formulario_7_template <- as.data.frame(
   setNames(rep(list(""), length(formulario_7_intake_columns)), formulario_7_intake_columns),
@@ -725,6 +744,57 @@ formulario_7_template$formulario_nombre <- "Registro de datos del bioensayo de l
 formulario_7_template$fecha_registro <- as.character(Sys.Date())
 formulario_7_template$id_institucion <- default_institution_id
 formulario_7_template$fuente_formulario <- "Formulario 7_Bioensayo .docx"
+
+formulario_7_external_to_internal_names <- c(
+  nombre_quien_ingreso = "creado_por",
+  bioensayo_diagnostica_1x = "dosis_diagnostica_1x",
+  bioensayo_intensidad = "modalidad_bioensayo",
+  dosis_intensidad_ug_ml = "dosis_ug_ml",
+  insecticida = "codigo_insecticida",
+  lote_insecticida = "codigo_dosis"
+)
+
+formulario_7_csv_to_internal <- function(csv_data) {
+  if (all(formulario_7_intake_columns %in% names(csv_data))) {
+    return(csv_data[formulario_7_intake_columns])
+  }
+
+  data <- as.data.frame(
+    setNames(rep(list(rep(NA_character_, nrow(csv_data))), length(formulario_7_intake_columns)), formulario_7_intake_columns),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  same_name_columns <- intersect(names(csv_data), formulario_7_intake_columns)
+  for (column in same_name_columns) data[[column]] <- csv_data[[column]]
+  for (external_name in names(formulario_7_external_to_internal_names)) {
+    internal_name <- formulario_7_external_to_internal_names[[external_name]]
+    if (external_name %in% names(csv_data)) data[[internal_name]] <- csv_data[[external_name]]
+  }
+  data$codigo_control_calidad[is.na(data$codigo_control_calidad) | !nzchar(trimws(data$codigo_control_calidad))] <- "NO APLICA"
+  data$fuente_formulario[is.na(data$fuente_formulario) | !nzchar(trimws(data$fuente_formulario))] <- "Formulario 7_Bioensayo .docx"
+  data$sinergista_tipo <- NA_character_
+  data$sinergista_tipo[tolower(trimws(value_or_default(data$sinergista_def, ""))) %in% c("true", "1", "si", "sí", "yes")] <- "DEF"
+  data$sinergista_tipo[tolower(trimws(value_or_default(data$sinergista_pbo, ""))) %in% c("true", "1", "si", "sí", "yes")] <- "PBO"
+  data$sinergista_tipo[tolower(trimws(value_or_default(data$sinergista_dm, ""))) %in% c("true", "1", "si", "sí", "yes")] <- "DM"
+  data[formulario_7_intake_columns]
+}
+
+formulario_7_internal_to_csv <- function(data) {
+  output <- as.data.frame(
+    setNames(rep(list(rep("", nrow(data))), length(formulario_7_csv_columns)), formulario_7_csv_columns),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  same_name_columns <- intersect(formulario_7_csv_columns, names(data))
+  for (column in same_name_columns) output[[column]] <- data[[column]]
+  output$nombre_quien_ingreso <- data$creado_por
+  output$bioensayo_diagnostica_1x <- data$dosis_diagnostica_1x
+  output$bioensayo_intensidad <- data$modalidad_bioensayo
+  output$dosis_intensidad_ug_ml <- data$dosis_ug_ml
+  output$insecticida <- data$codigo_insecticida
+  output$lote_insecticida <- data$codigo_dosis
+  output[formulario_7_csv_columns]
+}
 
 parse_postgres_url <- function(url) {
   pattern <- "^postgres(?:ql)?://([^:]+):([^@]+)@([^:/?]+):([0-9]+)/([^?]+)(?:\\?.*)?$"
@@ -8150,13 +8220,14 @@ server <- function(input, output, session) {
 
   validate_formulario_7 <- function(csv_data) {
     details <- character()
-    missing_columns <- setdiff(formulario_7_intake_columns, names(csv_data))
-    extra_columns <- setdiff(names(csv_data), formulario_7_intake_columns)
+    expected_columns <- if (all(formulario_7_intake_columns %in% names(csv_data))) formulario_7_intake_columns else formulario_7_csv_columns
+    missing_columns <- setdiff(expected_columns, names(csv_data))
+    extra_columns <- setdiff(names(csv_data), expected_columns)
     if (length(missing_columns) > 0) details <- c(details, paste("Faltan columnas:", paste(missing_columns, collapse = ", ")))
     if (length(extra_columns) > 0) details <- c(details, paste("Columnas no esperadas:", paste(extra_columns, collapse = ", ")))
     if (length(details) > 0) return(list(data = NULL, details = details))
 
-    data <- csv_data[formulario_7_intake_columns]
+    data <- formulario_7_csv_to_internal(csv_data)
     if (nrow(data) == 0) return(list(data = NULL, details = "El archivo no contiene registros."))
     for (column in names(data)) data[[column]] <- f7_clean_text(data[[column]])
     data$codigo_control_calidad[is.na(data$codigo_control_calidad)] <- "NO APLICA"
@@ -10732,7 +10803,7 @@ server <- function(input, output, session) {
           class = "formulario-1-capture-layout",
           div(
             class = "capture-action-list",
-            capture_action_row("Subida de datos masiva", "Cargue varios bioensayos desde el machote CSV oficial de 111 columnas visibles.", "open_formulario_7_bulk_upload", "Abrir subida masiva"),
+            capture_action_row("Subida de datos masiva", "Cargue varios bioensayos desde el machote CSV oficial de 118 columnas visibles.", "open_formulario_7_bulk_upload", "Abrir subida masiva"),
             capture_action_row("Ingreso individual de datos", "Capture un bioensayo con las lecturas agrupadas por botella y tiempo.", "open_formulario_7_entry", "Abrir ingreso individual"),
             capture_action_row("Revisar formulario", "Abra registros de Formulario 7 para confirmar la revisión o activar y editar sus valores.", "open_formulario_7_review", "Abrir revisión"),
             capture_action_row("Imprimir formulario", "Genere el machote de Formulario 7 con Código Bioensayo y ubicación prellenados.", "open_formulario_7_print", "Abrir impresión")
@@ -11000,7 +11071,7 @@ server <- function(input, output, session) {
     content = function(file) {
       template <- formulario_7_template
       template$fecha_registro <- as.character(Sys.Date())
-      write.csv(template[formulario_7_csv_columns], file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
+      write.csv(formulario_7_internal_to_csv(template), file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
     }
   )
 
@@ -11093,7 +11164,7 @@ server <- function(input, output, session) {
         template$sinergista_pbo <- as.character(identical(selected_synergist, "pbo"))
         template$sinergista_dm <- as.character(identical(selected_synergist, "dm"))
       }
-      write.csv(template[formulario_7_csv_columns], file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
+      write.csv(formulario_7_internal_to_csv(template), file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
     }
   )
 
