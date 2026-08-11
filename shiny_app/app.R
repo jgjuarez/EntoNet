@@ -648,7 +648,8 @@ formulario_7_codigo_bioensayo_final <- function(
   pbo <- inputs[[6]]
   dm <- inputs[[7]]
   already_final <- !is.na(bioensayo) & (
-    grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}(DEL|PER|MAL|DDT)[0-9]+(\\.[0-9]+)?(DD|IE|IC(2X|5X|10X)|S(DEF|PBO|DM))$", bioensayo) |
+    grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}P[0-9]+(\\.[0-9]+)?(DEF|PBO|DM)?(DEL|PER|MAL|DDT)[0-9]+F[0-9]+$", bioensayo) |
+      grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}(DEL|PER|MAL|DDT)[0-9]+(\\.[0-9]+)?(DD|IE|IC(2X|5X|10X)|S(DEF|PBO|DM))$", bioensayo) |
       grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}BIO[0-9]+(DD|IE|IC(2X|5X|10X)|S(DEF|PBO|DM))$", bioensayo) |
       grepl("-(D|I(-[0-9]+X)+|I-1X-2X-5X-10X|S(-[A-Z]+)+)$", bioensayo)
   )
@@ -1784,7 +1785,7 @@ formulario_7_capture_form <- function() {
                 "input.f7_codigo_bioensayo_help % 2 == 1",
                 div(
                   class = "f7-help-message",
-                  "Para registros nuevos, genere este código antes de ingresar datos desde la sección Imprimir formulario del Formulario 7. La estructura nueva es REI + año + país + código municipio + insecticida (DEL, PER, MAL, DDT) + # población + tipo. Para datos antiguos puede ingresar el código histórico tal como aparece en el formulario."
+                  "Para registros nuevos, genere este código antes de ingresar datos desde la sección Imprimir formulario del Formulario 7. El código parte del código de cuadrante del Formulario 1: REI + año + país + departamento + municipio + cuadrante. Al consolidar población, el cuadrante cambia a P#. En bioensayo se usa: REI + año + país + departamento + municipio + P# + código de sinergista solo si aplica (DEF, PBO o DM) + insecticida (DEL, PER, MAL o DDT) + correlativo incremental + generación filial (F#). Ejemplo: REI26GT0920P2DEFDEL1F1. Para datos antiguos puede ingresar el código histórico tal como aparece en el formulario."
                 )
               )
             ),
@@ -1964,7 +1965,9 @@ formulario_7_print_form <- function() {
         ),
         column(
           6,
-          textInput("f7_print_codigo_bioensayo_poblacion_numero", "# Población", placeholder = "Ej. 2 o 2.1"),
+          textInput("f7_print_codigo_bioensayo_poblacion_numero", "Código población", placeholder = "Ej. P2 o P2.1"),
+          numericInput("f7_print_codigo_bioensayo_correlativo", "# Bioensayo", value = 1, min = 1, step = 1),
+          textInput("f7_print_generacion_filial", "Generación filial", value = "F1", placeholder = "Ej. F1"),
           numericInput("f7_print_codigo_bioensayo_anio", "Año", value = as.integer(format(Sys.Date(), "%y")), min = 0, max = 99, step = 1),
           textInput("f7_print_version_formulario", "Versión del formulario"),
           textInput("f7_print_nombre_poblacion", "Nombre de población"),
@@ -4802,6 +4805,13 @@ server <- function(input, output, session) {
     NA_character_
   }
 
+  f7_print_synergist_code <- function() {
+    if (!identical(value_or_default(input$f7_print_tipo_bioensayo, "DD"), "S")) return("")
+    synergist <- toupper(trimws(value_or_default(input$f7_print_sinergista, "")))
+    if (!synergist %in% c("DEF", "PBO", "DM")) return(NA_character_)
+    synergist
+  }
+
   f7_insecticide_code <- function(value) {
     cleaned <- toupper(trimws(value_or_default(value, "")))
     cleaned <- chartr("ÁÉÍÓÚÜÑ", "AEIOUUN", cleaned)
@@ -4813,23 +4823,37 @@ server <- function(input, output, session) {
   }
 
   f7_population_code <- function(value) {
-    cleaned <- gsub("\\s+", "", value_or_default(value, ""))
+    cleaned <- toupper(gsub("\\s+", "", value_or_default(value, "")))
     cleaned <- gsub(",", ".", cleaned, fixed = TRUE)
+    cleaned <- sub("^P", "", cleaned)
     if (!grepl("^[0-9]+(\\.[0-9]+)?$", cleaned)) return(NA_character_)
-    cleaned
+    paste0("P", cleaned)
+  }
+
+  f7_generation_code <- function(value) {
+    cleaned <- toupper(gsub("\\s+", "", value_or_default(value, "")))
+    cleaned <- sub("^F", "", cleaned)
+    if (!grepl("^[0-9]+$", cleaned)) return(NA_character_)
+    paste0("F", cleaned)
   }
 
   f7_print_codigo_bioensayo_code <- function() {
     country_code <- f7_print_country_acronym(input$f7_print_pais)
     population_code <- f7_population_code(input$f7_print_codigo_bioensayo_poblacion_numero)
     municipality <- f7_print_selected_municipality_code()
+    synergist <- f7_print_synergist_code()
     insecticide <- f7_insecticide_code(input$f7_print_codigo_insecticida)
+    bioassay_number <- f5_integer(input$f7_print_codigo_bioensayo_correlativo)
+    generation <- f7_generation_code(input$f7_print_generacion_filial)
     year <- f5_integer(input$f7_print_codigo_bioensayo_anio)
-    suffix <- f7_print_bioassay_type_suffix()
-    if (is.na(country_code) || is.na(population_code) || !nzchar(municipality) || is.na(insecticide) || is.na(year) || is.na(suffix)) {
+    if (
+      is.na(country_code) || is.na(population_code) || !nzchar(municipality) ||
+        is.na(synergist) || is.na(insecticide) || is.na(bioassay_number) ||
+        bioassay_number < 1 || is.na(generation) || is.na(year)
+    ) {
       return(NA_character_)
     }
-    paste0("REI", sprintf("%02d", year %% 100L), country_code, municipality, insecticide, population_code, suffix)
+    paste0("REI", sprintf("%02d", year %% 100L), country_code, municipality, population_code, synergist, insecticide, bioassay_number, generation)
   }
 
   f1_clean_text <- function(value) {
@@ -6797,7 +6821,7 @@ server <- function(input, output, session) {
       return(div(
         class = "alert alert-warning",
         strong("Código Bioensayo: "),
-        "Complete país, año, municipio, insecticida, # población y tipo de bioensayo para generar el código."
+        "Complete país, año, municipio, población, insecticida, correlativo, generación filial y tipo de bioensayo para generar el código."
       ))
     }
     div(
@@ -6805,7 +6829,7 @@ server <- function(input, output, session) {
       strong("Código Bioensayo generado: "),
       tags$code(codigo),
       tags$br(),
-      tags$small("Estructura: REI + año + país + código municipio + insecticida (DEL/PER/MAL/DDT) + # población + tipo.")
+      tags$small("Estructura: REI + año + país + departamento/municipio + P# + sinergista si aplica + insecticida + correlativo + F#.")
     )
   })
 
@@ -10642,7 +10666,7 @@ server <- function(input, output, session) {
       municipality_code <- f7_print_selected_municipality_code()
       department_code <- value_or_default(input$f7_print_codigo_bioensayo_departamento, "")
       if (is.na(code) || !nzchar(code)) {
-        stop("Complete país, departamento, municipio, insecticida, # población, tipo de bioensayo y año antes de descargar.")
+        stop("Complete país, departamento, municipio, población, insecticida, correlativo, generación filial, tipo de bioensayo y año antes de descargar.")
       }
       version_formulario <- toupper(trimws(value_or_default(input$f7_print_version_formulario, "")))
       if (!nzchar(version_formulario)) {
@@ -10693,7 +10717,7 @@ server <- function(input, output, session) {
       municipality_code <- f7_print_selected_municipality_code()
       department_code <- value_or_default(input$f7_print_codigo_bioensayo_departamento, "")
       if (is.na(code) || !nzchar(code)) {
-        stop("Complete país, departamento, municipio, insecticida, # población, tipo de bioensayo y año antes de descargar.")
+        stop("Complete país, departamento, municipio, población, insecticida, correlativo, generación filial, tipo de bioensayo y año antes de descargar.")
       }
       template <- formulario_7_template
       template$fecha_registro <- as.character(Sys.Date())
@@ -10703,6 +10727,7 @@ server <- function(input, output, session) {
       template$codigo_bioensayo <- code
       template$codigo_insecticida <- f5_text(input$f7_print_codigo_insecticida)
       template$nombre_poblacion <- f5_optional_text(input$f7_print_nombre_poblacion)
+      template$generacion_filial <- f7_generation_code(input$f7_print_generacion_filial)
       type <- value_or_default(input$f7_print_tipo_bioensayo, "DD")
       if (identical(type, "DD")) {
         template$dosis_diagnostica_1x <- "true"
