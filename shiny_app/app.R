@@ -9669,10 +9669,6 @@ server <- function(input, output, session) {
     active_dataset(NULL)
   }
 
-  observeEvent(input$show_request_solicitudes, {
-    select_request_subdivision("solicitudes")
-  })
-
   observeEvent(input$show_request_datos, {
     select_request_subdivision("datos")
   })
@@ -10340,10 +10336,9 @@ server <- function(input, output, session) {
           if (identical(capture_subdivision, "laboratorio")) div(class = "sidebar-form-item", "Sin formularios activos")
         ),
         actionButton("show_visualization", "Visualización de Datos", class = subitem_class("visualization")),
-        actionButton("show_request", "Solicitud de Datos", class = subitem_class("request")),
+        actionButton("show_request", "Solicitudes", class = subitem_class("request")),
         if (identical(module, "request")) div(
           class = "sidebar-form-list",
-          actionButton("show_request_solicitudes", "Solicitudes", class = request_subdivision_class("solicitudes")),
           actionButton("show_request_datos", "Datos", class = request_subdivision_class("datos")),
           actionButton("show_request_reactivos", "Reactivos", class = request_subdivision_class("reactivos")),
           actionButton("show_request_equipo", "Equipo", class = request_subdivision_class("equipo")),
@@ -10474,7 +10469,6 @@ server <- function(input, output, session) {
     if (identical(module, "request")) {
       subdivision <- active_request_subdivision()
       request_labels <- c(
-        solicitudes = "Solicitudes",
         datos = "Datos",
         reactivos = "Reactivos",
         equipo = "Equipo",
@@ -10483,10 +10477,9 @@ server <- function(input, output, session) {
       if (is.null(subdivision)) {
         return(div(
           class = "module-panel",
-          h3("Solicitud de Datos"),
+          h3("Solicitudes"),
           div(
             class = "capture-subdivision-list",
-            div(class = "capture-subdivision-panel", h4("Solicitudes"), p("Gestión general de solicitudes enviadas a EntoNet.")),
             div(class = "capture-subdivision-panel", h4("Datos"), p("Solicitudes de acceso, descarga o consulta de datos.")),
             div(class = "capture-subdivision-panel", h4("Reactivos"), p("Solicitudes relacionadas con reactivos e insumos.")),
             div(class = "capture-subdivision-panel", h4("Equipo"), p("Solicitudes relacionadas con equipo de campo, insectario o laboratorio.")),
@@ -10499,14 +10492,14 @@ server <- function(input, output, session) {
         h3(request_labels[[subdivision]]),
         div(
           class = "alert alert-info",
-          "Esta subdivisión de Solicitud de Datos queda preparada para formularios o flujos futuros."
+          "Esta subdivisión de Solicitudes queda preparada para formularios o flujos futuros."
         )
       ))
     }
 
     div(
       class = "module-panel",
-      h3("Solicitud de Datos"),
+      h3("Solicitudes"),
       div(
         class = "alert alert-info",
         "Las solicitudes de datos se habilitarán únicamente para los formularios activos aprobados por EntoNet."
