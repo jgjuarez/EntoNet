@@ -1985,7 +1985,7 @@ formulario_7_print_form <- function() {
           numericInput("f7_print_codigo_bioensayo_correlativo", "# Bioensayo", value = 1, min = 1, step = 1),
           textInput("f7_print_generacion_filial", "Generación filial", value = "F1", placeholder = "Ej. F1"),
           numericInput("f7_print_codigo_bioensayo_anio", "Año", value = as.integer(format(Sys.Date(), "%y")), min = 0, max = 99, step = 1),
-          textInput("f7_print_version_formulario", "Versión del formulario"),
+          textInput("f7_print_version_formulario", "Versión del formulario", value = "2"),
           textInput("f7_print_nombre_poblacion", "Nombre de población"),
           radioButtons(
             "f7_print_tipo_bioensayo",
@@ -10723,10 +10723,8 @@ server <- function(input, output, session) {
       if (is.na(code) || !nzchar(code)) {
         stop("Complete país, departamento, municipio, población, insecticida, correlativo, generación filial, tipo de bioensayo y año antes de descargar.")
       }
-      version_formulario <- toupper(trimws(value_or_default(input$f7_print_version_formulario, "")))
-      if (!nzchar(version_formulario)) {
-        stop("Ingrese la versión del formulario antes de descargar.")
-      }
+      version_formulario <- toupper(trimws(value_or_default(input$f7_print_version_formulario, "2")))
+      if (!nzchar(version_formulario)) version_formulario <- "2"
       type <- value_or_default(input$f7_print_tipo_bioensayo, "DD")
       type_label <- switch(
         type,
