@@ -10712,6 +10712,7 @@ server <- function(input, output, session) {
       code <- if (!is.na(code) && nzchar(code)) code else format(Sys.Date(), "%Y%m%d")
       paste0("formulario_7_", code, ".xlsx")
     },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     content = function(file) {
       code <- f7_print_codigo_bioensayo_code()
       municipality_code <- f7_print_selected_municipality_code()
