@@ -19,7 +19,8 @@ Orden sugerido de ejecucion:
 13. `017_formulario_7_single_comment.sql`
 14. `018_catalogo_ubicacion_compartido.sql`
 15. `019_fase_1_institucion_uvg.sql`
-16. Scripts futuros de catalogos, permisos y vistas.
+16. `023_formulario_7_sinergistas_60min.sql`
+17. Scripts futuros de catalogos, permisos y vistas.
 
 Para ejecutar todos los scripts desde la raiz del repositorio:
 

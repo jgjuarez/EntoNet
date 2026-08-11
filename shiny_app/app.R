@@ -700,6 +700,7 @@ formulario_7_result_columns <- unlist(lapply(formulario_7_bottles, function(bott
     unlist(lapply(c(0, 15, 30, 45), function(minutes) {
       paste0("resultado_", minutes, "min_", bottle, c("_vivos", "_incapacitados"))
     })),
+    paste0("resultado_60min_", bottle, c("_vivos", "_incapacitados")),
     paste0("resultado_hora_lectura_24h_", bottle),
     paste0("resultado_24h_", bottle, c("_vivos", "_incapacitados"))
   )
@@ -1730,12 +1731,23 @@ formulario_7_bottle_panel <- function(bottle) {
       "Hora de inicio de la botella (HH:MM)",
       placeholder = "08:30"
     ),
-    reading_rows,
-    tagList(
-      tags$hr(),
-      h5("Lectura KDR a 24 horas"),
-      textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
-      formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
+    conditionalPanel(
+      "input.f7_tipo_bioensayo != 'sinergistas'",
+      reading_rows,
+      tagList(
+        tags$hr(),
+        h5("Lectura KDR a 24 horas"),
+        textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
+        formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
+      )
+    ),
+    conditionalPanel(
+      "input.f7_tipo_bioensayo == 'sinergistas'",
+      div(
+        class = "alert alert-info",
+        "Ensayo con sinergistas: registre únicamente la lectura a los 60 minutos. No aplica lectura a 24 horas."
+      ),
+      formulario_7_count_pair(paste0("resultado_60min_", bottle), "60 minutos")
     )
   )
 }
@@ -1886,7 +1898,10 @@ formulario_7_capture_form <- function() {
             textInput("f7_codigo_responsable_revestimiento", "Responsable de revestimiento *"),
             textInput("f7_codigo_responsable_bioensayo", "Responsable del bioensayo *"),
             textInput("f7_codigo_control_calidad", "Código de control de calidad *"),
-            textInput("f7_codigo_revision_24h", "Código de revisión a 24 h *")
+            conditionalPanel(
+              "input.f7_tipo_bioensayo != 'sinergistas'",
+              textInput("f7_codigo_revision_24h", "Código de revisión a 24 h *")
+            )
           )
         )
       ),
@@ -5811,6 +5826,7 @@ server <- function(input, output, session) {
     tipo_bioensayo, version_formulario, include_watermark = FALSE
   ) {
     rows <- character()
+    is_synergist_print <- grepl("^Sinergista", value_or_default(tipo_bioensayo, ""), ignore.case = TRUE)
     merges <- c(
       "A1:N1", "A2:N2", "A3:B3", "C3:G3", "I3:J3", "L3:N3",
       "A4:B4", "C4:G4", "I4:N4", "A5:B5", "C5:G5", "I5:N5",
@@ -5853,7 +5869,12 @@ server <- function(input, output, session) {
 
     add_row(18, c("5. RESPONSABLES", rep("", 13)), c(15L, rep(15L, 13)), 18)
     add_row(19, c("Código quien realizó revestimiento", "", "", "", "", "", "", "Código control de calidad", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(20, c("Código quien realiza bioensayo", "", "", "", "", "", "", "Código revisión 24h", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(
+      20,
+      c("Código quien realiza bioensayo", "", "", "", "", "", "", if (is_synergist_print) "" else "Código revisión 24h", "", "", "", "", "", ""),
+      c(16L, 16L, 17L, 17L, 17L, 17L, 17L, if (is_synergist_print) 17L else 16L, 16L, 17L, 17L, 17L, 17L, 17L),
+      21
+    )
 
     add_row(22, c("6. CONDICIONES AMBIENTALES DEL BIOENSAYO", rep("", 6), "7. HORARIO DEL BIOENSAYO", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
     add_row(23, c("Temp. inicial", "", "", "Temp. final", "", "", "", "Hora inicial (hh:mm)", "", "", "Hora final (hh:mm)", "", "", ""), c(16L, 17L, 17L, 16L, 17L, 17L, 17L, 16L, 17L, 17L, 16L, 17L, 17L, 17L), 21)
@@ -5862,7 +5883,11 @@ server <- function(input, output, session) {
     add_row(25, c("8. LECTURAS POR BOTELLA", rep("", 13)), c(15L, rep(15L, 13)), 18)
     add_row(
       26,
-      c("BOTELLA", "INICIO (hh:mm)", "0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS."),
+      if (is_synergist_print) {
+        c("BOTELLA", "INICIO (hh:mm)", "60 V", "60 I", "OBS.", "", "", "", "", "", "", "", "", "")
+      } else {
+        c("BOTELLA", "INICIO (hh:mm)", "0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS.")
+      },
       rep(16L, 14),
       24
     )
@@ -7981,8 +8006,7 @@ server <- function(input, output, session) {
       "formulario_codigo", "formulario_nombre", "nombre_poblacion", "codigo_bioensayo",
       "codigo_insecticida", "solvente_utilizado", "codigo_dosis",
       "origen_material", "pais", "id_institucion", "codigo_departamento", "codigo_municipio", "codigo_especie_mosquito",
-      "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_control_calidad",
-      "codigo_revision_24h"
+      "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_control_calidad"
     )
     required_dates <- c("fecha_registro", "fecha_realizacion_bioensayo", "fecha_revestimiento_botellas", "fecha_separacion")
     required_times <- c("hora_separacion", "hora_inicio_bioensayo", "hora_final_bioensayo")
@@ -8025,6 +8049,12 @@ server <- function(input, output, session) {
       if (length(bad)) details <- c(details, paste0(column, " debe usar true o false. Filas: ", paste(head(bad, 10), collapse = ", ")))
       data[[column]] <- parsed
     }
+    has_synergist_rows <- apply(data[c("sinergista_def", "sinergista_pbo", "sinergista_dm")], 1, function(values) any(values, na.rm = TRUE))
+    missing_review_24h <- which(!has_synergist_rows & is.na(data$codigo_revision_24h))
+    if (length(missing_review_24h)) {
+      details <- c(details, paste0("codigo_revision_24h es obligatorio excepto para sinergistas. Filas: ", paste(head(missing_review_24h, 10), collapse = ", ")))
+    }
+    data$codigo_revision_24h[has_synergist_rows] <- NA_character_
     data$codigo_bioensayo <- formulario_7_codigo_bioensayo_final(
       data$codigo_bioensayo, data$dosis_diagnostica_1x, data$modalidad_bioensayo, data$dosis_intensidad,
       data$sinergista_def, data$sinergista_pbo, data$sinergista_dm
@@ -8106,7 +8136,18 @@ server <- function(input, output, session) {
   formulario_7_tables <- function(row) {
     header <- row[formulario_7_header_columns]
     results <- list()
+    synergist_values <- tolower(as.character(unlist(row[c("sinergista_def", "sinergista_pbo", "sinergista_dm")])))
+    has_synergist <- any(synergist_values %in% c("true", "1", "si", "sí", "yes"), na.rm = TRUE)
     for (bottle in formulario_7_bottles) {
+      if (has_synergist) {
+        base <- paste0("resultado_60min_", bottle)
+        if (!is.na(row[[paste0(base, "_vivos")]])) results[[length(results) + 1]] <- data.frame(
+          fase = "bioensayo", botella = bottle, tiempo_minutos = 60,
+          hora_lectura = row[[paste0("resultado_hora_inicio_", bottle)]],
+          vivos = row[[paste0(base, "_vivos")]], incapacitados = row[[paste0(base, "_incapacitados")]], stringsAsFactors = FALSE
+        )
+        next
+      }
       for (minutes in c(0, 15, 30, 45)) {
         base <- paste0("resultado_", minutes, "min_", bottle)
         if (!is.na(row[[paste0(base, "_vivos")]])) results[[length(results) + 1]] <- data.frame(
@@ -8282,8 +8323,13 @@ server <- function(input, output, session) {
       if (identical(as.character(result$fase[[1]]), "bioensayo")) {
         minutes <- as.integer(result$tiempo_minutos[[1]])
         values[[paste0("resultado_hora_inicio_", bottle)]] <- result$hora_lectura[[1]]
-        values[[paste0("resultado_", minutes, "min_", bottle, "_vivos")]] <- result$vivos[[1]]
-        values[[paste0("resultado_", minutes, "min_", bottle, "_incapacitados")]] <- result$incapacitados[[1]]
+        if (identical(minutes, 60L)) {
+          values[[paste0("resultado_60min_", bottle, "_vivos")]] <- result$vivos[[1]]
+          values[[paste0("resultado_60min_", bottle, "_incapacitados")]] <- result$incapacitados[[1]]
+        } else {
+          values[[paste0("resultado_", minutes, "min_", bottle, "_vivos")]] <- result$vivos[[1]]
+          values[[paste0("resultado_", minutes, "min_", bottle, "_incapacitados")]] <- result$incapacitados[[1]]
+        }
       } else if (identical(as.character(result$fase[[1]]), "kdr_24h")) {
         values[[paste0("resultado_hora_lectura_24h_", bottle)]] <- result$hora_lectura[[1]]
         values[[paste0("resultado_24h_", bottle, "_vivos")]] <- result$vivos[[1]]
@@ -8892,6 +8938,14 @@ server <- function(input, output, session) {
       values$codigo_bioensayo, values$dosis_diagnostica_1x, values$modalidad_bioensayo, values$dosis_intensidad,
       values$sinergista_def, values$sinergista_pbo, values$sinergista_dm
     )
+    if (identical(selected_bioassay_type, "sinergistas")) {
+      non_synergist_results <- grep("resultado_(0|15|30|45)min_|resultado_hora_lectura_24h_|resultado_24h_", formulario_7_result_columns, value = TRUE)
+      values[non_synergist_results] <- NA_character_
+      values$codigo_revision_24h <- NA_character_
+    } else {
+      synergist_results <- grep("resultado_60min_", formulario_7_result_columns, value = TRUE)
+      values[synergist_results] <- NA_character_
+    }
     values$edad_indefinida <- as.character(isTRUE(input$f7_edad_indefinida))
     values$generacion_filial_indefinida <- as.character(isTRUE(input$f7_generacion_filial_indefinida))
     as.data.frame(values, stringsAsFactors = FALSE, check.names = FALSE)
@@ -8938,9 +8992,12 @@ server <- function(input, output, session) {
 
     if (identical(step, "material_responsables")) {
       require_fields(
-        c("origen_material", "codigo_especie_mosquito", "hora_separacion", "fecha_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_control_calidad", "codigo_revision_24h"),
-        c("origen del material", "código de especie", "hora de separación", "fecha de separación", "responsable de revestimiento", "responsable del bioensayo", "control de calidad", "revisión a 24 horas")
+        c("origen_material", "codigo_especie_mosquito", "hora_separacion", "fecha_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_control_calidad"),
+        c("origen del material", "código de especie", "hora de separación", "fecha de separación", "responsable de revestimiento", "responsable del bioensayo", "control de calidad")
       )
+      if (!identical(input$f7_tipo_bioensayo, "sinergistas")) {
+        require_fields("codigo_revision_24h", "revisión a 24 horas")
+      }
       if (!isTRUE(input$f7_edad_indefinida) && missing_value("edad_dias")) errors <- c(errors, "Indique la edad en días o marque Edad indefinida.")
       if (!isTRUE(input$f7_generacion_filial_indefinida) && missing_value("generacion_filial")) errors <- c(errors, "Indique la generación filial o márquela como indefinida.")
       if (!missing_value("hora_separacion") && !valid_time("hora_separacion")) errors <- c(errors, "La hora de separación debe usar HH:MM.")
