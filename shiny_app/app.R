@@ -1864,18 +1864,18 @@ formulario_7_capture_form <- function() {
             ),
             selectInput("f7_solvente_utilizado", "Solvente utilizado *", choices = c("Etanol", "Otro")),
             conditionalPanel("input.f7_solvente_utilizado == 'Otro'", textInput("f7_solvente_otro", "Especifique el solvente *")),
-            numericInput("f7_dosis_ug_ml", "Dosis (µg/ml) *", value = NA, min = 0),
+            numericInput("f7_dosis_ug_ml", "Concentración (µg/ml) *", value = NA, min = 0),
             div(
               class = "f7-help-field",
               div(
                 class = "f7-help-label-row",
-                tags$label(`for` = "f7_codigo_dosis", "Código de dosis *"),
+                tags$label(`for` = "f7_codigo_dosis", "# lote insecticida *"),
                 actionButton(
                   "f7_codigo_dosis_help",
                   label = "?",
                   class = "f7-help-button",
-                  title = "Ayuda sobre el código de dosis",
-                  `aria-label` = "Mostrar ayuda sobre el código de dosis"
+                  title = "Ayuda sobre el lote del insecticida",
+                  `aria-label` = "Mostrar ayuda sobre el lote del insecticida"
                 )
               ),
               textInput("f7_codigo_dosis", label = NULL),
@@ -1883,7 +1883,7 @@ formulario_7_capture_form <- function() {
                 "input.f7_codigo_dosis_help % 2 == 1",
                 div(
                   class = "f7-help-message",
-                  "Este hace referencia al código asignado a la dosis del insecticida que se está evaluando, el cual proporciona información de la fecha de preparación, quién la preparó, fecha de expiración, dosis, tipo de insecticida, lote y marca."
+                  "Este hace referencia al lote del insecticida que se está evaluando, incluyendo marca, lote, fecha de preparación o información equivalente disponible."
                 )
               )
             ),
@@ -1891,7 +1891,7 @@ formulario_7_capture_form <- function() {
           ),
           column(6,
             tags$hr(),
-            h4("# Veces se han utilizado"),
+            h4("# Veces se han utilizado las botellas"),
             numericInput("f7_numero_usos_botella_e1", "Botella expuesta E1", value = NA, min = 0, step = 1),
             numericInput("f7_numero_usos_botella_e2", "Botella expuesta E2", value = NA, min = 0, step = 1),
             numericInput("f7_numero_usos_botella_e3", "Botella expuesta E3", value = NA, min = 0, step = 1),
@@ -1917,7 +1917,7 @@ formulario_7_capture_form <- function() {
           column(6,
             textInput("f7_codigo_responsable_revestimiento", "Responsable de revestimiento *"),
             textInput("f7_codigo_responsable_bioensayo", "Responsable del bioensayo *"),
-            textInput("f7_codigo_control_calidad", "Código de control de calidad *"),
+            tags$div(style = "display:none;", textInput("f7_codigo_control_calidad", "Código de control de calidad *", value = "NO APLICA")),
             textInput("f7_codigo_revision_24h", "Código de revisión a 24 h *")
           )
         )
@@ -5901,19 +5901,19 @@ server <- function(input, output, session) {
 
     add_row(9, c("3. INFORMACIÓN DEL BIOENSAYO", rep("", 6), "4. INFORMACIÓN DEL MATERIAL BIOLÓGICO", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
     add_row(10, c("Fecha realización (dd/mm/aa)", "", "", "", "", "", "", "Origen", "", "Silvestre__", "", "Laboratorio__", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(11, c(if (is_synergist_print) "Sinergista" else "Código insecticida", "", "", "", "", "", "", "Edad", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(11, c(if (is_synergist_print) "Sinergista" else "Insecticida", "", "", "", "", "", "", "Edad", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(12, c(if (is_synergist_print) "Dosis sinergista" else "Solvente utilizado", "", if (is_synergist_print) "" else "Etanol", "", if (is_synergist_print) "ug/mL" else "Otro:", "", "", "Código especie mosquito", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(13, c(if (is_synergist_print) "Código insecticida" else "Dosis", "", "", "", "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(14, c(if (is_synergist_print) "Dosis insecticida" else "Código de dosis", "", "", "", "", if (is_synergist_print) "ug/mL" else "", "", "Generación filial", "", "", "", "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(16, c("# Veces se han utilizado", "", "E1__", "", "E2__", "", "E3__", "", "E4__", "", "C1__", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(13, c(if (is_synergist_print) "Insecticida" else "Concentración", "", "", "", "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(14, c(if (is_synergist_print) "Concentración" else "# lote insecticida", "", "", "", "", if (is_synergist_print) "ug/mL" else "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(16, c("# Veces se han utilizado las botellas", "", "E1__", "", "E2__", "", "E3__", "", "E4__", "", "C1__", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
 
     add_row(18, c("5. RESPONSABLES", rep("", 13)), c(15L, rep(15L, 13)), 18)
-    add_row(19, c("Código quien realizó revestimiento", "", "", "", "", "", "", "Código control de calidad", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(19, c("Código quien realizó revestimiento", "", "", "", "", "", "", "Código quien realiza bioensayo", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(
       20,
-      c("Código quien realiza bioensayo", "", "", "", "", "", "", if (is_synergist_print) "" else "Código revisión 24h", "", "", "", "", "", ""),
-      c(16L, 16L, 17L, 17L, 17L, 17L, 17L, if (is_synergist_print) 17L else 16L, 16L, 17L, 17L, 17L, 17L, 17L),
+      c("", "", "", "", "", "", "", "Código revisión 24h", "", "", "", "", "", ""),
+      c(17L, 17L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L),
       21
     )
 
@@ -8049,12 +8049,13 @@ server <- function(input, output, session) {
     data <- csv_data[formulario_7_intake_columns]
     if (nrow(data) == 0) return(list(data = NULL, details = "El archivo no contiene registros."))
     for (column in names(data)) data[[column]] <- f7_clean_text(data[[column]])
+    data$codigo_control_calidad[is.na(data$codigo_control_calidad)] <- "NO APLICA"
 
     required_text <- c(
       "formulario_codigo", "formulario_nombre", "nombre_poblacion", "codigo_bioensayo",
       "codigo_insecticida", "solvente_utilizado", "codigo_dosis",
       "origen_material", "pais", "id_institucion", "codigo_departamento", "codigo_municipio", "codigo_especie_mosquito",
-      "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_control_calidad"
+      "codigo_responsable_revestimiento", "codigo_responsable_bioensayo"
     )
     required_dates <- c("fecha_registro", "fecha_realizacion_bioensayo", "fecha_revestimiento_botellas", "fecha_separacion")
     required_times <- c("hora_separacion", "hora_inicio_bioensayo", "hora_final_bioensayo")
@@ -8316,7 +8317,8 @@ server <- function(input, output, session) {
       dosis_diagnostica_1x = "Diagnóstica 1X", dosis_intensidad = "Dosis de intensidad",
       sinergista_def = "Sinergista DEF", sinergista_pbo = "Sinergista PBO", sinergista_dm = "Sinergista DM",
       sinergista_tipo = "Sinergista", dosis_sinergista_ug_ml = "Dosis sinergista (µg/mL)",
-      resultado_diagnostico = "Resultado diagnóstico", dosis_ug_ml = "Dosis (µg/mL)",
+      resultado_diagnostico = "Resultado diagnóstico", codigo_insecticida = "Insecticida",
+      dosis_ug_ml = "Concentración (µg/mL)", codigo_dosis = "# lote insecticida",
       humedad_relativa_inicial_pct = "Humedad relativa inicial (%)",
       humedad_relativa_final_pct = "Humedad relativa final (%)",
       temperatura_inicial_c = "Temperatura inicial (°C)", temperatura_final_c = "Temperatura final (°C)",
@@ -9018,6 +9020,7 @@ server <- function(input, output, session) {
       values$sinergista_tipo <- NA_character_
       values$dosis_sinergista_ug_ml <- NA_character_
     }
+    if (is.na(f7_clean_text(values$codigo_control_calidad)[[1]])) values$codigo_control_calidad <- "NO APLICA"
     values$edad_indefinida <- as.character(isTRUE(input$f7_edad_indefinida))
     values$generacion_filial_indefinida <- as.character(isTRUE(input$f7_generacion_filial_indefinida))
     as.data.frame(values, stringsAsFactors = FALSE, check.names = FALSE)
@@ -9069,8 +9072,8 @@ server <- function(input, output, session) {
 
     if (identical(step, "material_responsables")) {
       require_fields(
-        c("origen_material", "codigo_especie_mosquito", "hora_separacion", "fecha_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_control_calidad"),
-        c("origen del material", "código de especie", "hora de separación", "fecha de separación", "responsable de revestimiento", "responsable del bioensayo", "control de calidad")
+        c("origen_material", "codigo_especie_mosquito", "hora_separacion", "fecha_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo"),
+        c("origen del material", "código de especie", "hora de separación", "fecha de separación", "responsable de revestimiento", "responsable del bioensayo")
       )
       require_fields("codigo_revision_24h", "revisión a 24 horas")
       if (!isTRUE(input$f7_edad_indefinida) && missing_value("edad_dias")) errors <- c(errors, "Indique la edad en días o marque Edad indefinida.")
