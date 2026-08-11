@@ -1726,7 +1726,7 @@ formulario_7_bottle_panel <- function(bottle) {
   reading_rows <- lapply(c(0, 15, 30, 45), function(minutes) {
     formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), paste(minutes, "minutos"))
   })
-  insecticide_after_synergist_rows <- lapply(c(15, 30, 45), function(minutes) {
+  insecticide_after_synergist_rows <- lapply(c(0, 15, 30, 45), function(minutes) {
     formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), paste(minutes, "minutos"))
   })
 
@@ -1758,7 +1758,7 @@ formulario_7_bottle_panel <- function(bottle) {
       h4("9. Lectura por botella"),
       div(
         class = "alert alert-info",
-        "Después del sinergista se registra la dosis diagnóstica 1X del insecticida a 15, 30, 45 minutos y 24 horas."
+        "Después del sinergista se registra la dosis diagnóstica 1X del insecticida a 0, 15, 30, 45 minutos y 24 horas."
       ),
       insecticide_after_synergist_rows,
       tagList(
@@ -5975,7 +5975,7 @@ server <- function(input, output, session) {
         add_row(26L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
       }
       add_row(32, c("9. LECTURA POR BOTELLA", rep("", 13)), c(15L, rep(15L, 13)), 18)
-      add_row(33, c("BOTELLA", "INICIO (hh:mm)", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS.", "", ""), rep(16L, 14), 24)
+      add_row(33, c("BOTELLA", "INICIO (hh:mm)", "0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS."), rep(16L, 14), 24)
       for (index in seq_along(bottle_labels)) {
         add_row(33L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
       }
@@ -8248,7 +8248,7 @@ server <- function(input, output, session) {
           hora_lectura = row[[paste0("resultado_hora_inicio_", bottle)]],
           vivos = row[[paste0(base, "_vivos")]], incapacitados = row[[paste0(base, "_incapacitados")]], stringsAsFactors = FALSE
         )
-        for (minutes in c(15, 30, 45)) {
+        for (minutes in c(0, 15, 30, 45)) {
           base <- paste0("resultado_", minutes, "min_", bottle)
           if (!is.na(row[[paste0(base, "_vivos")]])) results[[length(results) + 1]] <- data.frame(
             fase = "bioensayo", botella = bottle, tiempo_minutos = minutes,
@@ -9057,10 +9057,7 @@ server <- function(input, output, session) {
       values$codigo_bioensayo, values$dosis_diagnostica_1x, values$modalidad_bioensayo, values$dosis_intensidad,
       values$sinergista_def, values$sinergista_pbo, values$sinergista_dm
     )
-    if (identical(selected_bioassay_type, "sinergistas")) {
-      non_synergist_results <- grep("resultado_0min_", formulario_7_result_columns, value = TRUE)
-      values[non_synergist_results] <- NA_character_
-    } else {
+    if (!identical(selected_bioassay_type, "sinergistas")) {
       synergist_results <- grep("resultado_60min_", formulario_7_result_columns, value = TRUE)
       values[synergist_results] <- NA_character_
       values$sinergista_tipo <- NA_character_
