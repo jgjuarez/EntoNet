@@ -3321,6 +3321,13 @@ ui <- fluidPage(
         margin: 0 0 10px 14px;
         padding-left: 10px;
       }
+      .sidebar-form-group-title {
+        color: #293241;
+        font-size: 14px;
+        font-weight: 800;
+        margin: 10px 0 4px;
+        text-transform: uppercase;
+      }
       .sidebar-form-item {
         background: transparent;
         border: 0;
@@ -3347,6 +3354,27 @@ ui <- fluidPage(
         gap: 12px;
         margin-bottom: 22px;
         max-width: 760px;
+      }
+      .capture-subdivision-list {
+        display: grid;
+        gap: 18px;
+        margin-top: 10px;
+        max-width: 920px;
+      }
+      .capture-subdivision-panel {
+        border: 1px solid #d8e3e6;
+        border-radius: 8px;
+        padding: 16px 18px;
+      }
+      .capture-subdivision-panel h4 {
+        font-size: 17px;
+        font-weight: 800;
+        margin: 0 0 10px;
+      }
+      .capture-subdivision-panel p {
+        color: #5f6b78;
+        font-size: 14px;
+        margin: 0;
       }
       .formulario-1-capture-layout {
         align-items: start;
@@ -10207,9 +10235,13 @@ server <- function(input, output, session) {
         actionButton("show_capture", "Captura de Datos", class = subitem_class("capture")),
         if (identical(module, "capture")) div(
           class = "sidebar-form-list",
+          div(class = "sidebar-form-group-title", "Campo"),
           actionButton("select_formulario_1_capture", "Formulario 1: Colocación y retiro", class = form_item_class("formulario_1_colocacion_retiro_ovitrampa")),
+          div(class = "sidebar-form-group-title", "Insectario"),
           actionButton("select_formulario_5_capture", "Formulario 5: Alimentación conteo", class = form_item_class("formulario_5_alimentacion_conteo")),
-          actionButton("select_formulario_7_capture", "Formulario 7: Bioensayo CDC", class = form_item_class("formulario_7_bioensayo_botella_cdc"))
+          actionButton("select_formulario_7_capture", "Formulario 7: Bioensayo CDC", class = form_item_class("formulario_7_bioensayo_botella_cdc")),
+          div(class = "sidebar-form-group-title", "Laboratorio"),
+          div(class = "sidebar-form-item", "Sin formularios activos")
         ),
         actionButton("show_visualization", "Visualización de Datos", class = subitem_class("visualization")),
         actionButton("show_request", "Solicitud de Datos", class = subitem_class("request"))
@@ -10350,8 +10382,22 @@ server <- function(input, output, session) {
 
     if (is.null(dataset)) {
       return(div(
-        class = "alert alert-info",
-        "Seleccione un formulario disponible en el menú lateral."
+        class = "capture-subdivision-list",
+        div(
+          class = "capture-subdivision-panel",
+          h4("Campo"),
+          p("Formulario 1: colocación y retiro de ovitrampas.")
+        ),
+        div(
+          class = "capture-subdivision-panel",
+          h4("Insectario"),
+          p("Formulario 5: alimentación conteo. Formulario 7: bioensayo de botella CDC.")
+        ),
+        div(
+          class = "capture-subdivision-panel",
+          h4("Laboratorio"),
+          p("Sin formularios activos por el momento.")
+        )
       ))
     }
 
