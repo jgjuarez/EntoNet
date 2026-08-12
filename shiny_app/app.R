@@ -3449,24 +3449,340 @@ ui <- fluidPage(
       }
       .capture-subdivision-list {
         display: grid;
-        gap: 18px;
-        margin-top: 10px;
-        max-width: 920px;
+        gap: 22px;
+        grid-template-columns: repeat(3, minmax(285px, 1fr));
+        justify-content: center;
+        margin: 10px auto 0;
+        max-width: 1240px;
+        width: 100%;
       }
       .capture-subdivision-panel {
+        background: #ffffff;
         border: 1px solid #d8e3e6;
+        border-left-width: 6px;
         border-radius: 8px;
-        padding: 16px 18px;
+        box-shadow: 0 6px 18px rgba(16, 34, 61, 0.06);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 330px;
+        overflow: hidden;
+        padding: 0;
+        white-space: normal;
+      }
+      .capture-subdivision-panel-action {
+        appearance: none;
+        background: #ffffff;
+        cursor: pointer;
+        line-height: normal;
+        text-align: left;
+        white-space: normal;
+        width: 100%;
+      }
+      .capture-subdivision-panel-action:focus {
+        outline: none;
+      }
+      .capture-subdivision-panel-active {
+        box-shadow: 0 10px 24px rgba(16, 34, 61, 0.12);
+        transform: translateY(-1px);
+      }
+      .capture-subdivision-panel:nth-child(1) {
+        border-left-color: #0d7a82;
+      }
+      .capture-subdivision-panel:nth-child(2) {
+        border-left-color: #1769aa;
+      }
+      .capture-subdivision-panel:nth-child(3) {
+        border-left-color: #6a9f2b;
       }
       .capture-subdivision-panel h4 {
         font-size: 17px;
         font-weight: 800;
-        margin: 0 0 10px;
+        line-height: 1.2;
+        margin: 0;
+        white-space: normal;
       }
       .capture-subdivision-panel p {
         color: #5f6b78;
-        font-size: 14px;
+        font-size: 13.5px;
+        line-height: 1.45;
         margin: 0;
+        overflow-wrap: anywhere;
+        white-space: normal;
+      }
+      .capture-subdivision-panel-image {
+        aspect-ratio: 16 / 10;
+        background: linear-gradient(180deg, #f8fbfd 0%, #eef6f8 100%);
+        border-bottom: 1px solid #d8e3e6;
+        overflow: hidden;
+      }
+      .capture-subdivision-panel-image img {
+        display: block;
+        height: 100%;
+        object-fit: cover;
+        width: 100%;
+      }
+      .capture-subdivision-panel-body {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 8px;
+        justify-content: flex-start;
+        min-width: 0;
+        padding: 18px 20px 22px;
+        white-space: normal;
+      }
+      .reactivos-intent-copy {
+        margin: 0 auto 18px;
+        max-width: 1120px;
+        width: 100%;
+      }
+      .reactivos-intent-copy h4 {
+        color: #082243;
+        font-size: 21px;
+        font-weight: 800;
+        margin: 0 0 8px;
+      }
+      .reactivos-intent-copy p {
+        color: #526070;
+        font-size: 15px;
+        line-height: 1.55;
+        margin: 0;
+        max-width: 980px;
+      }
+      .reactivos-detail-bubble {
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+        border: 1px solid #d8e3e6;
+        border-left: 6px solid #0d7a82;
+        border-radius: 16px;
+        box-shadow: 0 8px 20px rgba(16, 34, 61, 0.07);
+        margin: 18px auto 0;
+        max-width: 1120px;
+        overflow: hidden;
+        width: 100%;
+      }
+      .reactivos-detail-bubble-header {
+        align-items: center;
+        background: linear-gradient(90deg, rgba(13, 122, 130, 0.10), rgba(13, 122, 130, 0.03));
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 18px 20px;
+      }
+      .reactivos-detail-bubble-header h4 {
+        color: #082243;
+        font-size: 20px;
+        margin: 0;
+      }
+      .reactivos-detail-bubble-header p {
+        color: #5f6b78;
+        margin: 6px 0 0;
+      }
+      .reactivos-detail-bubble-body {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+        padding: 18px 20px 20px;
+      }
+      .reactivos-detail-definition {
+        background: #ffffff;
+        border: 1px solid #dbe7ee;
+        border-radius: 14px;
+        padding: 18px;
+      }
+      .reactivos-detail-definition strong {
+        color: #1769aa;
+        display: block;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+      }
+      .reactivos-detail-definition p {
+        color: #304352;
+        font-size: 15px;
+        line-height: 1.55;
+        margin: 0;
+      }
+      .reactivos-detail-products {
+        display: grid;
+        gap: 12px;
+      }
+      .reactivos-detail-product {
+        align-items: center;
+        background: #ffffff;
+        border: 1px solid #dbe7ee;
+        border-radius: 14px;
+        color: #10223d;
+        display: flex;
+        gap: 14px;
+        padding: 12px;
+        text-align: left;
+        white-space: normal;
+        width: 100%;
+      }
+      .reactivos-detail-product:hover,
+      .reactivos-detail-product:focus,
+      .reactivos-detail-product-active {
+        border-color: #0d7a82;
+        box-shadow: 0 6px 16px rgba(16, 34, 61, 0.10);
+        color: #10223d;
+      }
+      .reactivos-detail-product-image {
+        border-radius: 12px;
+        flex: 0 0 auto;
+        height: 72px;
+        overflow: hidden;
+        width: 72px;
+      }
+      .reactivos-detail-product-image img {
+        display: block;
+        height: 100%;
+        object-fit: cover;
+        width: 100%;
+      }
+      .reactivos-detail-product-name {
+        color: #082243;
+        font-size: 15px;
+        font-weight: 800;
+      }
+      .reactivos-detail-product-price {
+        color: #123d6b;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .reactivos-detail-product-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.22rem 0.65rem;
+        border-radius: 999px;
+        background: #e7f6ef;
+        color: #126b50;
+        font-size: 0.78rem;
+        font-weight: 700;
+        margin-top: 0.3rem;
+      }
+      .reactivos-product-card {
+        background: #ffffff;
+        border: 1px solid #dbe7ee;
+        border-radius: 14px;
+        padding: 18px;
+      }
+      .reactivos-product-card h5 {
+        color: #082243;
+        font-size: 22px;
+        font-weight: 800;
+        margin: 0 0 8px;
+      }
+      .reactivos-product-card p {
+        color: #526070;
+        font-size: 15px;
+        line-height: 1.5;
+        margin: 0 0 14px;
+      }
+      .reactivos-product-spec-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 16px;
+      }
+      .reactivos-product-spec {
+        background: #f8fbfd;
+        border: 1px solid #dbe7ee;
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .reactivos-product-spec span {
+        color: #5f6b78;
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-bottom: 3px;
+        text-transform: uppercase;
+      }
+      .reactivos-product-spec strong {
+        color: #082243;
+        display: block;
+        font-size: 14px;
+      }
+      .reactivos-order-procedure {
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        border-left: 6px solid #1769aa;
+        border-radius: 14px;
+        box-shadow: 0 8px 20px rgba(16, 34, 61, 0.07);
+        margin: 20px auto 0;
+        max-width: 1120px;
+        padding: 22px;
+        width: 100%;
+      }
+      .reactivos-order-procedure h4 {
+        color: #082243;
+        font-size: 21px;
+        font-weight: 800;
+        margin: 0 0 10px;
+      }
+      .reactivos-order-procedure p {
+        color: #526070;
+        font-size: 15px;
+        line-height: 1.55;
+        margin: 0 0 14px;
+      }
+      .reactivos-order-steps {
+        display: grid;
+        gap: 12px;
+        margin: 16px 0;
+      }
+      .reactivos-order-step {
+        background: #f8fbfd;
+        border: 1px solid #dbe7ee;
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+      .reactivos-order-step strong {
+        color: #082243;
+        display: block;
+        font-size: 15px;
+        margin-bottom: 4px;
+      }
+      .reactivos-form-placeholders {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 16px;
+      }
+      .reactivos-form-placeholder {
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+        border: 1px dashed #9fcfd0;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .reactivos-form-placeholder strong {
+        color: #082243;
+        display: block;
+        font-size: 15px;
+        margin-bottom: 6px;
+      }
+      .reactivos-form-placeholder span {
+        color: #5f6b78;
+        display: block;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .request-flow-panel {
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        border-radius: 10px;
+        box-shadow: 0 8px 22px rgba(16, 34, 61, 0.10);
+        overflow: hidden;
+        padding: 18px;
+      }
+      .request-flow-panel img {
+        display: block;
+        height: auto;
+        width: 100%;
       }
       .capture-code-guide {
         border: 1px solid #d8e3e6;
@@ -3714,6 +4030,132 @@ ui <- fluidPage(
         font-weight: 800;
         margin-top: 0;
       }
+      .reactivos-hero {
+        align-items: stretch;
+        display: grid;
+        gap: 0;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        margin: -24px -24px 26px;
+        overflow: hidden;
+        border-radius: 10px 10px 0 0;
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        box-shadow: 0 10px 28px rgba(16, 34, 61, 0.10);
+      }
+      .reactivos-hero-image-wrap {
+        min-height: 320px;
+        background: linear-gradient(180deg, #ffffff, #f7fbfc);
+      }
+      .reactivos-hero-image {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 320px;
+        object-fit: cover;
+      }
+      .reactivos-hero-copy {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 14px;
+        padding: 28px 30px;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        border-left: 1px solid #dde7ee;
+      }
+      .reactivos-hero-kicker {
+        color: #1769aa;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .reactivos-hero-copy h3 {
+        color: #082243;
+        font-size: 34px;
+        line-height: 1.08;
+        margin-bottom: 0;
+      }
+      .reactivos-hero-copy > p {
+        color: #526070;
+        font-size: 16px;
+        line-height: 1.5;
+        margin: 0;
+        max-width: 360px;
+      }
+      .reactivos-hero-benefits {
+        display: grid;
+        gap: 12px 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 8px;
+      }
+      .reactivos-hero-benefit {
+        align-items: flex-start;
+        display: flex;
+        gap: 12px;
+      }
+      .reactivos-hero-benefit strong {
+        color: #082243;
+        font-size: 15px;
+      }
+      .reactivos-hero-benefit {
+        color: #526070;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .reactivos-hero-benefit-icon {
+        align-items: center;
+        background: #edf7fd;
+        border-radius: 999px;
+        color: #0d7a82;
+        display: grid;
+        flex: 0 0 auto;
+        height: 32px;
+        justify-items: center;
+        width: 32px;
+      }
+      .reactivos-hero-notes {
+        border-top: 1px solid #dde7ee;
+        display: grid;
+        gap: 14px;
+        margin-top: 4px;
+        padding-top: 14px;
+      }
+      .reactivos-hero-note strong {
+        color: #082243;
+        display: block;
+        font-size: 15px;
+        margin-bottom: 3px;
+      }
+      .reactivos-hero-note div {
+        color: #526070;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      @media (max-width: 1100px) {
+        .reactivos-hero {
+          grid-template-columns: 1fr;
+          margin: -24px -24px 26px;
+        }
+        .reactivos-hero-image-wrap,
+        .reactivos-hero-image {
+          min-height: 260px;
+        }
+        .capture-subdivision-list {
+          grid-template-columns: repeat(2, minmax(285px, 1fr));
+        }
+      }
+      @media (max-width: 720px) {
+        .capture-subdivision-list {
+          grid-template-columns: 1fr;
+        }
+        .reactivos-detail-bubble-body,
+        .reactivos-product-spec-grid {
+          grid-template-columns: 1fr;
+        }
+        .reactivos-form-placeholders {
+          grid-template-columns: 1fr;
+        }
+      }
       .option-card,
       .training-item {
         background: #f7fbfc;
@@ -3876,6 +4318,18 @@ ui <- fluidPage(
         grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
         margin-top: 18px;
       }
+      .f7-viz-toolbar {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        margin-top: 12px;
+      }
+      .f7-viz-refresh-copy {
+        color: #526070;
+        font-size: 13px;
+        font-weight: 700;
+      }
       .f7-viz-kpi-card {
         background: #ffffff;
         border-top: 4px solid #008c8f;
@@ -3925,6 +4379,10 @@ ui <- fluidPage(
       @media (max-width: 900px) {
         .f7-viz-kpi-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .f7-viz-toolbar {
+          align-items: flex-start;
+          flex-direction: column;
         }
         .f7-viz-diagnostic-layout {
           grid-template-columns: 1fr;
@@ -4246,6 +4704,70 @@ server <- function(input, output, session) {
   active_request_subdivision <- reactiveVal(NULL)
   active_request_data_subdivision <- reactiveVal(NULL)
   active_dataset <- reactiveVal(NULL)
+  active_request_reactivos_category <- reactiveVal("larvicidas")
+  active_request_reactivos_product <- reactiveVal(1L)
+  request_reactivos_catalog <- list(
+    larvicidas = list(
+      title_es = "Larvicidas",
+      title_en = "Larvicides",
+      subtitle_es = "Productos para intervenir criaderos y etapas inmaduras.",
+      subtitle_en = "Products to target breeding sites and immature stages.",
+      items = data.frame(
+        name = c("Temefos 1 L", "Bti granulado 1 kg", "Larvex Pro 500"),
+        price = c("$10.50 USD", "$14.50 USD", "$12.25 USD"),
+        status = c("En stock", "En stock", "En stock"),
+        concentration = c("1% SG", "Bacillus thuringiensis israelensis", "0.5% granulado"),
+        expiration = c("2027-12", "2028-03", "2027-09"),
+        technical_description = c(
+          "Larvicida organofosforado de uso focal para criaderos controlados.",
+          "Larvicida biológico granulado para criaderos y depósitos temporales.",
+          "Formulación granulada de referencia para control de etapas inmaduras."
+        ),
+        image = c("reactivos-larvicidas.png", "reactivos-larvicidas.png", "reactivos-larvicidas.png"),
+        stringsAsFactors = FALSE
+      )
+    ),
+    adulticidas = list(
+      title_es = "Adulticidas",
+      title_en = "Adulticides",
+      subtitle_es = "Control focalizado para insectos adultos.",
+      subtitle_en = "Focused control for adult mosquitoes.",
+      items = data.frame(
+        name = c("AdultiMax 450", "PyroControl ULV", "CipraNeo 1 L"),
+        price = c("$18.90 USD", "$22.40 USD", "$16.75 USD"),
+        status = c("En stock", "En stock", "En stock"),
+        concentration = c("450 g/L", "ULV 10%", "100 g/L"),
+        expiration = c("2027-10", "2028-01", "2027-11"),
+        technical_description = c(
+          "Adulticida de aplicación focal para reducción rápida de población adulta.",
+          "Concentrado para nebulización espacial en operaciones de respuesta.",
+          "Formulación líquida para aplicaciones dirigidas contra mosquitos adultos."
+        ),
+        image = c("reactivos-adulticidas.png", "reactivos-adulticidas.png", "reactivos-adulticidas.png"),
+        stringsAsFactors = FALSE
+      )
+    ),
+    residuales = list(
+      title_es = "Residuales",
+      title_en = "Residuals",
+      subtitle_es = "Formulaciones para aplicaciones dirigidas de efecto prolongado.",
+      subtitle_en = "Formulations for targeted long-lasting applications.",
+      items = data.frame(
+        name = c("ResiShield 2 L", "LongGuard 1 kg", "MuroPlus 5 L"),
+        price = c("$25.00 USD", "$27.50 USD", "$31.20 USD"),
+        status = c("En stock", "En stock", "En stock"),
+        concentration = c("250 g/L", "10% WP", "50 g/L"),
+        expiration = c("2028-02", "2027-08", "2028-05"),
+        technical_description = c(
+          "Formulación residual para superficies internas y externas seleccionadas.",
+          "Polvo humectable de efecto prolongado para superficies tratadas.",
+          "Concentrado residual para aplicaciones controladas en paredes y refugios."
+        ),
+        image = c("reactivos-residuales.png", "reactivos-residuales.png", "reactivos-residuales.png"),
+        stringsAsFactors = FALSE
+      )
+    )
+  )
   f5_capture_steps <- c("metadatos", "datos_generales", "alimentacion", "conteo_huevecillos", "observaciones")
   f5_capture_step_labels <- c(
     metadatos = "Metadatos",
@@ -10014,6 +10536,33 @@ server <- function(input, output, session) {
     select_request_subdivision("reactivos")
   })
 
+  observeEvent(input$show_request_reactivos_larvicidas, {
+    active_request_reactivos_category("larvicidas")
+    active_request_reactivos_product(1L)
+  })
+
+  observeEvent(input$show_request_reactivos_adulticidas, {
+    active_request_reactivos_category("adulticidas")
+    active_request_reactivos_product(1L)
+  })
+
+  observeEvent(input$show_request_reactivos_residuales, {
+    active_request_reactivos_category("residuales")
+    active_request_reactivos_product(1L)
+  })
+
+  observeEvent(input$show_request_reactivos_product_1, {
+    active_request_reactivos_product(1L)
+  })
+
+  observeEvent(input$show_request_reactivos_product_2, {
+    active_request_reactivos_product(2L)
+  })
+
+  observeEvent(input$show_request_reactivos_product_3, {
+    active_request_reactivos_product(3L)
+  })
+
   observeEvent(input$show_request_equipo, {
     select_request_subdivision("equipo")
   })
@@ -10071,6 +10620,66 @@ server <- function(input, output, session) {
   visualization_query <- reactiveVal(NULL)
   f7_visualization_records <- reactiveVal(data.frame())
   f7_visualization_error <- reactiveVal(NULL)
+  f7_visualization_last_refresh <- reactiveVal(NULL)
+
+  load_f7_visualization_records <- function(query) {
+    f7_visualization_records(data.frame())
+    f7_visualization_error(NULL)
+    connection <- NULL
+    tryCatch({
+      connection <- connect_to_supabase()
+      records <- dbGetQuery(
+        connection,
+        "
+          select
+            f.intake_id, f.codigo_bioensayo, f.fecha_realizacion_bioensayo,
+            f.nombre_poblacion, f.bioensayo_intensidad, f.bioensayo_diagnostica_1x,
+            f.sinergista_def, f.sinergista_pbo, f.sinergista_dm, f.resultado_diagnostico,
+            f.insecticida, f.codigo_departamento, f.codigo_municipio, f.review_status,
+            f.creado_en, f.actualizado_en,
+            coalesce(d.departamento, f.codigo_departamento) as departamento,
+            coalesce(m.municipio, f.codigo_municipio) as municipio
+          from public.formulario_7_bioensayo_intake f
+          left join public.catalogo_ubicacion_departamento d
+            on d.pais = f.pais and d.codigo_departamento = f.codigo_departamento
+          left join public.catalogo_ubicacion_municipio m
+            on m.pais = f.pais and m.codigo_municipio = f.codigo_municipio
+          where f.pais = $1
+          order by f.fecha_realizacion_bioensayo, f.intake_id
+        ",
+        params = list(query$country)
+      )
+      if (nrow(records)) {
+        records$fecha_realizacion_bioensayo <- as.Date(records$fecha_realizacion_bioensayo)
+        records$creado_en <- as.POSIXct(records$creado_en)
+        records$actualizado_en <- as.POSIXct(records$actualizado_en)
+        records$tipo_bioensayo <- ifelse(
+          records$bioensayo_diagnostica_1x,
+          "Diagnóstica 1X",
+          ifelse(
+            !is.na(records$bioensayo_intensidad),
+            paste("Intensidad", records$bioensayo_intensidad),
+            "Sinergistas"
+          )
+        )
+        location_key <- paste(query$country, records$codigo_municipio, sep = "|")
+        reference_key <- paste(
+          formulario_7_visualization_locations$pais,
+          formulario_7_visualization_locations$codigo_municipio,
+          sep = "|"
+        )
+        location_index <- match(location_key, reference_key)
+        records$latitude <- formulario_7_visualization_locations$latitude[location_index]
+        records$longitude <- formulario_7_visualization_locations$longitude[location_index]
+      }
+      f7_visualization_records(records)
+      f7_visualization_last_refresh(Sys.time())
+    }, error = function(error) {
+      f7_visualization_error(conditionMessage(error))
+    }, finally = {
+      if (!is.null(connection)) dbDisconnect(connection)
+    })
+  }
 
   observeEvent(input$search_visualization, {
     query <- list(
@@ -10080,58 +10689,7 @@ server <- function(input, output, session) {
     visualization_query(query)
 
     if (identical(query$dataset, "formulario_7_bioensayo_botella_cdc")) {
-      f7_visualization_records(data.frame())
-      f7_visualization_error(NULL)
-      connection <- NULL
-      tryCatch({
-        connection <- connect_to_supabase()
-        records <- dbGetQuery(
-          connection,
-          "
-            select
-              f.intake_id, f.codigo_bioensayo, f.fecha_realizacion_bioensayo,
-              f.nombre_poblacion, f.bioensayo_intensidad, f.bioensayo_diagnostica_1x,
-              f.sinergista_def, f.sinergista_pbo, f.sinergista_dm, f.resultado_diagnostico,
-              f.insecticida, f.codigo_departamento, f.codigo_municipio, f.review_status,
-              coalesce(d.departamento, f.codigo_departamento) as departamento,
-              coalesce(m.municipio, f.codigo_municipio) as municipio
-            from public.formulario_7_bioensayo_intake f
-            left join public.catalogo_ubicacion_departamento d
-              on d.pais = f.pais and d.codigo_departamento = f.codigo_departamento
-            left join public.catalogo_ubicacion_municipio m
-              on m.pais = f.pais and m.codigo_municipio = f.codigo_municipio
-            where f.pais = $1
-            order by f.fecha_realizacion_bioensayo, f.intake_id
-          ",
-          params = list(query$country)
-        )
-        if (nrow(records)) {
-          records$fecha_realizacion_bioensayo <- as.Date(records$fecha_realizacion_bioensayo)
-          records$tipo_bioensayo <- ifelse(
-            records$bioensayo_diagnostica_1x,
-            "Diagnóstica 1X",
-            ifelse(
-              !is.na(records$bioensayo_intensidad),
-              paste("Intensidad", records$bioensayo_intensidad),
-              "Sinergistas"
-            )
-          )
-          location_key <- paste(query$country, records$codigo_municipio, sep = "|")
-          reference_key <- paste(
-            formulario_7_visualization_locations$pais,
-            formulario_7_visualization_locations$codigo_municipio,
-            sep = "|"
-          )
-          location_index <- match(location_key, reference_key)
-          records$latitude <- formulario_7_visualization_locations$latitude[location_index]
-          records$longitude <- formulario_7_visualization_locations$longitude[location_index]
-        }
-        f7_visualization_records(records)
-      }, error = function(error) {
-        f7_visualization_error(conditionMessage(error))
-      }, finally = {
-        if (!is.null(connection)) dbDisconnect(connection)
-      })
+      load_f7_visualization_records(query)
     }
 
     sites <- sample_collection_sites[
@@ -10159,6 +10717,12 @@ server <- function(input, output, session) {
         )
       }, once = TRUE)
     }
+  })
+
+  observeEvent(input$f7_visualization_refresh, {
+    query <- visualization_query()
+    if (is.null(query) || !identical(query$dataset, "formulario_7_bioensayo_botella_cdc")) return()
+    load_f7_visualization_records(query)
   })
 
   output$f7_visualization_filters <- renderUI({
@@ -10259,6 +10823,31 @@ server <- function(input, output, session) {
       class = "alert alert-danger",
       strong("No se pudieron consultar los datos del Formulario 7."),
       div(error)
+    )
+  })
+
+  output$f7_visualization_refresh_status <- renderUI({
+    refresh_time <- f7_visualization_last_refresh()
+    records <- f7_visualization_records()
+    tagList(
+      div(
+        class = "f7-viz-toolbar",
+        div(
+          class = "f7-viz-refresh-copy",
+          if (is.null(refresh_time)) {
+            "Presione Buscar para consultar los registros actuales."
+          } else {
+            paste0("Última actualización local: ", format(refresh_time, "%Y-%m-%d %H:%M:%S"), ". Registros cargados: ", nrow(records), ".")
+          }
+        ),
+        actionButton("f7_visualization_refresh", "Actualizar", class = "btn-default")
+      ),
+      if (!is.null(refresh_time) && !nrow(records)) {
+        div(
+          class = "alert alert-info",
+          "No hay registros de Formulario 7 para el país seleccionado. Los datos nuevos aparecerán aquí después de presionar Actualizar."
+        )
+      }
     )
   })
 
@@ -10394,6 +10983,12 @@ server <- function(input, output, session) {
     ))
   })
 
+  f7_visualization_active_insecticide_counts <- reactive({
+    counts <- f7_visualization_insecticide_counts()
+    if (!length(counts) || !ncol(counts)) return(counts[, 0, drop = FALSE])
+    counts[, colSums(counts) > 0, drop = FALSE]
+  })
+
   output$f7_visualization_kpis <- renderUI({
     records <- f7_visualization_filtered()
     mapped <- records[!is.na(records$latitude) & !is.na(records$longitude), , drop = FALSE]
@@ -10405,6 +11000,7 @@ server <- function(input, output, session) {
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Poblaciones"), span(class = "f7-viz-kpi-value", length(unique(records$nombre_poblacion)))),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Municipios representados"), span(class = "f7-viz-kpi-value", municipalities)),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Municipios en mapa"), span(class = "f7-viz-kpi-value", mapped_municipalities)),
+      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Pendientes de revisión"), span(class = "f7-viz-kpi-value", sum(records$review_status == "pending", na.rm = TRUE))),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Resultados resistentes"), span(class = "f7-viz-kpi-value", sum(records$resultado_diagnostico == "Resistente", na.rm = TRUE)))
     )
   })
@@ -10428,7 +11024,7 @@ server <- function(input, output, session) {
       return(map |> addControl(html = "No hay registros para los filtros seleccionados.", position = "topright"))
     }
     palette <- colorFactor(
-      palette = c("#C62828", "#F9A825", "#2E7D32", "#757575"),
+      palette = c("#C62828", "#F9A825", "#9CA3AF", "#757575"),
       domain = c("Resistencia", "Sospecha Resistencia", "Susceptible", "Sin resultado diagnóstico")
     )
     popup <- paste0(
@@ -10465,14 +11061,20 @@ server <- function(input, output, session) {
   })
 
   output$f7_visualization_diagnostic_bar_chart <- renderPlot({
-    counts <- f7_visualization_insecticide_counts()
+    counts <- f7_visualization_active_insecticide_counts()
+    if (!ncol(counts)) {
+      plot.new()
+      text(0.5, 0.55, "Sin resultados diagnósticos para graficar", cex = 0.95, font = 2, col = "#526070")
+      text(0.5, 0.45, "La figura se actualizará cuando existan registros con resultado diagnóstico.", cex = 0.78, col = "#6B7280")
+      return()
+    }
     totals <- colSums(counts)
     percentages <- sweep(counts, 2, pmax(totals, 1), "/") * 100
     previous_margins <- par(mar = c(4.8, 4.4, 1.2, 0.8))
     on.exit(par(previous_margins), add = TRUE)
     bar_positions <- barplot(
       percentages,
-      col = c("#C62828", "#F9A825", "#2E7D32"),
+      col = c("#C62828", "#F9A825", "#9CA3AF"),
       border = NA,
       width = 0.62,
       space = 0.85,
@@ -10515,7 +11117,7 @@ server <- function(input, output, session) {
     legend(
       "top",
       legend = c("Resistencia", "Sospecha\nResistencia", "Susceptible"),
-      fill = c("#C62828", "#F9A825", "#2E7D32"),
+      fill = c("#C62828", "#F9A825", "#9CA3AF"),
       border = NA,
       bty = "n",
       horiz = TRUE,
@@ -10525,13 +11127,34 @@ server <- function(input, output, session) {
   }, bg = "transparent", res = 110)
 
   output$f7_visualization_diagnostic_summary_table <- renderTable({
-    counts <- f7_visualization_insecticide_counts()
+    counts <- f7_visualization_active_insecticide_counts()
+    if (!ncol(counts)) return(data.frame(Mensaje = "Sin resultados diagnósticos para resumir."))
     data.frame(
       Insecticida = colnames(counts),
       Resistencia = as.integer(counts["Resistencia", ]),
       `Sospecha Resistencia` = as.integer(counts["Sospecha Resistencia", ]),
       Susceptible = as.integer(counts["Susceptible", ]),
       Total = as.integer(colSums(counts)),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }, striped = TRUE, bordered = FALSE, spacing = "xs")
+
+  output$f7_visualization_type_status_table <- renderTable({
+    records <- f7_visualization_filtered()
+    if (!nrow(records)) return(data.frame(Mensaje = "Sin registros para resumir."))
+    type_levels <- sort(unique(records$tipo_bioensayo))
+    status_levels <- c("pending", "reviewed", "rejected")
+    counts <- table(
+      factor(records$tipo_bioensayo, levels = type_levels),
+      factor(records$review_status, levels = status_levels)
+    )
+    data.frame(
+      `Tipo de bioensayo` = rownames(counts),
+      Pendiente = as.integer(counts[, "pending"]),
+      Revisado = as.integer(counts[, "reviewed"]),
+      Rechazado = as.integer(counts[, "rejected"]),
+      Total = as.integer(rowSums(counts)),
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -10544,6 +11167,7 @@ server <- function(input, output, session) {
       `Código bioensayo` = records$codigo_bioensayo,
       Fecha = records$fecha_realizacion_bioensayo,
       Población = records$nombre_poblacion,
+      Departamento = ifelse(is.na(records$departamento), "", records$departamento),
       Municipio = ifelse(is.na(records$municipio), "Sin ubicación aproximada", records$municipio),
       `Tipo de bioensayo` = records$tipo_bioensayo,
       Insecticida = records$insecticida,
@@ -10557,6 +11181,7 @@ server <- function(input, output, session) {
         )
       ),
       Estado = records$review_status,
+      `Ingresado en` = records$creado_en,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -10590,6 +11215,7 @@ server <- function(input, output, session) {
           class = "visualization-results-card",
           h4(paste("Mapa de bioensayos y poblaciones -", query$country)),
           p("Utilice los filtros para explorar los registros del Formulario 7. Los puntos actuales son centroides aproximados por municipio; los registros sin coordenada aproximada permanecen disponibles en las tablas."),
+          uiOutput("f7_visualization_refresh_status"),
           uiOutput("f7_visualization_filters")
         ),
         uiOutput("f7_visualization_error_message"),
@@ -10612,7 +11238,10 @@ server <- function(input, output, session) {
           div(
             class = "visualization-results-card f7-viz-summary-table",
             h4("Tabla resumen"),
-            tableOutput("f7_visualization_diagnostic_summary_table")
+            tableOutput("f7_visualization_diagnostic_summary_table"),
+            tags$hr(),
+            h4("Tipo y revisión"),
+            tableOutput("f7_visualization_type_status_table")
           )
         ),
         div(
@@ -10670,10 +11299,6 @@ server <- function(input, output, session) {
   }, striped = TRUE, bordered = TRUE, spacing = "xs")
 
   output$portal_intro_area <- renderUI({
-    if (!is.null(active_area())) {
-      return(NULL)
-    }
-
     fluidRow(
       column(
         width = 12,
@@ -10784,12 +11409,18 @@ server <- function(input, output, session) {
     }
 
     if (identical(area, "data")) {
-      if (is.null(module)) return(div(class = "portal-empty-state", "Seleccione una opción de Datos en el menú lateral."))
+      if (is.null(module)) return(tagList(
+        uiOutput("portal_intro_area"),
+        div(class = "portal-empty-state", "Seleccione una opción de Datos en el menú lateral.")
+      ))
       return(uiOutput("data_module_area"))
     }
 
     if (identical(area, "protocols")) {
-      if (is.null(module)) return(div(class = "portal-empty-state", "Seleccione Protocolos de Campo o Protocolos de Laboratorio."))
+      if (is.null(module)) return(tagList(
+        uiOutput("portal_intro_area"),
+        div(class = "portal-empty-state", "Seleccione Protocolos de Campo o Protocolos de Laboratorio.")
+      ))
       if (identical(module, "protocol_field")) return(div(
         class = "module-panel",
         h3("Protocolos de Campo"),
@@ -10805,7 +11436,10 @@ server <- function(input, output, session) {
     }
 
     if (identical(area, "training")) {
-      if (is.null(module)) return(div(class = "portal-empty-state", "Seleccione un tipo de entrenamiento en el menú lateral."))
+      if (is.null(module)) return(tagList(
+        uiOutput("portal_intro_area"),
+        div(class = "portal-empty-state", "Seleccione un tipo de entrenamiento en el menú lateral.")
+      ))
       if (identical(module, "training_live")) return(div(
         class = "module-panel",
         h3("Próximas capacitaciones en vivo"),
@@ -10814,7 +11448,7 @@ server <- function(input, output, session) {
       if (identical(module, "training_workshops")) return(div(
         class = "module-panel",
         h3("Talleres prácticos"),
-        p("Fechas por confirmar. Talleres enfocados en protocolos de campo, procedimientos de laboratorio y análisis inicial de datos entomológicos.")
+        p("Fechas por confirmar. Talleres enfocados en protocolos de campo, procedimientos de laboratorio y análisis inicial de datos.")
       ))
       if (identical(module, "training_materials")) return(div(
         class = "module-panel",
@@ -10889,18 +11523,265 @@ server <- function(input, output, session) {
         equipo = "Equipo",
         apoyo_tecnico = "Apoyo Técnico"
       )
+      render_request_reactivos_panel <- function() {
+        language <- public_language()
+        category_key <- active_request_reactivos_category()
+        category_data <- request_reactivos_catalog[[category_key]]
+        category_definitions <- list(
+          larvicidas = tr(
+            language,
+            "La OMS/WHOPES describe los larvicidas como productos químicos o biológicos aplicados en hábitats acuáticos para destruir las fases inmaduras del mosquito antes de que emerjan como adultos.",
+            "WHO/WHOPES describes larvicides as chemical or biological products applied in aquatic habitats to destroy immature mosquito stages before they emerge as adults."
+          ),
+          adulticidas = tr(
+            language,
+            "Los adulticidas se emplean para reducir poblaciones de mosquitos adultos mediante aplicaciones dirigidas en espacios interiores o exteriores.",
+            "Adulticides are used to reduce adult mosquito populations through targeted applications in indoor or outdoor spaces."
+          ),
+          residuales = tr(
+            language,
+            "Los residuales corresponden a formulaciones de efecto prolongado que permanecen activas sobre superficies tratadas para el control sostenido de vectores.",
+            "Residuals are long-lasting formulations that remain active on treated surfaces for sustained vector control."
+          )
+        )
+        selected_definition <- category_definitions[[category_key]]
+        product_index <- active_request_reactivos_product()
+        if (is.null(product_index) || is.na(product_index) || product_index < 1L || product_index > nrow(category_data$items)) {
+          product_index <- 1L
+        }
+        selected_product <- category_data$items[product_index, ]
+
+        div(
+          class = "module-panel",
+          div(
+            class = "reactivos-hero",
+            div(
+              class = "reactivos-hero-image-wrap",
+              img(src = "reactivos-hero.png", class = "reactivos-hero-image", alt = "Vista superior de reactivos de laboratorio")
+            ),
+            div(
+              class = "reactivos-hero-copy",
+              div(class = "reactivos-hero-kicker", tr(language, "UNIDAD DE MALARIA Y BIOLOGIA DE VECTORES", "MALARIA AND VECTOR BIOLOGY UNIT")),
+              h3(tr(language, "Reactivos de Laboratorio", "Laboratory Reagents")),
+              p(tr(language, "Distribución eficiente y segura para fortalecer la vigilancia entomológica en la región.", "Efficient and safe distribution to strengthen entomological surveillance in the region.")),
+              div(
+                class = "reactivos-hero-benefits",
+                div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "▣"), div(strong(tr(language, "Inventario", "Inventory")), tags$br(), tr(language, "Seguimiento de insumos disponibles.", "Tracking of available supplies."))),
+                div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "⇄"), div(strong(tr(language, "Distribución", "Distribution")), tags$br(), tr(language, "Preparación para entrega y reposición.", "Preparation for delivery and replenishment."))),
+                div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "✓"), div(strong(tr(language, "Calidad", "Quality")), tags$br(), tr(language, "Reactivos certificados y verificados.", "Certified and verified reagents."))),
+                div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "▤"), div(strong(tr(language, "Trazabilidad", "Traceability")), tags$br(), tr(language, "Control en cada etapa del proceso.", "Control at every stage of the process.")))
+              ),
+              tags$div(
+                class = "reactivos-hero-notes",
+                tags$div(class = "reactivos-hero-note", strong(tr(language, "Larvicidas", "Larvicides")), tags$div(tr(language, "Productos para intervenir criaderos y etapas inmaduras.", "Products to target breeding sites and immature stages."))),
+                tags$div(class = "reactivos-hero-note", strong(tr(language, "Adulticidas", "Adulticides")), tags$div(tr(language, "Control focalizado para insectos adultos.", "Focused control for adult mosquitoes."))),
+                tags$div(class = "reactivos-hero-note", strong(tr(language, "Residuales", "Residuals")), tags$div(tr(language, "Aplicaciones dirigidas de efecto prolongado.", "Targeted long-lasting applications.")))
+              )
+            )
+          ),
+          div(
+            class = "reactivos-intent-copy",
+            h4(tr(language, "Envío y compra de reactivos", "Reagent shipment and procurement")),
+            p(tr(
+              language,
+              "EntoNet busca facilitar el acceso a materiales clave para armonizar procedimientos y resultados en la evaluación de resistencia a insecticidas entre los miembros del consorcio en Centroamérica y República Dominicana.",
+              "EntoNet aims to facilitate access to key materials that support harmonized procedures and comparable results for insecticide resistance evaluation among consortium members in Central America and the Dominican Republic."
+            ))
+          ),
+          div(
+            class = "reactivos-order-procedure",
+            h4(tr(language, "Procedimiento para solicitar reactivos", "Procedure to request reagents")),
+            p(tr(
+              language,
+              "Este flujo sirve como machote inicial para validar solicitudes, autorizar envíos y ordenar los pasos administrativos asociados a la compra o distribución de insecticidas dentro de EntoNet.",
+              "This workflow is an initial template to validate requests, authorize shipments, and organize the administrative steps related to insecticide procurement or distribution within EntoNet."
+            )),
+            div(
+              class = "reactivos-order-steps",
+              div(
+                class = "reactivos-order-step",
+                strong(tr(language, "1. Formulario de autorización", "1. Authorization form")),
+                span(tr(
+                  language,
+                  "La solicitud inicia con el Formulario de Autorización para Compra de Insecticidas. EntoNet utilizará esta información para validar la institución solicitante, el tipo de reactivo requerido y la autorización para el envío.",
+                  "The request begins with the Insecticide Purchase Authorization Form. EntoNet will use this information to validate the requesting institution, the reagent type requested, and shipment authorization."
+                ))
+              ),
+              div(
+                class = "reactivos-order-step",
+                strong(tr(language, "2. Ruta para Ministerios de Salud", "2. Ministry of Health route")),
+                span(tr(
+                  language,
+                  "Cuando la solicitud provenga de un Ministerio de Salud y existan fondos CDC disponibles, los costos del producto y envío serán cubiertos hasta la aduana del país solicitante. A partir de ese punto, la institución solicitante deberá cubrir transporte local, liberación, manejo u otros costos nacionales aplicables.",
+                  "When the request comes from a Ministry of Health and CDC funds are available, product and shipping costs will be covered up to customs in the requesting country. From that point forward, the requesting institution must cover local transport, clearance, handling, or other applicable national costs."
+                ))
+              ),
+              div(
+                class = "reactivos-order-step",
+                strong(tr(language, "3. Ruta para universidades e institutos de investigación", "3. University and research institute route")),
+                span(tr(
+                  language,
+                  "Las instituciones que no sean Ministerios de Salud deberán completar un formulario adicional de cotización y compra para documentar el pago del producto, envío y costos asociados.",
+                  "Institutions that are not Ministries of Health must complete an additional quotation and purchase form to document payment for the product, shipment, and associated costs."
+                ))
+              )
+            ),
+            div(
+              class = "reactivos-form-placeholders",
+              div(
+                class = "reactivos-form-placeholder",
+                strong(tr(language, "Formulario de Autorización", "Authorization Form")),
+                span(tr(language, "Espacio reservado para conectar el formulario de validación y autorización de envío.", "Reserved space to connect the validation and shipment authorization form."))
+              ),
+              div(
+                class = "reactivos-form-placeholder",
+                strong(tr(language, "Formulario de Cotización y Compra", "Quotation and Purchase Form")),
+                span(tr(language, "Espacio reservado para instituciones que deberán cubrir costos de producto, envío o gestión local.", "Reserved space for institutions that must cover product, shipment, or local management costs."))
+              )
+            )
+          ),
+          div(
+            class = "capture-subdivision-list",
+            actionButton(
+              "show_request_reactivos_larvicidas",
+              tagList(
+                div(class = "capture-subdivision-panel-image", img(src = "reactivos-larvicidas.png", alt = tr(language, "Larvicidas", "Larvicides"))),
+                div(
+                  class = "capture-subdivision-panel-body",
+                  h4(tr(language, "Larvicidas", "Larvicides")),
+                  p(tr(language, "Productos para intervenir criaderos y etapas inmaduras.", "Products to target breeding sites and immature stages."))
+                )
+              ),
+              class = paste(
+                "capture-subdivision-panel capture-subdivision-panel-action",
+                if (identical(category_key, "larvicidas")) "capture-subdivision-panel-active" else ""
+              )
+            ),
+            actionButton(
+              "show_request_reactivos_adulticidas",
+              tagList(
+                div(class = "capture-subdivision-panel-image", img(src = "reactivos-adulticidas.png", alt = tr(language, "Adulticidas", "Adulticides"))),
+                div(
+                  class = "capture-subdivision-panel-body",
+                  h4(tr(language, "Adulticidas", "Adulticides")),
+                  p(tr(language, "Control focalizado para insectos adultos.", "Focused control for adult mosquitoes."))
+                )
+              ),
+              class = paste(
+                "capture-subdivision-panel capture-subdivision-panel-action",
+                if (identical(category_key, "adulticidas")) "capture-subdivision-panel-active" else ""
+              )
+            ),
+            actionButton(
+              "show_request_reactivos_residuales",
+              tagList(
+                div(class = "capture-subdivision-panel-image", img(src = "reactivos-residuales.png", alt = tr(language, "Residuales", "Residuals"))),
+                div(
+                  class = "capture-subdivision-panel-body",
+                  h4(tr(language, "Residuales", "Residuals")),
+                  p(tr(language, "Formulaciones para aplicaciones dirigidas de efecto prolongado.", "Targeted long-lasting applications."))
+                )
+              ),
+              class = paste(
+                "capture-subdivision-panel capture-subdivision-panel-action",
+                if (identical(category_key, "residuales")) "capture-subdivision-panel-active" else ""
+              )
+            )
+          ),
+          div(
+            class = "reactivos-detail-bubble",
+            div(
+              class = "reactivos-detail-bubble-header",
+              div(
+                tags$div(style = "color:#1769aa;font-size:12px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;", tr(language, "Definición técnica", "Technical definition")),
+                h4(if (identical(category_key, "larvicidas")) tr(language, "Larvicidas", "Larvicides") else if (identical(category_key, "adulticidas")) tr(language, "Adulticidas", "Adulticides") else tr(language, "Residuales", "Residuals")),
+                tags$p(selected_definition)
+              ),
+              div(style = "flex:0 0 auto;color:#0d7a82;font-size:13px;font-weight:700;", tr(language, "Seleccione un producto", "Select a product"))
+            ),
+            div(
+              class = "reactivos-detail-bubble-body",
+              div(
+                class = "reactivos-detail-products",
+                lapply(seq_len(nrow(category_data$items)), function(i) {
+                  item <- category_data$items[i, ]
+                  actionButton(
+                    paste0("show_request_reactivos_product_", i),
+                    tagList(
+                      div(class = "reactivos-detail-product-image", img(src = item$image, alt = item$name)),
+                      div(
+                        style = "flex:1 1 auto;",
+                        div(class = "reactivos-detail-product-name", item$name),
+                        div(class = "reactivos-detail-product-price", item$price),
+                        div(class = "reactivos-detail-product-status", item$status)
+                      )
+                    ),
+                    class = paste(
+                      "reactivos-detail-product",
+                      if (identical(as.integer(product_index), as.integer(i))) "reactivos-detail-product-active" else ""
+                    )
+                  )
+                })
+              ),
+              div(
+                class = "reactivos-product-card",
+                h5(selected_product$name),
+                p(selected_product$technical_description),
+                div(
+                  class = "reactivos-product-spec-grid",
+                  div(
+                    class = "reactivos-product-spec",
+                    span(tr(language, "Concentración", "Concentration")),
+                    strong(selected_product$concentration)
+                  ),
+                  div(
+                    class = "reactivos-product-spec",
+                    span(tr(language, "Caducidad", "Expiration")),
+                    strong(selected_product$expiration)
+                  ),
+                  div(
+                    class = "reactivos-product-spec",
+                    span(tr(language, "Costo", "Cost")),
+                    strong(selected_product$price)
+                  ),
+                  div(
+                    class = "reactivos-product-spec",
+                    span(tr(language, "Disponibilidad", "Availability")),
+                    strong(selected_product$status)
+                  )
+                ),
+                div(
+                  class = "reactivos-form-placeholder",
+                  strong(tr(language, "Solicitud del producto", "Product request")),
+                  span(tr(
+                    language,
+                    "Espacio reservado para activar la solicitud de este reactivo y vincularla con el formulario de autorización o compra.",
+                    "Reserved space to activate the request for this reagent and connect it to the authorization or purchase form."
+                  )),
+                  tags$button(
+                    type = "button",
+                    class = "btn btn-primary",
+                    style = "margin-top:12px;",
+                    tr(language, "Solicitar producto", "Request product")
+                  )
+                )
+              )
+            )
+          ),
+          div(class = "selector-box", h4(tr(language, "Lista inicial de reactivos", "Initial reagent list")), tableOutput("request_reactivos_preview_table"))
+        )
+      }
       if (is.null(subdivision)) {
         return(div(
           class = "module-panel",
-          h3("Solicitudes"),
           div(
-            class = "capture-subdivision-list",
-            div(class = "capture-subdivision-panel", h4("Datos"), p("Solicitudes de acceso, descarga o consulta de datos.")),
-            div(class = "capture-subdivision-panel", h4("Reactivos"), p("Solicitudes relacionadas con reactivos e insumos.")),
-            div(class = "capture-subdivision-panel", h4("Equipo"), p("Solicitudes relacionadas con equipo de campo, insectario o laboratorio.")),
-            div(class = "capture-subdivision-panel", h4("Apoyo Técnico"), p("Solicitudes de acompañamiento, soporte o asistencia técnica."))
+            class = "request-flow-panel",
+            img(src = "solicitudes-flow.png", alt = "Flujo de Solicitudes EntoNet")
           )
         ))
+      }
+      if (identical(subdivision, "reactivos")) {
+        return(render_request_reactivos_panel())
       }
       if (identical(subdivision, "datos")) {
         allowed_subdivisions <- request_allowed_data_subdivisions()
@@ -11020,6 +11901,17 @@ server <- function(input, output, session) {
     )
   })
 
+  output$request_reactivos_preview_table <- renderTable({
+    category_key <- active_request_reactivos_category()
+    if (identical(category_key, "larvicidas")) {
+      data.frame(Reactivo = c("Temefos 1 L", "Bti granulado 1 kg", "Larvex Pro 500"), Presentación = c("Ejemplo", "Ejemplo", "Ejemplo"), Cantidad = c("1", "2", "1"), `Uso previsto` = c("Larvicida", "Larvicida", "Larvicida"), check.names = FALSE, stringsAsFactors = FALSE)
+    } else if (identical(category_key, "adulticidas")) {
+      data.frame(Reactivo = c("AdultiMax 450", "PyroControl ULV", "CipraNeo 1 L"), Presentación = c("Ejemplo", "Ejemplo", "Ejemplo"), Cantidad = c("1", "1", "2"), `Uso previsto` = c("Adulticida", "Adulticida", "Adulticida"), check.names = FALSE, stringsAsFactors = FALSE)
+    } else {
+      data.frame(Reactivo = c("ResiShield 2 L", "LongGuard 1 kg", "MuroPlus 5 L"), Presentación = c("Ejemplo", "Ejemplo", "Ejemplo"), Cantidad = c("1", "1", "1"), `Uso previsto` = c("Residual", "Residual", "Residual"), check.names = FALSE, stringsAsFactors = FALSE)
+    }
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "lccc")
+
   output$active_dataset_header <- renderUI({
     dataset <- active_dataset()
     subdivision <- active_capture_subdivision()
@@ -11067,24 +11959,6 @@ server <- function(input, output, session) {
               div(class = "capture-code-pattern", "REI + AA + PAIS + DEP/MUNI + P# + SIN + INS + # + F#")
             )
           )
-        ),
-        div(
-          class = "capture-subdivision-list",
-        div(
-          class = "capture-subdivision-panel",
-          h4("Campo"),
-          p("Formulario 1: colocación y retiro de ovitrampas.")
-        ),
-        div(
-          class = "capture-subdivision-panel",
-          h4("Insectario"),
-          p("Formulario 5: alimentación conteo. Formulario 7: bioensayo de botella CDC.")
-        ),
-        div(
-          class = "capture-subdivision-panel",
-          h4("Laboratorio"),
-          p("Sin formularios activos por el momento.")
-        )
         )
       ))
     }
