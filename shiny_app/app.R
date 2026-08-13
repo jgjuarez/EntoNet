@@ -525,8 +525,151 @@ ubicacion_codigo_manual_o_seleccion <- function(selected, manual_value) {
 }
 
 ubicacion_normalizar_texto <- function(value) {
-  value <- toupper(trimws(as.character(value_or_default(value, ""))))
+  if (is.null(value)) return("")
+  value <- as.character(value)
+  value[is.na(value)] <- ""
+  value <- toupper(trimws(value))
   chartr("ÁÉÍÓÚÜÑ", "AEIOUUN", value)
+}
+
+extraer_puntos_geojson <- function(coordinates) {
+  values <- suppressWarnings(as.numeric(unlist(coordinates, use.names = FALSE)))
+  values <- values[!is.na(values)]
+  if (length(values) < 2) return(matrix(numeric(0), ncol = 2))
+  matrix(values[seq_len(length(values) - length(values) %% 2)], ncol = 2, byrow = TRUE)
+}
+
+obtener_geojson_municipios_gt_path <- function() {
+  geojson_candidates <- c(
+    file.path("www", "guatemala_municipios.geojson"),
+    file.path("shiny_app", "www", "guatemala_municipios.geojson")
+  )
+  existing_geojson <- geojson_candidates[file.exists(geojson_candidates)]
+  if (length(existing_geojson)) existing_geojson[[1]] else ""
+}
+
+construir_centroides_municipales_gt <- function() {
+  geojson_path <- obtener_geojson_municipios_gt_path()
+  if (!nzchar(geojson_path)) return(data.frame())
+
+  geojson <- tryCatch(
+    jsonlite::fromJSON(geojson_path, simplifyVector = FALSE),
+    error = function(error) NULL
+  )
+  if (is.null(geojson) || is.null(geojson$features)) return(data.frame())
+
+  centroides <- do.call(rbind, lapply(geojson$features, function(feature) {
+    props <- feature$properties
+    puntos <- extraer_puntos_geojson(feature$geometry$coordinates)
+    if (is.null(props) || !nrow(puntos)) return(NULL)
+
+    data.frame(
+      departamento_geo = value_or_default(props$DEPARTAMENTO, props$N_NIVEL2),
+      municipio_geo = props$N_NIVEL3,
+      latitude = mean(puntos[, 2], na.rm = TRUE),
+      longitude = mean(puntos[, 1], na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+  }))
+  if (is.null(centroides) || !nrow(centroides)) return(data.frame())
+
+  catalogo_gt <- ubicacion_municipio_catalogo[ubicacion_municipio_catalogo$pais == "Guatemala", , drop = FALSE]
+  llave_catalogo <- paste(
+    ubicacion_normalizar_texto(catalogo_gt$departamento),
+    ubicacion_normalizar_texto(catalogo_gt$municipio),
+    sep = "|"
+  )
+  llave_geo <- paste(
+    ubicacion_normalizar_texto(centroides$departamento_geo),
+    ubicacion_normalizar_texto(centroides$municipio_geo),
+    sep = "|"
+  )
+  indice <- match(llave_catalogo, llave_geo)
+  faltantes <- is.na(indice)
+  if (any(faltantes)) {
+    indice[faltantes] <- match(
+      ubicacion_normalizar_texto(catalogo_gt$municipio[faltantes]),
+      ubicacion_normalizar_texto(centroides$municipio_geo)
+    )
+  }
+  encontrados <- !is.na(indice)
+  ubicaciones_municipales <- data.frame(
+    pais = "Guatemala",
+    codigo_municipio = catalogo_gt$municipio_codigo[encontrados],
+    latitude = centroides$latitude[indice[encontrados]],
+    longitude = centroides$longitude[indice[encontrados]],
+    stringsAsFactors = FALSE
+  )
+  sin_municipio <- catalogo_gt[!encontrados, , drop = FALSE]
+  if (nrow(sin_municipio)) {
+    departamentos <- unique(centroides$departamento_geo)
+    centroides_departamento <- do.call(rbind, lapply(departamentos, function(departamento) {
+      datos <- centroides[centroides$departamento_geo == departamento, , drop = FALSE]
+      data.frame(
+        departamento = departamento,
+        latitude = mean(datos$latitude, na.rm = TRUE),
+        longitude = mean(datos$longitude, na.rm = TRUE),
+        stringsAsFactors = FALSE
+      )
+    }))
+    indice_departamento <- match(
+      ubicacion_normalizar_texto(sin_municipio$departamento),
+      ubicacion_normalizar_texto(centroides_departamento$departamento)
+    )
+    con_departamento <- !is.na(indice_departamento)
+    ubicaciones_departamentales <- data.frame(
+      pais = "Guatemala",
+      codigo_municipio = sin_municipio$municipio_codigo[con_departamento],
+      latitude = centroides_departamento$latitude[indice_departamento[con_departamento]],
+      longitude = centroides_departamento$longitude[indice_departamento[con_departamento]],
+      stringsAsFactors = FALSE
+    )
+    ubicaciones_municipales <- rbind(ubicaciones_municipales, ubicaciones_departamentales)
+  }
+
+  ubicaciones_municipales
+}
+
+crear_geojson_departamentos_resultados_gt <- function(departamentos) {
+  departamentos <- ubicacion_normalizar_texto(unique(stats::na.omit(departamentos)))
+  departamentos <- departamentos[nzchar(departamentos)]
+  if (!length(departamentos)) return(NULL)
+
+  geojson_path <- obtener_geojson_municipios_gt_path()
+  if (!nzchar(geojson_path)) return(NULL)
+
+  geojson <- tryCatch(
+    jsonlite::fromJSON(geojson_path, simplifyVector = FALSE),
+    error = function(error) NULL
+  )
+  if (is.null(geojson) || is.null(geojson$features)) return(NULL)
+
+  geojson$features <- Filter(function(feature) {
+    props <- feature$properties
+    if (is.null(props)) return(FALSE)
+    ubicacion_normalizar_texto(value_or_default(props$DEPARTAMENTO, props$N_NIVEL2)) %in% departamentos
+  }, geojson$features)
+  if (!length(geojson$features)) return(NULL)
+
+  jsonlite::toJSON(geojson, auto_unbox = TRUE, null = "null", digits = NA)
+}
+
+formulario_7_visualization_locations <- local({
+  ubicaciones_gt <- construir_centroides_municipales_gt()
+  ubicaciones <- rbind(formulario_7_visualization_locations, ubicaciones_gt)
+  ubicaciones[!duplicated(paste(ubicaciones$pais, ubicaciones$codigo_municipio)), , drop = FALSE]
+})
+
+normalizar_codigo_municipio_mapa <- function(country, department_code, municipality_code) {
+  country <- ubicacion_normalizar_pais(country)
+  department_code <- gsub("[^0-9]+", "", as.character(value_or_default(department_code, "")))
+  municipality_code <- gsub("[^0-9]+", "", as.character(value_or_default(municipality_code, "")))
+  if (!nzchar(municipality_code)) return("")
+  if (nchar(municipality_code) >= 4) return(municipality_code)
+  if (identical(country, "Guatemala") && nzchar(department_code)) {
+    return(paste0(sprintf("%02d", as.integer(department_code)), sprintf("%02d", as.integer(municipality_code))))
+  }
+  municipality_code
 }
 
 ubicacion_resolver_departamento_codigo <- function(country, value) {
@@ -3446,6 +3589,46 @@ ui <- fluidPage(
         gap: 12px;
         margin-bottom: 22px;
         max-width: 760px;
+      }
+      .capture-form-choice-list {
+        display: grid;
+        gap: 14px;
+        max-width: 760px;
+      }
+      .capture-form-choice {
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        border-left: 6px solid #008c8f;
+        border-radius: 10px;
+        box-shadow: 0 6px 18px rgba(16, 34, 61, 0.08);
+        color: #10223d;
+        padding: 18px 20px;
+        text-align: left;
+        white-space: normal;
+        width: 100%;
+      }
+      .capture-form-choice:hover,
+      .capture-form-choice:focus {
+        box-shadow: 0 10px 24px rgba(16, 34, 61, 0.14);
+        color: #10223d;
+        transform: translateY(-1px);
+      }
+      .capture-form-choice strong {
+        color: #082243;
+        display: block;
+        font-size: 18px;
+        font-weight: 800;
+        line-height: 1.2;
+        margin-bottom: 6px;
+      }
+      .capture-form-choice span {
+        color: #526070;
+        display: block;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      .capture-form-choice-secondary {
+        border-left-color: #4d284a;
       }
       .capture-subdivision-list {
         display: grid;
@@ -10662,7 +10845,14 @@ server <- function(input, output, session) {
             "Sinergistas"
           )
         )
-        location_key <- paste(query$country, records$codigo_municipio, sep = "|")
+        records$codigo_municipio_mapa <- mapply(
+          normalizar_codigo_municipio_mapa,
+          query$country,
+          records$codigo_departamento,
+          records$codigo_municipio,
+          USE.NAMES = FALSE
+        )
+        location_key <- paste(query$country, records$codigo_municipio_mapa, sep = "|")
         reference_key <- paste(
           formulario_7_visualization_locations$pais,
           formulario_7_visualization_locations$codigo_municipio,
@@ -10671,6 +10861,15 @@ server <- function(input, output, session) {
         location_index <- match(location_key, reference_key)
         records$latitude <- formulario_7_visualization_locations$latitude[location_index]
         records$longitude <- formulario_7_visualization_locations$longitude[location_index]
+        municipio_index <- match(
+          paste(query$country, records$codigo_municipio_mapa, sep = "|"),
+          paste(ubicacion_municipio_catalogo$pais, ubicacion_municipio_catalogo$municipio_codigo, sep = "|")
+        )
+        records$municipio <- ifelse(
+          !is.na(municipio_index),
+          ubicacion_municipio_catalogo$municipio[municipio_index],
+          records$municipio
+        )
       }
       f7_visualization_records(records)
       f7_visualization_last_refresh(Sys.time())
@@ -10893,14 +11092,14 @@ server <- function(input, output, session) {
     if (!nrow(records)) return(data.frame())
     group_key <- paste(
       records$codigo_departamento,
-      records$codigo_municipio,
+      records$codigo_municipio_mapa,
       records$nombre_poblacion,
       sep = "|"
     )
     groups <- split(records, group_key)
     points <- do.call(rbind, lapply(groups, function(group) {
       data.frame(
-        location_id = paste(group$codigo_departamento[[1]], group$codigo_municipio[[1]], group$nombre_poblacion[[1]], sep = "|"),
+        location_id = paste(group$codigo_departamento[[1]], group$codigo_municipio_mapa[[1]], group$nombre_poblacion[[1]], sep = "|"),
         departamento = group$departamento[[1]],
         municipio = group$municipio[[1]],
         nombre_poblacion = group$nombre_poblacion[[1]],
@@ -10992,8 +11191,8 @@ server <- function(input, output, session) {
   output$f7_visualization_kpis <- renderUI({
     records <- f7_visualization_filtered()
     mapped <- records[!is.na(records$latitude) & !is.na(records$longitude), , drop = FALSE]
-    municipalities <- if (nrow(records)) length(unique(paste(records$codigo_departamento, records$codigo_municipio))) else 0L
-    mapped_municipalities <- if (nrow(mapped)) length(unique(paste(mapped$codigo_departamento, mapped$codigo_municipio))) else 0L
+    municipalities <- if (nrow(records)) length(unique(paste(records$codigo_departamento, records$codigo_municipio_mapa))) else 0L
+    mapped_municipalities <- if (nrow(mapped)) length(unique(paste(mapped$codigo_departamento, mapped$codigo_municipio_mapa))) else 0L
     div(
       class = "f7-viz-kpi-grid",
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Bioensayos"), span(class = "f7-viz-kpi-value", nrow(records))),
@@ -11023,6 +11222,23 @@ server <- function(input, output, session) {
     if (!nrow(points)) {
       return(map |> addControl(html = "No hay registros para los filtros seleccionados.", position = "topright"))
     }
+    department_overlay <- NULL
+    if (identical(value_or_default(input$visualization_country, "Guatemala"), "Guatemala")) {
+      department_overlay <- crear_geojson_departamentos_resultados_gt(points$departamento)
+    }
+    if (!is.null(department_overlay)) {
+      map <- map |>
+        addGeoJSON(
+          geojson = department_overlay,
+          group = "Departamentos con resultados",
+          color = "#005F73",
+          weight = 1.4,
+          opacity = 0.72,
+          fillColor = "#0A9396",
+          fillOpacity = 0.16,
+          smoothFactor = 0.5
+        )
+    }
     palette <- colorFactor(
       palette = c("#C62828", "#F9A825", "#9CA3AF", "#757575"),
       domain = c("Resistencia", "Sospecha Resistencia", "Susceptible", "Sin resultado diagnóstico")
@@ -11038,7 +11254,7 @@ server <- function(input, output, session) {
       "<br>Última prueba: ", points$fecha_ultima,
       "<br>Tipos: ", htmltools::htmlEscape(points$tipos)
     )
-    map |>
+    map <- map |>
       addCircleMarkers(
         data = points,
         lng = ~longitude,
@@ -11057,6 +11273,20 @@ server <- function(input, output, session) {
         pal = palette,
         values = points$clasificacion,
         title = "Resultado diagnóstico"
+      )
+    if (!is.null(department_overlay)) {
+      map <- map |>
+        addLayersControl(
+          overlayGroups = c("Departamentos con resultados"),
+          options = layersControlOptions(collapsed = FALSE)
+        )
+    }
+    map |>
+      fitBounds(
+        lng1 = min(points$longitude, na.rm = TRUE),
+        lat1 = min(points$latitude, na.rm = TRUE),
+        lng2 = max(points$longitude, na.rm = TRUE),
+        lat2 = max(points$latitude, na.rm = TRUE)
       )
   })
 
@@ -11358,16 +11588,8 @@ server <- function(input, output, session) {
         if (identical(module, "capture")) div(
           class = "sidebar-form-list",
           actionButton("show_capture_campo", "Campo", class = subdivision_class("campo")),
-          if (identical(capture_subdivision, "campo")) tagList(
-            actionButton("select_formulario_1_capture", "Formulario 1: Colocación y retiro", class = form_item_class("formulario_1_colocacion_retiro_ovitrampa"))
-          ),
           actionButton("show_capture_insectario", "Insectario", class = subdivision_class("insectario")),
-          if (identical(capture_subdivision, "insectario")) tagList(
-            actionButton("select_formulario_5_capture", "Formulario 5: Alimentación conteo", class = form_item_class("formulario_5_alimentacion_conteo")),
-            actionButton("select_formulario_7_capture", "Formulario 7: Bioensayo CDC", class = form_item_class("formulario_7_bioensayo_botella_cdc"))
-          ),
-          actionButton("show_capture_laboratorio", "Laboratorio", class = subdivision_class("laboratorio")),
-          if (identical(capture_subdivision, "laboratorio")) div(class = "sidebar-form-item", "Sin formularios activos")
+          actionButton("show_capture_laboratorio", "Laboratorio", class = subdivision_class("laboratorio"))
         ),
         actionButton("show_visualization", "Visualización de Datos", class = subitem_class("visualization")),
         actionButton("show_request", "Solicitudes", class = subitem_class("request")),
@@ -11995,13 +12217,48 @@ server <- function(input, output, session) {
 
     if (is.null(dataset)) {
       if (identical(subdivision, "campo")) {
-        return(div(class = "alert alert-info", "Seleccione Formulario 1 en el menú lateral."))
+        return(div(
+          class = "capture-form-choice-list",
+          actionButton(
+            "select_formulario_1_capture",
+            tagList(
+              strong("Formulario 1: Colocación y retiro de ovitrampa"),
+              span("Ingrese a las opciones de subida masiva, ingreso individual, revisión e impresión del Formulario 1.")
+            ),
+            class = "capture-form-choice"
+          )
+        ))
       }
       if (identical(subdivision, "insectario")) {
-        return(div(class = "alert alert-info", "Seleccione Formulario 5 o Formulario 7 en el menú lateral."))
+        return(div(
+          class = "capture-form-choice-list",
+          actionButton(
+            "select_formulario_5_capture",
+            tagList(
+              strong("Formulario 5: Alimentación y conteo"),
+              span("Ingrese a las opciones de subida masiva, ingreso individual y revisión del Formulario 5.")
+            ),
+            class = "capture-form-choice"
+          ),
+          actionButton(
+            "select_formulario_7_capture",
+            tagList(
+              strong("Formulario 7: Bioensayo de botella CDC"),
+              span("Ingrese a las opciones de subida masiva, ingreso individual, revisión e impresión del Formulario 7.")
+            ),
+            class = "capture-form-choice capture-form-choice-secondary"
+          )
+        ))
       }
       if (identical(subdivision, "laboratorio")) {
-        return(div(class = "alert alert-info", "Laboratorio no tiene formularios activos por el momento."))
+        return(div(
+          class = "capture-form-choice-list",
+          div(
+            class = "capture-form-choice capture-form-choice-secondary",
+            strong("Laboratorio"),
+            span("Sin formularios activos por el momento. Este espacio queda reservado para futuros formularios de laboratorio.")
+          )
+        ))
       }
       return(NULL)
     }
