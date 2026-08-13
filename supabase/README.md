@@ -52,6 +52,7 @@ Formulario 7 usa un modelo normalizado alineado con el ingreso individual:
 - `formulario_7_bioensayo_intake`: información general, bioensayo, material, responsables, condiciones y estado de revisión. `codigo_bioensayo` es el identificador del registro.
 - `formulario_7_bioensayo_resultado_intake`: lecturas por botella y tiempo. Para sinergistas se registra primero la lectura de 60 minutos del sinergista y luego la lectura del insecticida a 0, 15, 30, 45 minutos y 24h.
 - `formulario_7_bioensayo_comentario_intake`: un comentario asociado.
+- `formulario_7_bioensayo_eliminacion_audit`: auditoría mínima con motivo obligatorio cuando un registro se elimina desde revisión.
 
 El CSV oficial de Formulario 7 usa 118 columnas visibles para carga y descarga.
 La tabla principal usa esos mismos nombres operativos para evitar confusión al
