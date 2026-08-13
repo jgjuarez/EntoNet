@@ -56,6 +56,8 @@ Formulario 7 usa un modelo normalizado alineado con el ingreso individual:
 El CSV oficial de Formulario 7 usa 118 columnas visibles para carga y descarga.
 La tabla principal usa esos mismos nombres operativos para evitar confusión al
 descargar datos desde la aplicación o directamente desde Supabase.
+La Intensidad Exploratorio guarda `dosis_intensidad` solo cuando el resultado
+diagnóstico es Resistente o Sospecha de Resistencia; en Suceptible queda vacío.
 
 Formulario 1 usa un modelo encabezado-detalle:
 

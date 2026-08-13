@@ -2044,7 +2044,7 @@ formulario_7_capture_form <- function() {
               inline = TRUE
             ),
             conditionalPanel(
-              "input.f7_tipo_bioensayo == 'diagnostica_1x' || input.f7_tipo_bioensayo == 'sinergistas'",
+              "input.f7_tipo_bioensayo == 'diagnostica_1x' || input.f7_tipo_bioensayo == 'intensidad' || input.f7_tipo_bioensayo == 'sinergistas'",
               radioButtons(
                 "f7_resultado_diagnostico",
                 "Resultado de la prueba diagnóstica *",
@@ -2057,11 +2057,11 @@ formulario_7_capture_form <- function() {
               radioButtons("f7_bioensayo_intensidad", "Intensidad *", choices = c("Exploratorio", "Completa"), inline = TRUE),
               conditionalPanel(
                 "input.f7_bioensayo_intensidad == 'Exploratorio'",
-                div(class = "alert alert-info", strong("Dosis incluidas: "), "1X, 2X, 5X y 10X, más su control.")
+                div(class = "alert alert-info", strong("Dosis incluidas: "), "1X, 2X, 5X y 10X, más su control. Si el resultado es Resistente o Sospecha de Resistencia, indique la concentración mayor asociada.")
               ),
               conditionalPanel(
-                "input.f7_bioensayo_intensidad == 'Completa'",
-                selectInput("f7_dosis_intensidad", "Dosis de intensidad *", choices = c("1X", "2X", "5X", "10X"))
+                "input.f7_bioensayo_intensidad == 'Completa' || (input.f7_bioensayo_intensidad == 'Exploratorio' && (input.f7_resultado_diagnostico == 'Resistente' || input.f7_resultado_diagnostico == 'Sospecha de Resistencia'))",
+                selectInput("f7_dosis_intensidad", "Concentración asociada *", choices = c("Seleccione" = "", "1X" = "1X", "2X" = "2X", "5X" = "5X", "10X" = "10X"))
               )
             ),
             conditionalPanel(
@@ -9248,11 +9248,15 @@ server <- function(input, output, session) {
       if (is_diagnostic) {
         if (is.na(data$resultado_diagnostico[[row]])) details <- c(details, paste("Fila", row, ": indique el resultado de la prueba diagnóstica."))
         if (!is.na(data$dosis_intensidad[[row]]) || has_synergist || is_intensity) details <- c(details, paste("Fila", row, ": Diagnóstica 1X no admite modalidad de intensidad, dosis de intensidad ni sinergistas."))
-      } else if (is_intensity && !is.na(data$resultado_diagnostico[[row]])) {
-        details <- c(details, paste("Fila", row, ": resultado_diagnostico solo corresponde a Diagnóstica 1X o Sinergistas."))
       }
       if (is_intensity) {
-        if (identical(data$bioensayo_intensidad[[row]], "Exploratorio") && !is.na(data$dosis_intensidad[[row]])) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio usa las botellas 1X, 2X, 5X y 10X y no selecciona una dosis única."))
+        current_result <- data$resultado_diagnostico[[row]]
+        current_dose <- data$dosis_intensidad[[row]]
+        if (is.na(current_result)) details <- c(details, paste("Fila", row, ": indique el resultado de la prueba diagnóstica para Intensidad."))
+        if (identical(data$bioensayo_intensidad[[row]], "Exploratorio")) {
+          if (identical(current_result, "Suceptible") && !is.na(current_dose)) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio Suceptible no debe llevar dosis_intensidad."))
+          if (current_result %in% c("Sospecha de Resistencia", "Resistente") && is.na(current_dose)) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio con Resistente o Sospecha de Resistencia requiere dosis_intensidad 1X, 2X, 5X o 10X."))
+        }
         if (identical(data$bioensayo_intensidad[[row]], "Completa") && is.na(data$dosis_intensidad[[row]])) details <- c(details, paste("Fila", row, ": Intensidad Completa requiere dosis_intensidad 1X, 2X, 5X o 10X."))
         if (is_diagnostic || has_synergist) details <- c(details, paste("Fila", row, ": Intensidad no puede combinarse con Diagnóstica 1X o Sinergistas."))
       } else if (!is.na(data$dosis_intensidad[[row]])) {
@@ -10112,13 +10116,15 @@ server <- function(input, output, session) {
     selected_bioassay_type <- value_or_default(input$f7_tipo_bioensayo, "diagnostica_1x")
     selected_modality <- if (identical(selected_bioassay_type, "intensidad")) value_or_default(input$f7_bioensayo_intensidad, "Exploratorio") else NA_character_
     selected_synergist <- if (identical(selected_bioassay_type, "sinergistas")) value_or_default(input$f7_sinergista_tipo, NA_character_) else NA_character_
-    diagnostic_result <- if (selected_bioassay_type %in% c("diagnostica_1x", "sinergistas")) value_or_default(input$f7_resultado_diagnostico, NA_character_) else NA_character_
+    diagnostic_result <- if (selected_bioassay_type %in% c("diagnostica_1x", "intensidad", "sinergistas")) value_or_default(input$f7_resultado_diagnostico, NA_character_) else NA_character_
+    intensity_requires_dose <- identical(selected_bioassay_type, "intensidad") &&
+      (identical(selected_modality, "Completa") || (identical(selected_modality, "Exploratorio") && diagnostic_result %in% c("Sospecha de Resistencia", "Resistente")))
     if (identical(value_or_default(input$f7_codigo_municipio, ""), "__manual__")) {
       values$codigo_municipio <- gsub("[^0-9]+", "", value_or_default(input$f7_codigo_municipio_manual, ""))
     }
     values$bioensayo_intensidad <- selected_modality
     values$bioensayo_diagnostica_1x <- as.character(identical(selected_bioassay_type, "diagnostica_1x"))
-    values$dosis_intensidad <- if (identical(selected_bioassay_type, "intensidad") && identical(selected_modality, "Completa")) input$f7_dosis_intensidad else NA_character_
+    values$dosis_intensidad <- if (intensity_requires_dose) input$f7_dosis_intensidad else NA_character_
     values$sinergista_tipo <- selected_synergist
     values$sinergista_def <- as.character(identical(selected_synergist, "DEF"))
     values$sinergista_pbo <- as.character(identical(selected_synergist, "PBO"))
@@ -10160,12 +10166,15 @@ server <- function(input, output, session) {
         c("codigo_bioensayo", "pais", "codigo_departamento", "codigo_municipio", "nombre_poblacion", "fecha_registro"),
         c("código de bioensayo", "país", "departamento", "municipio", "nombre de la población", "fecha de registro")
       )
-      if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "sinergistas")) {
+      if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "intensidad", "sinergistas")) {
         if (missing_value("resultado_diagnostico")) errors <- c(errors, "Seleccione el resultado: Suceptible, Sospecha de Resistencia o Resistente.")
       }
       if (identical(input$f7_tipo_bioensayo, "intensidad")) {
         if (missing_value("bioensayo_intensidad")) errors <- c(errors, "Seleccione Intensidad Exploratorio o Completa.")
-        if (identical(input$f7_bioensayo_intensidad, "Completa") && missing_value("dosis_intensidad")) errors <- c(errors, "Seleccione la dosis de intensidad 1X, 2X, 5X o 10X.")
+        if (identical(input$f7_bioensayo_intensidad, "Completa") && missing_value("dosis_intensidad")) errors <- c(errors, "Seleccione la concentración de intensidad 1X, 2X, 5X o 10X.")
+        if (identical(input$f7_bioensayo_intensidad, "Exploratorio") && value("resultado_diagnostico") %in% c("Sospecha de Resistencia", "Resistente") && missing_value("dosis_intensidad")) {
+          errors <- c(errors, "Seleccione la concentración asociada a la resistencia o sospecha.")
+        }
       }
       if (identical(input$f7_tipo_bioensayo, "sinergistas")) {
         if (missing_value("sinergista_tipo")) errors <- c(errors, "Seleccione el sinergista: DEF, PBO o DM.")
