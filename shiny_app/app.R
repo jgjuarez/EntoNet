@@ -1099,14 +1099,14 @@ fetch_usuario_perfil <- function(login_identifier = NULL, auth_user_id = NULL, a
     return(data.frame())
   }
 
-  dbGetQuery(
-    connection,
+  placeholders <- paste0("$", seq_along(candidates), collapse = ", ")
+  query <- paste0(
     "select usuario, user_id::text, email, id_institucion, rol, pais, nombre, activo
      from public.usuario_perfil
-     where lower(usuario) = any($1) or lower(email) = any($1)
-     limit 1",
-    params = list(candidates)
+     where lower(usuario) in (", placeholders, ") or lower(email) in (", placeholders, ")
+     limit 1"
   )
+  dbGetQuery(connection, query, params = as.list(candidates))
 }
 
 login_identifier_to_email <- function(login_identifier) {
