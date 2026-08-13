@@ -22,7 +22,8 @@ Orden sugerido de ejecucion:
 16. `023_formulario_7_sinergistas_60min.sql`
 17. `024_formulario_7_sinergista_dosis.sql`
 18. `025_formulario_7_rename_capture_columns.sql`
-19. Scripts futuros de catalogos, permisos y vistas.
+19. `026_formulario_7_sinergista_resultado_diagnostico.sql`
+20. Scripts futuros de catalogos, permisos y vistas.
 
 Para ejecutar todos los scripts desde la raiz del repositorio:
 
