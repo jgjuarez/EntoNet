@@ -860,6 +860,10 @@ formulario_7_result_columns <- unlist(lapply(formulario_7_bottles, function(bott
     paste0("resultado_24h_", bottle, c("_vivos", "_incapacitados"))
   )
 }), use.names = FALSE)
+formulario_7_non_24h_result_columns <- grep("resultado_(hora_inicio|0min|15min|30min|45min|60min)_", formulario_7_result_columns, value = TRUE)
+formulario_7_is_temefos <- function(value) {
+  identical(toupper(trimws(value_or_default(value, ""))), "TEMEFOS")
+}
 formulario_7_comment_columns <- c("comentario", "comentario_nombre")
 formulario_7_intake_columns <- c(
   setdiff(formulario_7_header_columns, c("fuente_formulario")),
@@ -1953,13 +1957,20 @@ formulario_7_bottle_panel <- function(bottle) {
   })
 
   tagList(
-    textInput(
-      paste0("f7_resultado_hora_inicio_", bottle),
-      "Hora de inicio de la botella (HH:MM)",
-      placeholder = "08:30"
+    conditionalPanel(
+      "input.f7_insecticida != 'Temefos'",
+      textInput(
+        paste0("f7_resultado_hora_inicio_", bottle),
+        "Hora de inicio de la botella (HH:MM)",
+        placeholder = "08:30"
+      )
     ),
     conditionalPanel(
-      "input.f7_tipo_bioensayo != 'sinergistas'",
+      "input.f7_insecticida == 'Temefos'",
+      div(class = "alert alert-info", "Para Temefos solo se registra la lectura de 24 horas.")
+    ),
+    conditionalPanel(
+      "input.f7_tipo_bioensayo != 'sinergistas' && input.f7_insecticida != 'Temefos'",
       reading_rows,
       tagList(
         tags$hr(),
@@ -1969,7 +1980,13 @@ formulario_7_bottle_panel <- function(bottle) {
       )
     ),
     conditionalPanel(
-      "input.f7_tipo_bioensayo == 'sinergistas'",
+      "input.f7_tipo_bioensayo != 'sinergistas' && input.f7_insecticida == 'Temefos'",
+      h5("Lectura a 24 horas"),
+      textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
+      formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
+    ),
+    conditionalPanel(
+      "input.f7_tipo_bioensayo == 'sinergistas' && input.f7_insecticida != 'Temefos'",
       h4("8. Sinergista"),
       div(
         class = "alert alert-info",
@@ -1989,6 +2006,13 @@ formulario_7_bottle_panel <- function(bottle) {
         textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
         formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
       )
+    ),
+    conditionalPanel(
+      "input.f7_tipo_bioensayo == 'sinergistas' && input.f7_insecticida == 'Temefos'",
+      h4("Lectura por botella"),
+      div(class = "alert alert-info", "Para Temefos solo se registra la lectura de 24 horas."),
+      textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
+      formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
     )
   )
 }
@@ -9508,6 +9532,13 @@ server <- function(input, output, session) {
       bad <- which(!is.na(data[[column]]) & !(data[[column]] %in% allowed[[column]]))
       if (length(bad)) details <- c(details, paste0(column, " debe usar: ", paste(allowed[[column]], collapse = ", "), ". Filas: ", paste(head(bad, 10), collapse = ", ")))
     }
+    temefos_rows <- which(vapply(data$insecticida, formulario_7_is_temefos, logical(1)))
+    if (length(temefos_rows)) {
+      for (column in formulario_7_non_24h_result_columns) {
+        bad <- temefos_rows[!is.na(data[[column]][temefos_rows])]
+        if (length(bad)) details <- c(details, paste0(column, " no aplica para Temefos; solo registre lecturas de 24h. Filas: ", paste(head(bad, 10), collapse = ", ")))
+      }
+    }
     duplicate_codes <- unique(data$codigo_bioensayo[duplicated(data$codigo_bioensayo) & !is.na(data$codigo_bioensayo)])
     if (length(duplicate_codes)) details <- c(details, paste0("Código de bioensayo duplicado dentro del archivo: ", paste(duplicate_codes, collapse = ", "), "."))
 
@@ -9565,7 +9596,17 @@ server <- function(input, output, session) {
     results <- list()
     synergist_values <- tolower(as.character(unlist(row[c("sinergista_def", "sinergista_pbo", "sinergista_dm")])))
     has_synergist <- any(synergist_values %in% c("true", "1", "si", "sí", "yes"), na.rm = TRUE)
+    is_temefos <- formulario_7_is_temefos(row$insecticida[[1]])
     for (bottle in formulario_7_bottles) {
+      if (is_temefos) {
+        result_24h_base <- paste0("resultado_24h_", bottle)
+        if (!is.na(row[[paste0(result_24h_base, "_vivos")]])) results[[length(results) + 1]] <- data.frame(
+          fase = "kdr_24h", botella = bottle, tiempo_minutos = 1440,
+          hora_lectura = row[[paste0("resultado_hora_lectura_24h_", bottle)]],
+          vivos = row[[paste0(result_24h_base, "_vivos")]], incapacitados = row[[paste0(result_24h_base, "_incapacitados")]], stringsAsFactors = FALSE
+        )
+        next
+      }
       if (has_synergist) {
         base <- paste0("resultado_60min_", bottle)
         if (!is.na(row[[paste0(base, "_vivos")]])) results[[length(results) + 1]] <- data.frame(
@@ -9849,6 +9890,9 @@ server <- function(input, output, session) {
     }
     values$creado_en <- selected$data$creado_en[[1]]
     values$actualizado_en <- selected$data$actualizado_en[[1]]
+    if (formulario_7_is_temefos(values$insecticida[[1]])) {
+      values[formulario_7_non_24h_result_columns] <- NA_character_
+    }
     values
   }
 
@@ -10451,6 +10495,9 @@ server <- function(input, output, session) {
       values$sinergista_tipo <- NA_character_
       values$dosis_sinergista_ug_ml <- NA_character_
     }
+    if (formulario_7_is_temefos(values$insecticida)) {
+      values[formulario_7_non_24h_result_columns] <- NA_character_
+    }
     if (is.na(f7_clean_text(values$codigo_control_calidad)[[1]])) values$codigo_control_calidad <- "NO APLICA"
     values$edad_indefinida <- as.character(isTRUE(input$f7_edad_indefinida))
     values$generacion_filial_indefinida <- as.character(isTRUE(input$f7_generacion_filial_indefinida))
@@ -10726,6 +10773,7 @@ server <- function(input, output, session) {
     header <- selected$header
     edit_mode <- f7_review_edit_mode()
     delete_mode <- f7_review_delete_mode()
+    is_temefos_record <- formulario_7_is_temefos(row$insecticida[[1]])
 
     value_for <- function(field) {
       value <- row[[field]][[1]]
@@ -10735,6 +10783,9 @@ server <- function(input, output, session) {
     input_for_field <- function(field) {
       label <- f7_review_field_label(field)
       value <- value_for(field)
+      if (is_temefos_record && field %in% formulario_7_non_24h_result_columns) {
+        return(div(class = "form-group", tags$label(label), tags$p(class = "form-control-static", "No aplica para Temefos")))
+      }
       if (field %in% f7_review_protected_fields) {
         return(div(class = "form-group", tags$label(label), tags$p(class = "form-control-static", if (nzchar(value)) value else "—")))
       }
