@@ -2286,7 +2286,7 @@ formulario_7_review_form <- function() {
     wellPanel(
       h4("Registros de Formulario 7"),
       fluidRow(
-        column(3, numericInput("f7_review_search_id", "Buscar intake_id", value = NA, min = 1, step = 1)),
+        column(3, textInput("f7_review_search_code", "Buscar Código de bioensayo")),
         column(3, dateInput("f7_review_start_date", "Fecha inicio", value = Sys.Date() - 30)),
         column(3, dateInput("f7_review_end_date", "Fecha fin", value = Sys.Date())),
         column(
@@ -2299,9 +2299,20 @@ formulario_7_review_form <- function() {
           )
         )
       ),
+      fluidRow(
+        column(
+          6,
+          textInput(
+            "f7_review_exclude_submitter",
+            "Excluir persona que ingresó",
+            value = profile_name,
+            placeholder = "Ej. Alfredo Camey"
+          )
+        )
+      ),
       div(
         class = "submit-row",
-        actionButton("f7_review_find", "Buscar ID", class = "btn-default"),
+        actionButton("f7_review_find", "Buscar código", class = "btn-default"),
         actionButton("f7_review_generate_sample", "Generar muestra 10%", class = "btn-primary"),
         actionButton("f7_review_refresh", "Actualizar listado", class = "btn-default")
       ),
@@ -9501,31 +9512,53 @@ server <- function(input, output, session) {
     list(header = header, data = data)
   }
 
+  f7_fetch_review_record_by_code <- function(codigo_bioensayo) {
+    code <- toupper(trimws(value_or_default(codigo_bioensayo, "")))
+    if (!nzchar(code)) stop("Ingrese un Código de bioensayo para buscar.")
+    connection <- connect_to_supabase()
+    on.exit(dbDisconnect(connection), add = TRUE)
+    record <- dbGetQuery(
+      connection,
+      "select intake_id from public.formulario_7_bioensayo_intake where upper(codigo_bioensayo) = $1 order by actualizado_en desc nulls last, intake_id desc limit 1",
+      params = list(code)
+    )
+    if (!nrow(record)) return(NULL)
+    f7_fetch_review_record(record$intake_id[[1]])
+  }
+
   f7_load_review_records <- function(random_sample = FALSE) {
     start_date <- as.Date(input$f7_review_start_date)
     end_date <- as.Date(input$f7_review_end_date)
     if (is.na(start_date) || is.na(end_date) || start_date > end_date) stop("Seleccione un rango de fechas válido.")
     status <- f5_text(input$f7_review_filter_status)
     if (!status %in% c("pending", "reviewed", "rejected", "all")) status <- "pending"
+    exclude_submitter <- if (random_sample) f7_clean_text(input$f7_review_exclude_submitter)[[1]] else NA_character_
+    where_clause <- "where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)"
+    params <- list(as.character(start_date), as.character(end_date), status)
+    if (!is.na(exclude_submitter)) {
+      where_clause <- paste0(where_clause, " and lower(coalesce(nullif(trim(nombre_quien_ingreso), ''), 'Sin nombre')) <> lower($4)")
+      params <- c(params, list(exclude_submitter))
+    }
     connection <- connect_to_supabase()
     on.exit(dbDisconnect(connection), add = TRUE)
     total <- dbGetQuery(
       connection,
-      "select count(*)::integer as total from public.formulario_7_bioensayo_intake where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)",
-      params = list(as.character(start_date), as.character(end_date), status)
+      paste("select count(*)::integer as total from public.formulario_7_bioensayo_intake", where_clause),
+      params = params
     )$total[[1]]
     if (total == 0) return(data.frame())
     limit <- if (random_sample) max(1L, ceiling(as.integer(total) * 0.10)) else min(as.integer(total), 50L)
     order_clause <- if (random_sample) "order by random()" else "order by creado_en desc nulls last, intake_id desc"
     query <- paste(
-      "select intake_id, codigo_bioensayo, fecha_registro, pais, nombre_poblacion, review_status, actualizado_en from public.formulario_7_bioensayo_intake where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)",
+      "select intake_id, codigo_bioensayo, fecha_registro, pais, nombre_poblacion, nombre_quien_ingreso, review_status, actualizado_en from public.formulario_7_bioensayo_intake",
+      where_clause,
       order_clause,
-      "limit $4"
+      paste0("limit $", length(params) + 1L)
     )
     dbGetQuery(
       connection,
       query,
-      params = list(as.character(start_date), as.character(end_date), status, as.integer(limit))
+      params = c(params, list(as.integer(limit)))
     )
   }
 
@@ -10326,19 +10359,20 @@ server <- function(input, output, session) {
           intake_id
         )),
         tags$td(f5_review_text_value(record$codigo_bioensayo)),
-        tags$td(as.character(record$fecha_registro[[1]])),
-        tags$td(f5_review_text_value(record$pais)),
-        tags$td(f5_review_text_value(record$nombre_poblacion)),
-        tags$td(f5_review_text_value(record$review_status))
-      )
-    })
+          tags$td(as.character(record$fecha_registro[[1]])),
+          tags$td(f5_review_text_value(record$pais)),
+          tags$td(f5_review_text_value(record$nombre_poblacion)),
+          tags$td(f5_review_text_value(record$nombre_quien_ingreso)),
+          tags$td(f5_review_text_value(record$review_status))
+        )
+      })
     tagList(
       h4("Listado para revisión"),
       tags$table(
         class = "table table-striped table-condensed",
         tags$thead(tags$tr(
           tags$th("intake_id"), tags$th("Código bioensayo"), tags$th("Fecha"),
-          tags$th("País"), tags$th("Población"), tags$th("Estado")
+          tags$th("País"), tags$th("Población"), tags$th("Ingresado por"), tags$th("Estado")
         )),
         tags$tbody(rows)
       )
@@ -10452,6 +10486,7 @@ server <- function(input, output, session) {
     f7_review_edit_mode(FALSE)
     f7_review_status(list(type = "idle", message = NULL, details = character()))
     show_formulario_7_review_modal()
+    updateTextInput(session, "f7_review_exclude_submitter", value = value_or_default(user_profile$name, ""))
   })
 
   observeEvent(input$close_formulario_7_review, removeModal())
@@ -10494,14 +10529,25 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$f7_review_find, {
-    intake_id <- f5_integer(input$f7_review_search_id)
-    if (is.na(intake_id)) {
-      f7_review_status(list(type = "warning", message = "Ingrese un intake_id válido.", details = character()))
+    code <- f7_clean_text(input$f7_review_search_code)[[1]]
+    if (is.na(code)) {
+      f7_review_status(list(type = "warning", message = "Ingrese un Código de bioensayo válido.", details = character()))
       return()
     }
     tryCatch({
-      f7_select_review_record(intake_id)
-      f7_review_status(list(type = "success", message = sprintf("Registro %s abierto para revisión.", intake_id), details = character()))
+      record <- f7_fetch_review_record_by_code(code)
+      if (is.null(record)) stop(sprintf("No se encontró el Código de bioensayo %s.", code))
+      f7_review_selected(record)
+      f7_review_edit_mode(FALSE)
+      f7_review_status(list(
+        type = "success",
+        message = sprintf(
+          "Código de bioensayo %s abierto para revisión. Estado actual: %s.",
+          record$header$codigo_bioensayo[[1]],
+          record$header$review_status[[1]]
+        ),
+        details = character()
+      ))
     }, error = function(error) {
       f7_review_status(list(type = "error", message = "No se pudo abrir el registro.", details = conditionMessage(error)))
     })
