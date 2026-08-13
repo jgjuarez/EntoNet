@@ -10747,13 +10747,16 @@ server <- function(input, output, session) {
         field,
         pais = c("El Salvador", "Guatemala"),
         bioensayo_intensidad = c("No aplica" = "", "Exploratorio" = "Exploratorio", "Completa" = "Completa"),
-        dosis_intensidad = c("No aplica" = "", "1X" = "1X", "2X" = "2X", "5X" = "5X", "10X" = "10X"),
+        dosis_intensidad = c("Vacío" = "", "1X" = "1X", "2X" = "2X", "5X" = "5X", "10X" = "10X"),
         resultado_diagnostico = c("No aplica" = "", "Suceptible" = "Suceptible", "Sospecha de Resistencia" = "Sospecha de Resistencia", "Resistente" = "Resistente"),
         solvente_utilizado = c("Etanol", "Otro"),
         origen_material = c("Silvestre", "Laboratorio"),
         NULL
       )
-      if (!is.null(choices)) return(selectInput(input_id, label, choices = choices, selected = value))
+      if (!is.null(choices)) {
+        selected_choice <- if (value %in% unname(choices)) value else ""
+        return(selectInput(input_id, label, choices = choices, selected = selected_choice))
+      }
       if (field %in% f7_review_date_fields) return(dateInput(input_id, label, value = suppressWarnings(as.Date(value))))
       if (field %in% f7_review_numeric_fields) return(numericInput(input_id, label, value = suppressWarnings(as.numeric(value)), min = 0))
       if (grepl("^comentario_[1-4]$", field)) return(textAreaInput(input_id, label, value = value, rows = 3))
