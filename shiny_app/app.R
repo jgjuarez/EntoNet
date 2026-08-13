@@ -5087,9 +5087,19 @@ server <- function(input, output, session) {
     grepl("supervisor", tolower(request_user_role()))
   }
 
+  request_is_laboratory_supervisor <- function() {
+    email <- tolower(value_or_default(user_profile$email, ""))
+    username <- tolower(value_or_default(user_profile$username, ""))
+    request_is_supervisor() && (
+      identical(email, "sambrocio@uvg.edu.gt") ||
+        identical(username, "sambrocio@uvg.edu.gt")
+    )
+  }
+
   request_allowed_data_subdivisions <- reactive({
     if (request_is_global_admin()) return(c("campo", "insectario", "laboratorio"))
     if (request_is_admin()) return(c("campo", "insectario", "laboratorio"))
+    if (request_is_laboratory_supervisor()) return(c("campo", "insectario", "laboratorio"))
     if (request_is_supervisor()) return(c("campo", "insectario"))
     character()
   })
