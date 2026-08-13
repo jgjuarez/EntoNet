@@ -40,6 +40,8 @@ La tabla inicial es plana para facilitar la importacion del CSV. La tabla
 desde Shiny: guarda registros pendientes de revision, campos de auditoria y
 totales calculados. Luego se puede normalizar cuando ya esten definidos todos
 los formularios.
+La tabla `formulario_5_alimentacion_eliminacion_audit` guarda auditoría mínima
+con motivo obligatorio cuando un registro se elimina desde revisión.
 
 Catálogos compartidos:
 
@@ -64,6 +66,7 @@ Formulario 1 usa un modelo encabezado-detalle:
 
 - `formulario_1_ovitrampa_intake`: metadatos de colocacion/retiro, fechas, ubicacion administrativa, cuadrante, casa, GPS, total de ovitrampas colocadas, total retirado, conteos por estado y responsables.
 - `formulario_1_ovitrampa_detalle_intake`: una fila por ovitrampa/sustrato, con codigo de sustrato.
+- `formulario_1_ovitrampa_eliminacion_audit`: auditoría mínima con motivo obligatorio cuando un registro se elimina desde revisión.
 
 Estas tablas tienen RLS activado y deniegan acceso directo a los roles
 `anon` y `authenticated`; la aplicación local escribe mediante la conexión

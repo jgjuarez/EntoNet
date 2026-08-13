@@ -2262,6 +2262,17 @@ formulario_5_review_form <- function() {
           )
         )
       ),
+      fluidRow(
+        column(
+          6,
+          textInput(
+            "f5_review_exclude_submitter",
+            "Excluir persona que ingresó",
+            value = profile_name,
+            placeholder = "Ej. Alfredo Camey"
+          )
+        )
+      ),
       div(
         class = "submit-row",
         actionButton("f5_review_find_id", "Buscar ID", class = "btn-primary"),
@@ -2342,6 +2353,17 @@ formulario_1_review_form <- function() {
             "Estado",
             choices = c("Pendiente" = "pending", "Revisado" = "reviewed", "Rechazado" = "rejected", "Todos" = "all"),
             selected = "pending"
+          )
+        )
+      ),
+      fluidRow(
+        column(
+          6,
+          textInput(
+            "f1_review_exclude_submitter",
+            "Excluir persona que ingresó",
+            value = profile_name,
+            placeholder = "Ej. Alfredo Camey"
           )
         )
       ),
@@ -4979,6 +5001,7 @@ server <- function(input, output, session) {
   f5_review_selected <- reactiveVal(NULL)
   f5_review_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
   f5_review_comparison <- reactiveVal(NULL)
+  f5_review_delete_mode <- reactiveVal(FALSE)
   formulario_1_bulk_upload_result <- reactiveVal(NULL)
   f1_save_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
   f1_resume_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
@@ -4990,6 +5013,7 @@ server <- function(input, output, session) {
   f1_review_records <- reactiveVal(data.frame())
   f1_review_selected <- reactiveVal(NULL)
   f1_review_edit_mode <- reactiveVal(FALSE)
+  f1_review_delete_mode <- reactiveVal(FALSE)
   f1_review_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
   f7_save_status <- reactiveVal(list(type = "idle", message = NULL, details = character()))
   formulario_7_bulk_upload_result <- reactiveVal(NULL)
@@ -6436,22 +6460,30 @@ server <- function(input, output, session) {
     if (is.na(start_date) || is.na(end_date) || start_date > end_date) stop("Seleccione un rango de fechas válido.")
     status <- f5_text(input$f1_review_filter_status)
     if (!status %in% c("pending", "reviewed", "rejected", "all")) status <- "pending"
+    exclude_submitter <- f7_clean_text(input$f1_review_exclude_submitter)[[1]]
+    where_clause <- "where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)"
+    params <- list(as.character(start_date), as.character(end_date), status)
+    if (!is.na(exclude_submitter)) {
+      where_clause <- paste0(where_clause, " and lower(coalesce(nullif(trim(creado_por), ''), 'Sin nombre')) <> lower($4)")
+      params <- c(params, list(exclude_submitter))
+    }
     connection <- connect_to_supabase()
     on.exit(dbDisconnect(connection), add = TRUE)
     total <- dbGetQuery(
       connection,
-      "select count(*)::integer as total from public.formulario_1_ovitrampa_intake where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)",
-      params = list(as.character(start_date), as.character(end_date), status)
+      paste("select count(*)::integer as total from public.formulario_1_ovitrampa_intake", where_clause),
+      params = params
     )$total[[1]]
     if (total == 0) return(data.frame())
     limit <- if (random_sample) max(1L, ceiling(as.integer(total) * 0.10)) else min(as.integer(total), 50L)
     order_clause <- if (random_sample) "order by random()" else "order by creado_en desc nulls last, intake_id desc"
     query <- paste(
-      "select intake_id, codigo_formulario, fecha_registro, pais, cuadrante, codigo_casa, ovitrampas_colocadas, ovitrampas_retiradas, review_status, actualizado_en from public.formulario_1_ovitrampa_intake where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)",
+      "select intake_id, codigo_formulario, fecha_registro, pais, cuadrante, codigo_casa, ovitrampas_colocadas, ovitrampas_retiradas, creado_por, review_status, actualizado_en from public.formulario_1_ovitrampa_intake",
+      where_clause,
       order_clause,
-      "limit $4"
+      paste0("limit $", length(params) + 1L)
     )
-    dbGetQuery(connection, query, params = list(as.character(start_date), as.character(end_date), status, as.integer(limit)))
+    dbGetQuery(connection, query, params = c(params, list(as.integer(limit))))
   }
 
   f1_find_review_records_by_code <- function(codigo_formulario) {
@@ -6509,6 +6541,45 @@ server <- function(input, output, session) {
       detail_rows$intake_id <- as.integer(intake_id)
       detail_rows <- detail_rows[c("intake_id", "codigo_sustrato")]
       dbAppendTable(connection, Id(schema = "public", table = "formulario_1_ovitrampa_detalle_intake"), detail_rows)
+    })
+  }
+
+  f1_delete_review_record <- function(intake_id, reason, deleted_by) {
+    reason <- f7_clean_text(reason)[[1]]
+    deleted_by <- f7_clean_text(deleted_by)[[1]]
+    if (is.na(reason)) stop("El comentario de eliminación es obligatorio.")
+    connection <- connect_to_supabase()
+    on.exit(dbDisconnect(connection), add = TRUE)
+    dbWithTransaction(connection, {
+      selected_header <- dbGetQuery(
+        connection,
+        "select intake_id, codigo_formulario, cuadrante, codigo_casa, review_status from public.formulario_1_ovitrampa_intake where intake_id = $1 for update",
+        params = list(as.integer(intake_id))
+      )
+      if (nrow(selected_header) != 1) stop("No se encontró el registro seleccionado para eliminar.")
+      audit_exists <- dbGetQuery(
+        connection,
+        "select to_regclass('public.formulario_1_ovitrampa_eliminacion_audit') is not null as exists"
+      )$exists[[1]]
+      if (isTRUE(audit_exists)) {
+        dbExecute(
+          connection,
+          "insert into public.formulario_1_ovitrampa_eliminacion_audit (intake_id, codigo_formulario, cuadrante, codigo_casa, review_status, eliminado_por, motivo_eliminacion) values ($1, $2, $3, $4, $5, nullif($6, ''), $7)",
+          params = list(
+            as.integer(selected_header$intake_id[[1]]),
+            as.character(selected_header$codigo_formulario[[1]]),
+            as.character(selected_header$cuadrante[[1]]),
+            as.character(selected_header$codigo_casa[[1]]),
+            as.character(selected_header$review_status[[1]]),
+            value_or_default(deleted_by, ""),
+            reason
+          )
+        )
+      }
+      dbExecute(connection, "delete from public.formulario_1_ovitrampa_detalle_intake where intake_id = $1", params = list(as.integer(intake_id)))
+      deleted <- dbExecute(connection, "delete from public.formulario_1_ovitrampa_intake where intake_id = $1", params = list(as.integer(intake_id)))
+      if (deleted != 1L) stop("No se eliminó el registro seleccionado.")
+      selected_header
     })
   }
 
@@ -7730,6 +7801,44 @@ server <- function(input, output, session) {
     values
   }
 
+  f5_delete_review_record <- function(intake_id, reason, deleted_by) {
+    reason <- f7_clean_text(reason)[[1]]
+    deleted_by <- f7_clean_text(deleted_by)[[1]]
+    if (is.na(reason)) stop("El comentario de eliminación es obligatorio.")
+    connection <- connect_to_supabase()
+    on.exit(dbDisconnect(connection), add = TRUE)
+    dbWithTransaction(connection, {
+      selected_record <- dbGetQuery(
+        connection,
+        "select intake_id, formulario_codigo, cepa_poblacion, especie, review_status from public.formulario_5_alimentacion_conteo_intake where intake_id = $1 for update",
+        params = list(as.integer(intake_id))
+      )
+      if (nrow(selected_record) != 1) stop("No se encontró el registro seleccionado para eliminar.")
+      audit_exists <- dbGetQuery(
+        connection,
+        "select to_regclass('public.formulario_5_alimentacion_eliminacion_audit') is not null as exists"
+      )$exists[[1]]
+      if (isTRUE(audit_exists)) {
+        dbExecute(
+          connection,
+          "insert into public.formulario_5_alimentacion_eliminacion_audit (intake_id, formulario_codigo, cepa_poblacion, especie, review_status, eliminado_por, motivo_eliminacion) values ($1, $2, $3, $4, $5, nullif($6, ''), $7)",
+          params = list(
+            as.integer(selected_record$intake_id[[1]]),
+            as.character(selected_record$formulario_codigo[[1]]),
+            as.character(selected_record$cepa_poblacion[[1]]),
+            as.character(selected_record$especie[[1]]),
+            as.character(selected_record$review_status[[1]]),
+            value_or_default(deleted_by, ""),
+            reason
+          )
+        )
+      }
+      deleted <- dbExecute(connection, "delete from public.formulario_5_alimentacion_conteo_intake where intake_id = $1", params = list(as.integer(intake_id)))
+      if (deleted != 1L) stop("No se eliminó el registro seleccionado.")
+      selected_record
+    })
+  }
+
   f5_review_discrepancies <- function(original, redigit) {
     rows <- lapply(names(f5_review_field_labels), function(field) {
       original_value <- f5_review_compare_value(original[[field]], field)
@@ -8557,6 +8666,16 @@ server <- function(input, output, session) {
     if (!nzchar(status_filter)) {
       status_filter <- "pending"
     }
+    exclude_submitter <- f7_clean_text(input$f5_review_exclude_submitter)[[1]]
+    where_clause <- "
+      where fecha_registro between $1 and $2
+        and ($3 = 'all' or review_status = $3)
+    "
+    params <- list(as.character(start_date), as.character(end_date), status_filter)
+    if (!is.na(exclude_submitter)) {
+      where_clause <- paste0(where_clause, " and lower(coalesce(nullif(trim(creado_por), ''), 'Sin nombre')) <> lower($4)")
+      params <- c(params, list(exclude_submitter))
+    }
 
     connection <- NULL
     on.exit({
@@ -8566,16 +8685,17 @@ server <- function(input, output, session) {
     }, add = TRUE)
 
     connection <- connect_to_supabase()
-    count_query <- "
+    count_query <- paste(
+      "
       select count(*)::integer as total
       from public.formulario_5_alimentacion_conteo_intake
-      where fecha_registro between $1 and $2
-        and ($3 = 'all' or review_status = $3)
-    "
+      ",
+      where_clause
+    )
     total <- dbGetQuery(
       connection,
       count_query,
-      params = list(as.character(start_date), as.character(end_date), status_filter)
+      params = params
     )$total[[1]]
 
     if (total == 0) {
@@ -8599,19 +8719,19 @@ server <- function(input, output, session) {
           cepa_poblacion,
           especie,
           fuente_formulario,
+          creado_por,
           actualizado_en
         from public.formulario_5_alimentacion_conteo_intake
-        where fecha_registro between $1 and $2
-          and ($3 = 'all' or review_status = $3)
       ",
+      where_clause,
       order_clause,
-      "limit $4"
+      paste0("limit $", length(params) + 1L)
     )
 
     dbGetQuery(
       connection,
       query,
-      params = list(as.character(start_date), as.character(end_date), status_filter, as.integer(limit))
+      params = c(params, list(as.integer(limit)))
     )
   }
 
@@ -8619,6 +8739,20 @@ server <- function(input, output, session) {
     status <- f5_review_status()
 
     if (is.null(status$type) || identical(status$type, "idle")) {
+      return(NULL)
+    }
+    selected <- f5_review_selected()
+    detail_messages <- c(
+      "Abra primero un intake_id para revisar.",
+      "La redigitación coincide",
+      "Se encontraron discrepancias",
+      "No se pudo guardar la revisión.",
+      "Revisión guardada para intake_id",
+      "No se puede eliminar el registro sin comentario.",
+      "No se pudo eliminar el registro.",
+      "Registro %s eliminado definitivamente."
+    )
+    if (!is.null(selected) && nrow(selected) > 0 && any(startsWith(status$message, detail_messages))) {
       return(NULL)
     }
 
@@ -8658,6 +8792,36 @@ server <- function(input, output, session) {
     )
   })
 
+  output$f5_review_detail_status_message <- renderUI({
+    selected <- f5_review_selected()
+    if (is.null(selected) || nrow(selected) == 0) return(NULL)
+    status <- f5_review_status()
+    if (is.null(status$type) || identical(status$type, "idle")) return(NULL)
+    alert_class <- switch(
+      status$type,
+      success = "alert alert-success",
+      error = "alert alert-danger",
+      warning = "alert alert-warning",
+      loading = "alert alert-info",
+      info = "alert alert-info",
+      "alert alert-info"
+    )
+    details <- status$details
+    if (is.null(details)) details <- character()
+    div(
+      class = alert_class,
+      strong(status$message),
+      if (identical(status$type, "loading")) {
+        div(
+          class = "progress",
+          style = "margin-top: 10px; margin-bottom: 0;",
+          div(class = "progress-bar progress-bar-striped active", role = "progressbar", style = "width: 100%;", "Consultando Supabase")
+        )
+      },
+      if (length(details) > 0) tags$ul(lapply(details, tags$li))
+    )
+  })
+
   output$f5_review_sample_list <- renderUI({
     records <- f5_review_records()
 
@@ -8682,7 +8846,8 @@ server <- function(input, output, session) {
         tags$td(record$pais),
         tags$td(record$cepa_poblacion),
         tags$td(record$especie),
-        tags$td(record$fuente_formulario)
+        tags$td(record$fuente_formulario),
+        tags$td(f5_review_text_value(record$creado_por))
       )
     })
 
@@ -8697,7 +8862,8 @@ server <- function(input, output, session) {
           tags$th("País"),
           tags$th("Cepa / población"),
           tags$th("Especie"),
-          tags$th("Fuente formulario")
+          tags$th("Fuente formulario"),
+          tags$th("Ingresado por")
         )),
         tags$tbody(table_rows)
       )
@@ -8774,6 +8940,7 @@ server <- function(input, output, session) {
     tagList(
       wellPanel(
         h4("Redigitación para control de calidad"),
+        uiOutput("f5_review_detail_status_message"),
         p("Digite nuevamente los valores del formulario físico. Luego compare contra la captura original."),
         fluidRow(lapply(split_fields, function(field_group) {
           column(4, lapply(field_group, input_for_field))
@@ -8797,6 +8964,32 @@ server <- function(input, output, session) {
           class = "submit-row",
           actionButton("f5_review_compare", "Comparar redigitación", class = "btn-primary"),
           actionButton("f5_review_save", "Guardar revisión", class = "btn-default")
+        ),
+        tags$hr(),
+        div(
+          class = "f5-review-delete-zone",
+          if (!isTRUE(f5_review_delete_mode())) {
+            actionButton("f5_review_request_delete", "Eliminar registro", class = "btn-danger")
+          } else {
+            tagList(
+              div(
+                class = "alert alert-danger",
+                tags$strong("¿Está seguro que desea eliminar este registro?"),
+                tags$p("No hay vuelta atrás. Luego de su eliminación, este registro será borrado de la base de datos.")
+              ),
+              textAreaInput(
+                "f5_review_delete_reason",
+                "Comentario obligatorio: indique por qué se elimina este registro",
+                value = "",
+                rows = 3
+              ),
+              div(
+                class = "submit-row",
+                actionButton("f5_review_delete_confirm", "Sí, eliminar definitivamente", class = "btn-danger"),
+                actionButton("f5_review_delete_cancel", "Cancelar eliminación", class = "btn-default")
+              )
+            )
+          }
         )
       )
     )
@@ -8847,6 +9040,7 @@ server <- function(input, output, session) {
       if (nrow(record) == 0) {
         f5_review_selected(NULL)
         f5_review_comparison(NULL)
+        f5_review_delete_mode(FALSE)
         f5_review_status(list(
           type = "warning",
           message = sprintf("No se encontró intake_id %s.", intake_id),
@@ -8867,6 +9061,7 @@ server <- function(input, output, session) {
       ), names(record)), drop = FALSE])
       f5_review_selected(record)
       f5_review_comparison(NULL)
+      f5_review_delete_mode(FALSE)
       f5_review_status(list(
         type = "success",
         message = sprintf("Registro intake_id %s cargado para revisión.", intake_id),
@@ -8890,6 +9085,7 @@ server <- function(input, output, session) {
     f5_review_records(data.frame())
     f5_review_selected(NULL)
     f5_review_comparison(NULL)
+    f5_review_delete_mode(FALSE)
 
     tryCatch({
       records <- withProgress(message = "Generando muestra 10%", value = 0, {
@@ -8903,6 +9099,7 @@ server <- function(input, output, session) {
       f5_review_records(records)
       f5_review_selected(NULL)
       f5_review_comparison(NULL)
+      f5_review_delete_mode(FALSE)
 
       if (nrow(records) == 0) {
         f5_review_status(list(
@@ -8932,6 +9129,7 @@ server <- function(input, output, session) {
       f5_review_records(records)
       f5_review_selected(NULL)
       f5_review_comparison(NULL)
+      f5_review_delete_mode(FALSE)
 
       if (nrow(records) == 0) {
         f5_review_status(list(
@@ -8974,6 +9172,7 @@ server <- function(input, output, session) {
 
       f5_review_selected(record)
       f5_review_comparison(NULL)
+      f5_review_delete_mode(FALSE)
       f5_review_status(list(
         type = "success",
         message = sprintf("Registro intake_id %s abierto para redigitación.", intake_id),
@@ -9017,6 +9216,17 @@ server <- function(input, output, session) {
         details = comparison$Campo
       ))
     }
+  })
+
+  observeEvent(input$f5_review_request_delete, {
+    record <- f5_review_selected()
+    if (is.null(record) || nrow(record) == 0) return()
+    f5_review_delete_mode(TRUE)
+  })
+
+  observeEvent(input$f5_review_delete_cancel, {
+    f5_review_delete_mode(FALSE)
+    updateTextAreaInput(session, "f5_review_delete_reason", value = "")
   })
 
   observeEvent(input$f5_review_save, {
@@ -9088,6 +9298,7 @@ server <- function(input, output, session) {
 
       refreshed <- f5_fetch_review_record(record$intake_id[[1]])
       f5_review_selected(refreshed)
+      f5_review_delete_mode(FALSE)
       f5_review_status(list(
         type = "success",
         message = sprintf(
@@ -9098,16 +9309,55 @@ server <- function(input, output, session) {
         ),
         details = character()
       ))
+      showNotification(sprintf("Revisión guardada para intake_id %s.", record$intake_id[[1]]), type = "message", duration = 6)
     }, error = function(error) {
       f5_review_status(list(
         type = "error",
         message = "No se pudo guardar la revisión.",
         details = conditionMessage(error)
       ))
+      showNotification("No se pudo guardar la revisión del Formulario 5.", type = "error", duration = 8)
     }, finally = {
       if (!is.null(connection)) {
         dbDisconnect(connection)
       }
+    })
+  })
+
+  observeEvent(input$f5_review_delete_confirm, {
+    record <- f5_review_selected()
+    if (is.null(record) || nrow(record) == 0) return()
+    reason <- f7_clean_text(input$f5_review_delete_reason)[[1]]
+    if (is.na(reason)) {
+      f5_review_status(list(
+        type = "error",
+        message = "No se puede eliminar el registro sin comentario.",
+        details = "Ingrese el motivo de eliminación antes de confirmar."
+      ))
+      return()
+    }
+    intake_id <- as.integer(record$intake_id[[1]])
+    tryCatch({
+      deleted <- withProgress(message = "Eliminando registro de Formulario 5", value = 0, {
+        incProgress(0.20, detail = "Validando el comentario de eliminación")
+        incProgress(0.30, detail = "Borrando registro en Supabase")
+        removed <- f5_delete_review_record(intake_id, reason, value_or_default(user_profile$name, f5_text(input$f5_reviewed_by)))
+        incProgress(0.30, detail = "Actualizando la lista de revisión")
+        refreshed_records <- tryCatch(f5_load_review_records(random_sample = FALSE), error = function(error) data.frame())
+        f5_review_records(refreshed_records)
+        incProgress(0.20, detail = "Eliminación completada")
+        removed
+      })
+      f5_review_selected(NULL)
+      f5_review_comparison(NULL)
+      f5_review_delete_mode(FALSE)
+      f5_review_status(list(
+        type = "success",
+        message = sprintf("Registro %s eliminado definitivamente.", intake_id),
+        details = sprintf("Cepa/población eliminada: %s.", deleted$cepa_poblacion[[1]])
+      ))
+    }, error = function(error) {
+      f5_review_status(list(type = "error", message = "No se pudo eliminar el registro.", details = conditionMessage(error)))
     })
   })
 
@@ -10411,6 +10661,26 @@ server <- function(input, output, session) {
   output$f7_review_status_message <- renderUI({
     status <- f7_review_status()
     if (is.null(status$type) || identical(status$type, "idle")) return(NULL)
+    selected <- f7_review_selected()
+    detail_scoped_messages <- c(
+      "Revise los valores editados.",
+      "No se pudieron guardar los cambios.",
+      "No se puede eliminar el registro sin comentario.",
+      "No se pudo eliminar el registro.",
+      "Registro %s eliminado definitivamente.",
+      "No se pudo confirmar el registro.",
+      "Cambios guardados para intake_id"
+    )
+    if (!is.null(selected) && any(startsWith(status$message, detail_scoped_messages))) return(NULL)
+    css <- switch(status$type, success = "alert alert-success", error = "alert alert-danger", warning = "alert alert-warning", "alert alert-info")
+    div(class = css, strong(status$message), if (length(status$details)) tags$ul(lapply(status$details, tags$li)))
+  })
+
+  output$f7_review_detail_status_message <- renderUI({
+    selected <- f7_review_selected()
+    if (is.null(selected)) return(NULL)
+    status <- f7_review_status()
+    if (is.null(status$type) || identical(status$type, "idle")) return(NULL)
     css <- switch(status$type, success = "alert alert-success", error = "alert alert-danger", warning = "alert alert-warning", "alert alert-info")
     div(class = css, strong(status$message), if (length(status$details)) tags$ul(lapply(status$details, tags$li)))
   })
@@ -10510,6 +10780,7 @@ server <- function(input, output, session) {
     wellPanel(
       h4(sprintf("Formulario 7 — intake_id %s", as.character(header$intake_id[[1]]))),
       p(tags$strong("Estado: "), header$review_status[[1]], " · ", tags$strong("Código bioensayo: "), header$codigo_bioensayo[[1]]),
+      uiOutput("f7_review_detail_status_message"),
       if (edit_mode) div(class = "alert alert-warning", "Modo edición activo. Al guardar, el registro volverá a estado pending hasta que sea confirmado."),
       do.call(tabsetPanel, c(list(id = "f7_review_detail_tabs"), tabs)),
       tags$hr(),
@@ -10561,8 +10832,10 @@ server <- function(input, output, session) {
     f5_review_records(data.frame())
     f5_review_selected(NULL)
     f5_review_comparison(NULL)
+    f5_review_delete_mode(FALSE)
     f5_review_status(list(type = "idle", message = NULL, details = character()))
     show_formulario_5_review_modal()
+    updateTextInput(session, "f5_review_exclude_submitter", value = value_or_default(user_profile$name, ""))
   })
 
   observeEvent(input$close_formulario_5_review, {
@@ -13155,6 +13428,26 @@ server <- function(input, output, session) {
   output$f1_review_status_message <- renderUI({
     status <- f1_review_status()
     if (is.null(status$type) || identical(status$type, "idle")) return(NULL)
+    selected <- f1_review_selected()
+    detail_messages <- c(
+      "Revise los valores editados.",
+      "No se pudieron guardar los cambios.",
+      "No se puede eliminar el registro sin comentario.",
+      "No se pudo eliminar el registro.",
+      "Cambios guardados para intake_id",
+      "Registro %s eliminado definitivamente.",
+      "No se pudo confirmar el registro."
+    )
+    if (!is.null(selected) && any(startsWith(status$message, detail_messages))) return(NULL)
+    css <- switch(status$type, success = "alert alert-success", error = "alert alert-danger", warning = "alert alert-warning", "alert alert-info")
+    div(class = css, strong(status$message), if (length(status$details)) tags$ul(lapply(status$details, tags$li)))
+  })
+
+  output$f1_review_detail_status_message <- renderUI({
+    selected <- f1_review_selected()
+    if (is.null(selected)) return(NULL)
+    status <- f1_review_status()
+    if (is.null(status$type) || identical(status$type, "idle")) return(NULL)
     css <- switch(status$type, success = "alert alert-success", error = "alert alert-danger", warning = "alert alert-warning", "alert alert-info")
     div(class = css, strong(status$message), if (length(status$details)) tags$ul(lapply(status$details, tags$li)))
   })
@@ -13176,6 +13469,7 @@ server <- function(input, output, session) {
         tags$td(f5_review_text_value(record$pais)),
         tags$td(f5_review_text_value(record$cuadrante)),
         tags$td(f5_review_text_value(record$codigo_casa)),
+        tags$td(f5_review_text_value(record$creado_por)),
         tags$td(f5_review_text_value(record$review_status))
       )
     })
@@ -13185,7 +13479,7 @@ server <- function(input, output, session) {
         class = "table table-striped table-condensed",
         tags$thead(tags$tr(
           tags$th("intake_id"), tags$th("Código formulario"), tags$th("Fecha"),
-          tags$th("País"), tags$th("Cuadrante"), tags$th("Casa"), tags$th("Estado")
+          tags$th("País"), tags$th("Cuadrante"), tags$th("Casa"), tags$th("Ingresado por"), tags$th("Estado")
         )),
         tags$tbody(rows)
       )
@@ -13198,6 +13492,7 @@ server <- function(input, output, session) {
     row <- selected$data
     header <- selected$header
     edit_mode <- f1_review_edit_mode()
+    delete_mode <- f1_review_delete_mode()
 
     value_for <- function(field) {
       value <- row[[field]][[1]]
@@ -13243,6 +13538,7 @@ server <- function(input, output, session) {
         tags$strong("Cuadrante: "), header$cuadrante[[1]], " · ",
         tags$strong("Casa: "), header$codigo_casa[[1]]
       ),
+      uiOutput("f1_review_detail_status_message"),
       if (edit_mode) div(class = "alert alert-warning", "Modo edición activo. Al guardar, el registro volverá a estado pending hasta que sea confirmado."),
       do.call(tabsetPanel, c(list(id = "f1_review_detail_tabs"), tabs)),
       tags$hr(),
@@ -13256,6 +13552,32 @@ server <- function(input, output, session) {
         if (!edit_mode) actionButton("f1_review_enable_edit", "Editar", class = "btn-default"),
         if (edit_mode) actionButton("f1_review_save_changes", "Guardar cambios", class = "btn-primary"),
         if (edit_mode) actionButton("f1_review_cancel_edit", "Cancelar edición", class = "btn-default")
+      ),
+      tags$hr(),
+      div(
+        class = "f1-review-delete-zone",
+        if (!delete_mode) {
+          actionButton("f1_review_request_delete", "Eliminar registro", class = "btn-danger")
+        } else {
+          tagList(
+            div(
+              class = "alert alert-danger",
+              tags$strong("¿Está seguro que desea eliminar este registro?"),
+              tags$p("No hay vuelta atrás. Luego de su eliminación, este registro y sus sustratos serán borrados de la base de datos.")
+            ),
+            textAreaInput(
+              "f1_review_delete_reason",
+              "Comentario obligatorio: indique por qué se elimina este registro",
+              value = "",
+              rows = 3
+            ),
+            div(
+              class = "submit-row",
+              actionButton("f1_review_delete_confirm", "Sí, eliminar definitivamente", class = "btn-danger"),
+              actionButton("f1_review_delete_cancel", "Cancelar eliminación", class = "btn-default")
+            )
+          )
+        }
       )
     )
   })
@@ -13272,8 +13594,10 @@ server <- function(input, output, session) {
     f1_review_records(data.frame())
     f1_review_selected(NULL)
     f1_review_edit_mode(FALSE)
+    f1_review_delete_mode(FALSE)
     f1_review_status(list(type = "idle", message = NULL, details = character()))
     show_formulario_1_review_modal()
+    updateTextInput(session, "f1_review_exclude_submitter", value = value_or_default(user_profile$name, ""))
   })
 
   observeEvent(input$close_formulario_1_review, removeModal())
@@ -13367,6 +13691,7 @@ server <- function(input, output, session) {
     f1_review_records(data.frame())
     f1_review_selected(NULL)
     f1_review_edit_mode(FALSE)
+    f1_review_delete_mode(FALSE)
     tryCatch({
       records <- withProgress(message = "Generando muestra 10%", value = 0, {
         incProgress(0.4, detail = "Consultando registros elegibles")
@@ -13389,6 +13714,7 @@ server <- function(input, output, session) {
     tryCatch({
       records <- f1_load_review_records()
       f1_review_records(records)
+      f1_review_delete_mode(FALSE)
       f1_review_status(list(
         type = if (nrow(records)) "success" else "warning",
         message = if (nrow(records)) sprintf("Se cargaron %s registro(s).", nrow(records)) else "No hay registros con ese estado.",
@@ -13407,6 +13733,7 @@ server <- function(input, output, session) {
     }
     f1_review_selected(NULL)
     f1_review_edit_mode(FALSE)
+    f1_review_delete_mode(FALSE)
     tryCatch({
       records <- f1_find_review_records_by_code(code)
       f1_review_records(records)
@@ -13425,18 +13752,34 @@ server <- function(input, output, session) {
     if (is.na(intake_id)) return()
     tryCatch({
       f1_select_review_record(intake_id)
+      f1_review_delete_mode(FALSE)
       f1_review_status(list(type = "success", message = sprintf("Registro %s abierto para revisión.", intake_id), details = character()))
     }, error = function(error) {
       f1_review_status(list(type = "error", message = "No se pudo abrir el registro.", details = conditionMessage(error)))
     })
   })
 
-  observeEvent(input$f1_review_enable_edit, f1_review_edit_mode(TRUE))
+  observeEvent(input$f1_review_enable_edit, {
+    f1_review_delete_mode(FALSE)
+    f1_review_edit_mode(TRUE)
+  })
   observeEvent(input$f1_review_cancel_edit, f1_review_edit_mode(FALSE))
+
+  observeEvent(input$f1_review_request_delete, {
+    if (is.null(f1_review_selected())) return()
+    f1_review_edit_mode(FALSE)
+    f1_review_delete_mode(TRUE)
+  })
+
+  observeEvent(input$f1_review_delete_cancel, {
+    f1_review_delete_mode(FALSE)
+    updateTextAreaInput(session, "f1_review_delete_reason", value = "")
+  })
 
   observeEvent(input$f1_review_save_changes, {
     selected <- f1_review_selected()
     if (is.null(selected)) return()
+    f1_review_status(list(type = "info", message = "Guardando cambios del Formulario 1...", details = character()))
     validated <- validate_formulario_1(f1_review_input_rows())
     if (length(validated$details)) {
       f1_review_status(list(type = "error", message = "Revise los valores editados.", details = validated$details))
@@ -13444,12 +13787,60 @@ server <- function(input, output, session) {
     }
     intake_id <- as.integer(selected$header$intake_id[[1]])
     tryCatch({
-      f1_update_review_record(intake_id, validated$data)
-      f1_select_review_record(intake_id)
-      f1_review_records(f1_load_review_records())
+      withProgress(message = "Guardando cambios", value = 0, {
+        incProgress(0.25, detail = "Validando datos editados")
+        f1_update_review_record(intake_id, validated$data)
+        incProgress(0.40, detail = "Recargando el registro")
+        f1_select_review_record(intake_id)
+        incProgress(0.20, detail = "Actualizando el listado")
+        refreshed_records <- tryCatch(f1_load_review_records(), error = function(error) NULL)
+        if (!is.null(refreshed_records)) f1_review_records(refreshed_records)
+        incProgress(0.15, detail = "Cambios guardados")
+      })
+      f1_review_edit_mode(FALSE)
+      f1_review_delete_mode(FALSE)
       f1_review_status(list(type = "success", message = sprintf("Cambios guardados para intake_id %s. Estado: pending.", intake_id), details = character()))
+      showNotification(sprintf("Cambios guardados para intake_id %s.", intake_id), type = "message", duration = 6)
     }, error = function(error) {
       f1_review_status(list(type = "error", message = "No se pudieron guardar los cambios.", details = conditionMessage(error)))
+      showNotification("No se pudieron guardar los cambios del Formulario 1.", type = "error", duration = 8)
+    })
+  })
+
+  observeEvent(input$f1_review_delete_confirm, {
+    selected <- f1_review_selected()
+    if (is.null(selected)) return()
+    reason <- f7_clean_text(input$f1_review_delete_reason)[[1]]
+    if (is.na(reason)) {
+      f1_review_status(list(
+        type = "error",
+        message = "No se puede eliminar el registro sin comentario.",
+        details = "Ingrese el motivo de eliminación antes de confirmar."
+      ))
+      return()
+    }
+    intake_id <- as.integer(selected$header$intake_id[[1]])
+    tryCatch({
+      deleted <- withProgress(message = "Eliminando registro de Formulario 1", value = 0, {
+        incProgress(0.20, detail = "Validando el comentario de eliminación")
+        incProgress(0.25, detail = "Borrando registro y sustratos en Supabase")
+        removed <- f1_delete_review_record(intake_id, reason, value_or_default(user_profile$name, f5_text(input$f1_reviewed_by)))
+        incProgress(0.35, detail = "Actualizando la lista de revisión")
+        refreshed_records <- tryCatch(f1_load_review_records(), error = function(error) data.frame())
+        f1_review_records(refreshed_records)
+        incProgress(0.20, detail = "Eliminación completada")
+        removed
+      })
+      f1_review_selected(NULL)
+      f1_review_edit_mode(FALSE)
+      f1_review_delete_mode(FALSE)
+      f1_review_status(list(
+        type = "success",
+        message = sprintf("Registro %s eliminado definitivamente.", intake_id),
+        details = sprintf("Código de formulario eliminado: %s.", deleted$codigo_formulario[[1]])
+      ))
+    }, error = function(error) {
+      f1_review_status(list(type = "error", message = "No se pudo eliminar el registro.", details = conditionMessage(error)))
     })
   })
 
