@@ -11945,9 +11945,13 @@ server <- function(input, output, session) {
   output$f7_visualization_table <- renderTable({
     records <- f7_visualization_filtered()
     if (!nrow(records)) return(data.frame(Mensaje = "No hay registros para los filtros seleccionados."))
+    display_date <- function(values) {
+      formatted <- format(as.Date(values), "%d/%m/%Y")
+      ifelse(is.na(formatted), "", formatted)
+    }
     data.frame(
       `Código bioensayo` = records$codigo_bioensayo,
-      Fecha = records$fecha_realizacion_bioensayo,
+      Fecha = display_date(records$fecha_realizacion_bioensayo),
       Población = records$nombre_poblacion,
       Departamento = ifelse(is.na(records$departamento), "", records$departamento),
       Municipio = ifelse(is.na(records$municipio), "Sin ubicación aproximada", records$municipio),
@@ -11963,7 +11967,7 @@ server <- function(input, output, session) {
         )
       ),
       Estado = records$review_status,
-      `Ingresado en` = records$creado_en,
+      `Ingresado en` = display_date(records$creado_en),
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
