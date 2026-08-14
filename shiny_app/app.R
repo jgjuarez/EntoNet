@@ -800,15 +800,16 @@ formulario_7_codigo_bioensayo_final <- function(
   def <- inputs[[5]]
   pbo <- inputs[[6]]
   dm <- inputs[[7]]
+  bioensayo <- sub("-D$", "", bioensayo)
   already_final <- !is.na(bioensayo) & (
-    grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}P[0-9]+(\\.[0-9]+)?(DEF|PBO|DM)?(DEL|PER|MAL|DDT)[0-9]+F[0-9]+$", bioensayo) |
+    grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}P[0-9]+(\\.[0-9]+)?(DEF|PBO|DM)?(DEL|PER|MAL|DDT|BEN|ALF|LAM|TEM)[0-9]+F[0-9]+$", bioensayo) |
       grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}(DEL|PER|MAL|DDT)[0-9]+(\\.[0-9]+)?(DD|IE|IC(2X|5X|10X)|S(DEF|PBO|DM))$", bioensayo) |
       grepl("REI[0-9]{2}[A-Z]{2}[0-9]{4}BIO[0-9]+(DD|IE|IC(2X|5X|10X)|S(DEF|PBO|DM))$", bioensayo) |
-      grepl("-(D|I(-[0-9]+X)+|I-1X-2X-5X-10X|S(-[A-Z]+)+)$", bioensayo)
+      grepl("-(I(-[0-9]+X)+|I-1X-2X-5X-10X|S(-[A-Z]+)+)$", bioensayo)
   )
 
   suffix <- rep(NA_character_, size)
-  suffix[diagnostica] <- "D"
+  suffix[diagnostica] <- ""
   exploratorio <- !diagnostica & modalidad == "Exploratorio"
   suffix[exploratorio] <- "I-1X-2X-5X-10X"
   completa <- !diagnostica & modalidad == "Completa" & !is.na(intensidad) & nzchar(intensidad)
@@ -819,7 +820,7 @@ formulario_7_codigo_bioensayo_final <- function(
     if (!diagnostica[[index]] && length(selected)) suffix[[index]] <- paste(c("S", selected), collapse = "-")
   }
 
-  result <- paste(bioensayo, suffix, sep = "-")
+  result <- ifelse(!is.na(suffix) & nzchar(suffix), paste(bioensayo, suffix, sep = "-"), bioensayo)
   result[already_final] <- bioensayo[already_final]
   result[is.na(bioensayo) | !nzchar(bioensayo) | is.na(suffix)] <- NA_character_
   result[already_final & !is.na(bioensayo) & nzchar(bioensayo)] <- bioensayo[already_final & !is.na(bioensayo) & nzchar(bioensayo)]
@@ -2049,7 +2050,7 @@ formulario_7_capture_form <- function() {
                 "input.f7_codigo_bioensayo_help % 2 == 1",
                 div(
                   class = "f7-help-message",
-                  "Para registros nuevos, genere este código antes de ingresar datos desde la sección Imprimir formulario del Formulario 7. El código parte del código de cuadrante del Formulario 1: REI + año + país + departamento + municipio + cuadrante. Al consolidar población, el cuadrante cambia a P#. En bioensayo se usa: REI + año + país + departamento + municipio + P# + código de sinergista solo si aplica (DEF, PBO o DM) + insecticida (DDT, PER, DEL, BEN, MAL, ALF, LAM o TEM) + correlativo incremental + generación filial (F#). Ejemplo: REI26GT0920P2DEFDEL1F1. Para datos antiguos puede ingresar el código histórico tal como aparece en el formulario."
+                  "Para registros nuevos, genere este código antes de ingresar datos desde la sección Imprimir formulario del Formulario 7. El código parte del código de cuadrante del Formulario 1: REI + año + país + departamento + municipio + cuadrante. Al consolidar población, el cuadrante cambia a P#. En bioensayo se usa: REI + año + país + departamento + municipio + P# + código de sinergista solo si aplica (DEF, PBO o DM) + insecticida (DDT, PER, DEL, BEN, MAL, ALF, LAM o TEM) + correlativo incremental + generación filial (F#). No se agrega sufijo -D; el correlativo después del insecticida identifica el bioensayo. Ejemplo: REI26GT0920P2DEFDEL1F1. Para datos antiguos puede ingresar el código histórico tal como aparece en el formulario."
                 )
               )
             ),
