@@ -14324,6 +14324,10 @@ server <- function(input, output, session) {
     }
 
     if (identical(area, "sat26")) {
+      if (is.null(module) || identical(module, "intro")) {
+        return(uiOutput("portal_intro_area"))
+      }
+
       sat26_plan_estado_choices <- c(
         "Versión finalizada" = "finalizada",
         "Versión borrador" = "borrador",
