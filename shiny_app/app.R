@@ -241,6 +241,101 @@ fetch_sat26_export_from_api <- function(page_size = 1000L) {
   result[, expected_columns, drop = FALSE]
 }
 
+supabase_private_select <- function(table, select = "*", filters = list(), order = NULL, page_size = 1000L) {
+  project_url <- storage_project_url()
+  if (!nzchar(project_url)) {
+    stop("SUPABASE_URL no está configurado.")
+  }
+  if (!nzchar(supabase_service_role_key)) {
+    stop("SUPABASE_SERVICE_ROLE_KEY no está configurado en el servidor.")
+  }
+  if (!grepl("^[a-z0-9_]+$", table)) {
+    stop("Nombre de tabla no permitido para la API privada.")
+  }
+
+  pages <- list()
+  offset <- 0L
+  repeat {
+    query <- c(
+      list(select = select, offset = offset, limit = as.integer(page_size)),
+      filters
+    )
+    if (!is.null(order) && nzchar(order)) query$order <- order
+    api_request <- request(paste0(project_url, "/rest/v1/", table)) |>
+      req_headers(
+        Authorization = paste("Bearer", supabase_service_role_key),
+        apikey = supabase_service_role_key,
+        Accept = "application/json"
+      )
+    api_request <- do.call(req_url_query, c(list(api_request), query))
+    response <- api_request |>
+      req_retry(max_tries = 3) |>
+      req_error(is_error = function(response) FALSE) |>
+      req_perform()
+
+    if (resp_status(response) >= 300) {
+      body <- resp_body_json(response, check_type = FALSE)
+      message <- body$message %||% sprintf("HTTP %s", resp_status(response))
+      stop(paste0("La API privada de Supabase rechazó la consulta de ", table, ": ", message))
+    }
+
+    page <- resp_body_json(response, check_type = FALSE, simplifyVector = TRUE)
+    if (length(page) == 0) break
+    if (!is.data.frame(page)) page <- as.data.frame(page, stringsAsFactors = FALSE)
+    pages[[length(pages) + 1L]] <- page
+    if (nrow(page) < page_size) break
+    offset <- offset + as.integer(page_size)
+  }
+
+  if (!length(pages)) return(data.frame())
+  do.call(rbind, pages)
+}
+
+supabase_record_from_row <- function(data, row_index = 1L) {
+  if (!is.data.frame(data) || nrow(data) < row_index) return(list())
+  record <- lapply(data[row_index, , drop = FALSE], function(value) {
+    value <- value[[1]]
+    if (length(value) == 0 || is.null(value) || is.na(value)) return(NULL)
+    if (inherits(value, c("Date", "POSIXct", "POSIXlt"))) return(as.character(value))
+    if (is.factor(value)) return(as.character(value))
+    value
+  })
+  record[!vapply(record, is.null, logical(1))]
+}
+
+supabase_records_from_data_frame <- function(data) {
+  if (!is.data.frame(data) || !nrow(data)) return(list())
+  lapply(seq_len(nrow(data)), function(index) supabase_record_from_row(data, index))
+}
+
+supabase_private_rpc <- function(function_name, body) {
+  if (!grepl("^entonet_[a-z0-9_]+$", function_name)) {
+    stop("Nombre de función no permitido para la API privada.")
+  }
+  project_url <- storage_project_url()
+  if (!nzchar(project_url) || !nzchar(supabase_service_role_key)) {
+    stop("La API privada de Supabase no está configurada en el servidor.")
+  }
+
+  response <- request(paste0(project_url, "/rest/v1/rpc/", function_name)) |>
+    req_headers(
+      Authorization = paste("Bearer", supabase_service_role_key),
+      apikey = supabase_service_role_key,
+      `Content-Type` = "application/json",
+      Accept = "application/json"
+    ) |>
+    req_body_json(body, auto_unbox = TRUE) |>
+    req_error(is_error = function(response) FALSE) |>
+    req_perform()
+
+  if (resp_status(response) >= 300) {
+    response_body <- resp_body_json(response, check_type = FALSE)
+    message <- response_body$message %||% sprintf("HTTP %s", resp_status(response))
+    stop(paste0("Supabase rechazó la captura: ", message))
+  }
+  resp_body_json(response, check_type = FALSE, simplifyVector = TRUE)
+}
+
 country_choices <- c(
   "Belice",
   "Guatemala",
@@ -6068,69 +6163,69 @@ server <- function(input, output, session) {
     paste("where", paste(where_clauses, collapse = " and "))
   }
 
-  request_fetch_formulario_1 <- function(connection) {
-    filters <- request_append_scope_filters(character(), list(), "h")
-    query <- paste(
-      "select h.formulario_codigo, h.formulario_nombre, h.fecha_registro, h.pais, h.id_institucion, h.departamento, h.municipio,",
-      "h.ciclo, h.ronda, h.codigo_formulario, h.fecha_colocacion, h.grupo_responsable_colocacion,",
-      "h.cuadrante, h.codigo_casa, h.latitud as \"Latitud\", h.longitud as \"Longitud\", h.codigo_gps,",
-      "h.ovitrampas_colocadas as \"Ovitrampas_colocadas\", d.codigo_sustrato, h.fecha_retiro,",
-      "h.grupo_responsable_retiro, h.ovitrampas_retiradas as \"Ovitrampas_retiradas\",",
-      "h.retiro_buen_estado, h.retiro_sin_agua, h.retiro_sin_sustrato, h.retiro_sin_ovitrampa,",
-      "h.retiro_movida, h.retiro_volteada, h.retiro_casa_cerrada, h.retiro_casa_cerrada_descripcion,",
-      "h.fuente_formulario, h.creado_por, h.creado_en, h.actualizado_en",
-      "from public.formulario_1_ovitrampa_intake h",
-      "left join public.formulario_1_ovitrampa_detalle_intake d on d.intake_id = h.intake_id",
-      request_where_sql(filters$where),
-      "order by h.fecha_registro desc, h.codigo_formulario, h.cuadrante, h.codigo_casa, d.codigo_sustrato"
+  request_scope_api_filters <- function() {
+    filters <- list()
+    country <- request_filter_country()
+    institution <- request_filter_institution()
+    if (!is.null(country) && nzchar(country)) filters$pais <- paste0("eq.", country)
+    if (!is.null(institution) && nzchar(institution)) filters$id_institucion <- paste0("eq.", institution)
+    filters
+  }
+
+  request_fetch_formulario_1 <- function(connection = NULL) {
+    header <- supabase_private_select(
+      "formulario_1_ovitrampa_intake",
+      filters = request_scope_api_filters(),
+      order = "fecha_registro.desc,codigo_formulario.asc,cuadrante.asc,codigo_casa.asc"
     )
-    rows <- dbGetQuery(connection, query, params = filters$params)
+    if (!nrow(header)) return(formulario_1_template[0, formulario_1_intake_columns, drop = FALSE])
+    ids <- paste(as.integer(header$intake_id), collapse = ",")
+    details <- supabase_private_select(
+      "formulario_1_ovitrampa_detalle_intake",
+      select = "intake_id,codigo_sustrato",
+      filters = list(intake_id = paste0("in.(", ids, ")")),
+      order = "intake_id.asc,codigo_sustrato.asc"
+    )
+    rows <- if (nrow(details)) merge(header, details, by = "intake_id", all.x = TRUE, sort = FALSE) else transform(header, codigo_sustrato = NA_character_)
+    names(rows)[names(rows) == "latitud"] <- "Latitud"
+    names(rows)[names(rows) == "longitud"] <- "Longitud"
+    names(rows)[names(rows) == "ovitrampas_colocadas"] <- "Ovitrampas_colocadas"
+    names(rows)[names(rows) == "ovitrampas_retiradas"] <- "Ovitrampas_retiradas"
     rows[intersect(formulario_1_intake_columns, names(rows))]
   }
 
-  request_fetch_formulario_5 <- function(connection) {
-    filters <- request_append_scope_filters(character(), list())
-    query <- paste(
-      "select *",
-      "from public.formulario_5_alimentacion_conteo_intake",
-      request_where_sql(filters$where),
-      "order by fecha_registro desc, intake_id desc"
+  request_fetch_formulario_5 <- function(connection = NULL) {
+    supabase_private_select(
+      "formulario_5_alimentacion_conteo_intake",
+      filters = request_scope_api_filters(),
+      order = "fecha_registro.desc,intake_id.desc"
     )
-    dbGetQuery(connection, query, params = filters$params)
   }
 
-  request_fetch_formulario_7 <- function(connection) {
-    filters <- request_append_scope_filters(character(), list(), "h")
-    query <- paste(
-      "select h.*",
-      "from public.formulario_7_bioensayo_intake h",
-      request_where_sql(filters$where),
-      "order by h.fecha_registro desc, h.intake_id desc"
+  request_fetch_formulario_7 <- function(connection = NULL) {
+    header <- supabase_private_select(
+      "formulario_7_bioensayo_intake",
+      filters = request_scope_api_filters(),
+      order = "fecha_registro.desc,intake_id.desc"
     )
-    header <- dbGetQuery(connection, query, params = filters$params)
     if (!nrow(header)) return(formulario_7_internal_to_csv(formulario_7_template[0, , drop = FALSE]))
 
     for (column in setdiff(formulario_7_intake_columns, names(header))) header[[column]] <- NA
     ids <- as.integer(header$intake_id)
-    placeholders <- paste0("$", seq_along(ids), collapse = ", ")
-    results <- dbGetQuery(
-      connection,
-      paste(
-        "select intake_id, fase, botella, tiempo_minutos, hora_lectura, vivos, incapacitados",
-        "from public.formulario_7_bioensayo_resultado_intake",
-        "where intake_id in (", placeholders, ")"
-      ),
-      params = as.list(ids)
+    id_filter <- paste0("in.(", paste(ids, collapse = ","), ")")
+    results <- supabase_private_select(
+      "formulario_7_bioensayo_resultado_intake",
+      select = "intake_id,fase,botella,tiempo_minutos,hora_lectura,vivos,incapacitados",
+      filters = list(intake_id = id_filter),
+      order = "intake_id.asc,botella.asc,tiempo_minutos.asc"
     )
-    comments <- dbGetQuery(
-      connection,
-      paste(
-        "select intake_id, comentario, nombre as comentario_nombre",
-        "from public.formulario_7_bioensayo_comentario_intake",
-        "where intake_id in (", placeholders, ")"
-      ),
-      params = as.list(ids)
+    comments <- supabase_private_select(
+      "formulario_7_bioensayo_comentario_intake",
+      select = "intake_id,comentario,nombre",
+      filters = list(intake_id = id_filter),
+      order = "intake_id.asc"
     )
+    if (nrow(comments)) names(comments)[names(comments) == "nombre"] <- "comentario_nombre"
     row_index <- setNames(seq_len(nrow(header)), as.character(header$intake_id))
     if (nrow(results)) {
       for (index in seq_len(nrow(results))) {
@@ -7140,7 +7235,7 @@ server <- function(input, output, session) {
     if (length(bad_codigo_sustrato)) details <- c(details, paste0("codigo_sustrato debe tener letras, dígitos y una letra final A-H. Filas: ", paste(head(bad_codigo_sustrato, 10), collapse = ", ")))
 
     header_key_columns <- c(
-      "formulario_codigo", "formulario_nombre", "fecha_registro", "pais", "departamento", "municipio",
+      "formulario_codigo", "formulario_nombre", "fecha_registro", "pais", "id_institucion", "departamento", "municipio",
       "ciclo", "ronda", "codigo_formulario", "fecha_colocacion", "grupo_responsable_colocacion",
       "cuadrante", "codigo_casa", "Latitud", "Longitud", "codigo_gps", "Ovitrampas_colocadas", "fecha_retiro",
       "grupo_responsable_retiro", "Ovitrampas_retiradas",
@@ -7182,6 +7277,7 @@ server <- function(input, output, session) {
       formulario_nombre = row$formulario_nombre,
       fecha_registro = row$fecha_registro,
       pais = row$pais,
+      id_institucion = row$id_institucion,
       departamento = row$departamento,
       municipio = row$municipio,
       ciclo = row$ciclo,
@@ -7217,7 +7313,7 @@ server <- function(input, output, session) {
     list(header = header, detail = detail)
   }
 
-  insert_formulario_1 <- function(connection, data, progress_callback = NULL) {
+  insert_formulario_1 <- function(connection = NULL, data, progress_callback = NULL) {
     header_columns <- c(
       "formulario_codigo", "formulario_nombre", "fecha_registro", "pais", "departamento", "municipio",
       "ciclo", "ronda", "codigo_formulario", "fecha_colocacion", "grupo_responsable_colocacion",
@@ -7230,61 +7326,59 @@ server <- function(input, output, session) {
     header_keys <- do.call(paste, c(lapply(data[header_columns], function(value) ifelse(is.na(value), "", as.character(value))), sep = "\r"))
     grouped_rows <- split(seq_len(nrow(data)), header_keys)
     intake_ids <- character(length(grouped_rows))
-    dbWithTransaction(connection, {
-      for (group_index in seq_along(grouped_rows)) {
-        rows <- grouped_rows[[group_index]]
-        tables <- formulario_1_tables(data[rows[[1]], , drop = FALSE])
-        dbAppendTable(connection, Id(schema = "public", table = "formulario_1_ovitrampa_intake"), tables$header)
-        intake_id <- dbGetQuery(connection, "select currval(pg_get_serial_sequence('public.formulario_1_ovitrampa_intake', 'intake_id'))::bigint as intake_id")$intake_id[[1]]
-        intake_ids[[group_index]] <- as.character(intake_id)
-        detail_rows <- do.call(rbind, lapply(rows, function(row_index) formulario_1_tables(data[row_index, , drop = FALSE])$detail))
-        detail_rows$intake_id <- intake_id
-        detail_rows <- detail_rows[c(
-          "intake_id", "codigo_sustrato"
-        )]
-        dbAppendTable(connection, Id(schema = "public", table = "formulario_1_ovitrampa_detalle_intake"), detail_rows)
-        if (is.function(progress_callback)) progress_callback(group_index, length(grouped_rows))
-      }
-    })
+    for (group_index in seq_along(grouped_rows)) {
+      rows <- grouped_rows[[group_index]]
+      tables <- formulario_1_tables(data[rows[[1]], , drop = FALSE])
+      detail_rows <- do.call(rbind, lapply(rows, function(row_index) formulario_1_tables(data[row_index, , drop = FALSE])$detail))
+      intake_id <- supabase_private_rpc(
+        "entonet_insert_formulario_1",
+        list(
+          p_header = supabase_record_from_row(tables$header),
+          p_details = supabase_records_from_data_frame(detail_rows[c("codigo_sustrato")])
+        )
+      )
+      intake_ids[[group_index]] <- as.character(intake_id[[1]])
+      if (is.function(progress_callback)) progress_callback(group_index, length(grouped_rows))
+    }
     intake_ids
   }
 
-  f1_fetch_existing_formulario_1_rows <- function(connection, codigo_formulario) {
+  f1_fetch_existing_formulario_1_rows <- function(connection = NULL, codigo_formulario) {
     code <- toupper(trimws(value_or_default(codigo_formulario, "")))
     if (!nzchar(code)) stop("Ingrese un código de formulario para continuar.")
-    rows <- dbGetQuery(
-      connection,
-      paste(
-        "select h.formulario_codigo, h.formulario_nombre, h.fecha_registro, h.pais, h.departamento, h.municipio,",
-        "h.ciclo, h.ronda, h.codigo_formulario, h.fecha_colocacion, h.grupo_responsable_colocacion,",
-        "h.cuadrante, h.codigo_casa, h.latitud as \"Latitud\", h.longitud as \"Longitud\", h.codigo_gps,",
-        "h.ovitrampas_colocadas as \"Ovitrampas_colocadas\", d.codigo_sustrato, h.fecha_retiro,",
-        "h.grupo_responsable_retiro, h.ovitrampas_retiradas as \"Ovitrampas_retiradas\",",
-        "h.retiro_buen_estado, h.retiro_sin_agua, h.retiro_sin_sustrato, h.retiro_sin_ovitrampa,",
-        "h.retiro_movida, h.retiro_volteada, h.retiro_casa_cerrada, h.retiro_casa_cerrada_descripcion,",
-        "h.fuente_formulario, h.creado_por, h.creado_en, h.actualizado_en",
-        "from public.formulario_1_ovitrampa_intake h",
-        "join public.formulario_1_ovitrampa_detalle_intake d on d.intake_id = h.intake_id",
-        "where upper(h.codigo_formulario) = $1",
-        "order by h.cuadrante, h.codigo_casa, d.codigo_sustrato"
-      ),
-      params = list(code)
+    header <- supabase_private_select(
+      "formulario_1_ovitrampa_intake",
+      filters = list(codigo_formulario = paste0("ilike.", code)),
+      order = "cuadrante.asc,codigo_casa.asc,intake_id.asc"
     )
+    if (!nrow(header)) return(formulario_1_template[0, formulario_1_intake_columns, drop = FALSE])
+    details <- supabase_private_select(
+      "formulario_1_ovitrampa_detalle_intake",
+      select = "intake_id,codigo_sustrato",
+      filters = list(intake_id = paste0("in.(", paste(as.integer(header$intake_id), collapse = ","), ")")),
+      order = "intake_id.asc,codigo_sustrato.asc"
+    )
+    rows <- merge(header, details, by = "intake_id", all = FALSE, sort = FALSE)
+    names(rows)[names(rows) == "latitud"] <- "Latitud"
+    names(rows)[names(rows) == "longitud"] <- "Longitud"
+    names(rows)[names(rows) == "ovitrampas_colocadas"] <- "Ovitrampas_colocadas"
+    names(rows)[names(rows) == "ovitrampas_retiradas"] <- "Ovitrampas_retiradas"
     rows[formulario_1_intake_columns]
   }
 
-  f1_existing_sustratos_for_form <- function(connection, codigo_formulario) {
+  f1_existing_sustratos_for_form <- function(connection = NULL, codigo_formulario) {
     code <- toupper(trimws(value_or_default(codigo_formulario, "")))
     if (!nzchar(code)) return(character())
-    rows <- dbGetQuery(
-      connection,
-      paste(
-        "select d.codigo_sustrato",
-        "from public.formulario_1_ovitrampa_intake h",
-        "join public.formulario_1_ovitrampa_detalle_intake d on d.intake_id = h.intake_id",
-        "where upper(h.codigo_formulario) = $1"
-      ),
-      params = list(code)
+    headers <- supabase_private_select(
+      "formulario_1_ovitrampa_intake",
+      select = "intake_id",
+      filters = list(codigo_formulario = paste0("ilike.", code))
+    )
+    if (!nrow(headers)) return(character())
+    rows <- supabase_private_select(
+      "formulario_1_ovitrampa_detalle_intake",
+      select = "codigo_sustrato",
+      filters = list(intake_id = paste0("in.(", paste(as.integer(headers$intake_id), collapse = ","), ")"))
     )
     codes <- as.character(rows$codigo_sustrato)
     toupper(trimws(codes[!is.na(codes)]))
@@ -9544,36 +9638,15 @@ server <- function(input, output, session) {
       details = character()
     ))
 
-    connection <- NULL
     tryCatch({
       inserted <- withProgress(message = "Subiendo registro a Supabase", value = 0, {
-        incProgress(0.2, detail = "Abriendo conexión")
-        connection <- connect_to_supabase()
-
-        incProgress(0.5, detail = "Guardando registro")
-        dbWithTransaction(connection, {
-          dbAppendTable(
-            connection,
-            Id(schema = "public", table = "formulario_5_alimentacion_conteo_intake"),
-            record
-          )
-        })
-
-        incProgress(0.2, detail = "Confirmando ID")
-        inserted <- dbGetQuery(
-          connection,
-          "
-            select currval(
-              pg_get_serial_sequence(
-                'public.formulario_5_alimentacion_conteo_intake',
-                'intake_id'
-              )
-            )::text as intake_id
-          "
+        incProgress(0.7, detail = "Guardando registro")
+        intake_id <- supabase_private_rpc(
+          "entonet_insert_formulario_5",
+          list(p_record = supabase_record_from_row(record))
         )
-
-        incProgress(0.1, detail = "Listo")
-        inserted
+        incProgress(0.3, detail = "Confirmando ID")
+        data.frame(intake_id = as.character(intake_id[[1]]), stringsAsFactors = FALSE)
       })
 
       submission_status(sprintf(
@@ -9601,10 +9674,6 @@ server <- function(input, output, session) {
         type = "error",
         duration = 12
       )
-    }, finally = {
-      if (!is.null(connection)) {
-        dbDisconnect(connection)
-      }
     })
   })
 
@@ -10214,7 +10283,6 @@ server <- function(input, output, session) {
       notes <- paste(na.omit(c(notes, discrepancy_note)), collapse = "\n")
     }
 
-    connection <- NULL
     tryCatch({
       withProgress(message = "Actualizando revisión en Supabase", value = 0, {
         incProgress(0.25, detail = "Abriendo conexión")
@@ -10603,38 +10671,34 @@ server <- function(input, output, session) {
     )
   }
 
-  formulario_7_existing_unique_codes <- function(connection, codes) {
-    lookup <- formulario_7_unique_code_lookup(codes)
-    if (is.null(lookup$query)) return(character())
-    existing <- dbGetQuery(
-      connection,
-      lookup$query,
-      params = lookup$params
+  formulario_7_existing_unique_codes <- function(connection = NULL, codes) {
+    codes <- unique(f7_clean_text(codes))
+    codes <- codes[!is.na(codes)]
+    if (!length(codes)) return(character())
+    existing <- supabase_private_select(
+      "formulario_7_bioensayo_intake",
+      select = "codigo_bioensayo",
+      filters = list(codigo_bioensayo = paste0("in.(", paste(codes, collapse = ","), ")")),
+      order = "codigo_bioensayo.asc"
     )
     as.character(existing$codigo_bioensayo)
   }
 
-  insert_formulario_7 <- function(connection, data, progress_callback = NULL) {
+  insert_formulario_7 <- function(connection = NULL, data, progress_callback = NULL) {
     intake_ids <- character(nrow(data))
-    dbWithTransaction(connection, {
-      for (row_index in seq_len(nrow(data))) {
-        tables <- formulario_7_tables(data[row_index, , drop = FALSE])
-        dbAppendTable(connection, Id(schema = "public", table = "formulario_7_bioensayo_intake"), tables$header)
-        intake_id <- dbGetQuery(connection, "select currval(pg_get_serial_sequence('public.formulario_7_bioensayo_intake', 'intake_id'))::bigint as intake_id")$intake_id[[1]]
-        intake_ids[[row_index]] <- as.character(intake_id)
-        if (nrow(tables$results)) {
-          tables$results$intake_id <- intake_id
-          tables$results <- tables$results[c("intake_id", "fase", "botella", "tiempo_minutos", "hora_lectura", "vivos", "incapacitados")]
-          dbAppendTable(connection, Id(schema = "public", table = "formulario_7_bioensayo_resultado_intake"), tables$results)
-        }
-        if (nrow(tables$comments)) {
-          tables$comments$intake_id <- intake_id
-          tables$comments <- tables$comments[c("intake_id", "comentario", "nombre")]
-          dbAppendTable(connection, Id(schema = "public", table = "formulario_7_bioensayo_comentario_intake"), tables$comments)
-        }
-        if (is.function(progress_callback)) progress_callback(row_index, nrow(data))
-      }
-    })
+    for (row_index in seq_len(nrow(data))) {
+      tables <- formulario_7_tables(data[row_index, , drop = FALSE])
+      intake_id <- supabase_private_rpc(
+        "entonet_insert_formulario_7",
+        list(
+          p_header = supabase_record_from_row(tables$header),
+          p_results = supabase_records_from_data_frame(tables$results),
+          p_comments = supabase_records_from_data_frame(tables$comments)
+        )
+      )
+      intake_ids[[row_index]] <- as.character(intake_id[[1]])
+      if (is.function(progress_callback)) progress_callback(row_index, nrow(data))
+    }
     intake_ids
   }
 
@@ -11613,10 +11677,8 @@ server <- function(input, output, session) {
       f7_save_status(list(type = "error", message = "Revise los campos del Formulario 7.", details = validated$details))
       return()
     }
-    connection <- NULL
     tryCatch({
-      connection <- connect_to_supabase()
-      existing_codes <- formulario_7_existing_unique_codes(connection, validated$data$codigo_bioensayo)
+      existing_codes <- formulario_7_existing_unique_codes(codes = validated$data$codigo_bioensayo)
       if (length(existing_codes)) {
         f7_save_status(list(
           type = "error",
@@ -11625,13 +11687,11 @@ server <- function(input, output, session) {
         ))
         return()
       }
-      intake_ids <- insert_formulario_7(connection, validated$data)
+      intake_ids <- insert_formulario_7(data = validated$data)
       f7_save_status(list(type = "success", message = paste0("Registro guardado con intake_id ", intake_ids[[1]], " y estado pending."), details = character()))
       submission_status(paste0("Formulario 7 guardado con intake_id ", intake_ids[[1]], ". Estado de revisión: pending."))
     }, error = function(error) {
       f7_save_status(list(type = "error", message = "No se pudo guardar el Formulario 7 en Supabase.", details = conditionMessage(error)))
-    }, finally = {
-      if (!is.null(connection)) dbDisconnect(connection)
     })
   })
 
@@ -13743,31 +13803,27 @@ server <- function(input, output, session) {
   load_f7_visualization_records <- function(query) {
     f7_visualization_records(data.frame())
     f7_visualization_error(NULL)
-    connection <- NULL
     tryCatch({
-      connection <- connect_to_supabase()
-      records <- dbGetQuery(
-        connection,
-        "
-          select
-            f.intake_id, f.codigo_bioensayo, f.fecha_realizacion_bioensayo,
-            f.nombre_poblacion, f.bioensayo_intensidad, f.bioensayo_diagnostica_1x,
-            f.sinergista_def, f.sinergista_pbo, f.sinergista_dm, f.resultado_diagnostico,
-            f.insecticida, f.codigo_departamento, f.codigo_municipio, f.review_status,
-            f.creado_en, f.actualizado_en,
-            coalesce(d.departamento, f.codigo_departamento) as departamento,
-            coalesce(m.municipio, f.codigo_municipio) as municipio
-          from public.formulario_7_bioensayo_intake f
-          left join public.catalogo_ubicacion_departamento d
-            on d.pais = f.pais and d.codigo_departamento = f.codigo_departamento
-          left join public.catalogo_ubicacion_municipio m
-            on m.pais = f.pais and m.codigo_municipio = f.codigo_municipio
-          where f.pais = $1
-          order by f.fecha_realizacion_bioensayo, f.intake_id
-        ",
-        params = list(query$country)
+      records <- supabase_private_select(
+        "formulario_7_bioensayo_intake",
+        select = paste(
+          "intake_id,codigo_bioensayo,fecha_realizacion_bioensayo,nombre_poblacion,",
+          "bioensayo_intensidad,bioensayo_diagnostica_1x,sinergista_def,sinergista_pbo,",
+          "sinergista_dm,resultado_diagnostico,insecticida,codigo_departamento,",
+          "codigo_municipio,review_status,creado_en,actualizado_en",
+          sep = ""
+        ),
+        filters = list(pais = paste0("eq.", query$country)),
+        order = "fecha_realizacion_bioensayo.asc,intake_id.asc"
       )
       if (nrow(records)) {
+        records$departamento <- mapply(
+          ubicacion_departamento_nombre,
+          query$country,
+          records$codigo_departamento,
+          USE.NAMES = FALSE
+        )
+        records$municipio <- records$codigo_municipio
         records$fecha_realizacion_bioensayo <- as.Date(records$fecha_realizacion_bioensayo)
         records$creado_en <- as.POSIXct(records$creado_en)
         records$actualizado_en <- as.POSIXct(records$actualizado_en)
@@ -13810,8 +13866,6 @@ server <- function(input, output, session) {
       f7_visualization_last_refresh(Sys.time())
     }, error = function(error) {
       f7_visualization_error(conditionMessage(error))
-    }, finally = {
-      if (!is.null(connection)) dbDisconnect(connection)
     })
   }
 
@@ -17010,8 +17064,7 @@ server <- function(input, output, session) {
     tryCatch({
       withProgress(message = "Cargando Formulario 1", value = 0, {
         incProgress(0.25, detail = "Buscando datos guardados")
-        connection <- connect_to_supabase()
-        rows <- f1_fetch_existing_formulario_1_rows(connection, codigo_formulario)
+        rows <- f1_fetch_existing_formulario_1_rows(codigo_formulario = codigo_formulario)
         if (nrow(rows) == 0) {
           f1_resume_status(list(type = "error", message = "No se encontraron registros con ese código de formulario.", details = character()))
           return()
@@ -17148,7 +17201,6 @@ server <- function(input, output, session) {
         }
 
         incProgress(0.25, detail = "Conectando con Supabase")
-        connection <- connect_to_supabase()
 
         incProgress(0.15, detail = "Revisando sustratos ya guardados")
         filtered <- f1_rows_without_existing_sustratos(connection, validated$data)
@@ -17677,7 +17729,6 @@ server <- function(input, output, session) {
         }
 
         incProgress(0.15, detail = "Conectando con Supabase")
-        connection <- connect_to_supabase()
         total_records <- nrow(validated$data)
         insert_formulario_1(
           connection,
@@ -17698,7 +17749,7 @@ server <- function(input, output, session) {
     }, error = function(error) {
       formulario_1_bulk_upload_result(list(
         type = "error",
-        message = "La carga de Formulario 1 a Supabase falló. Ningún registro del documento fue guardado.",
+        message = "La carga de Formulario 1 a Supabase se interrumpió. Revise los registros ya guardados antes de volver a intentarla.",
         details = conditionMessage(error)
       ))
       showNotification("La carga de Formulario 1 falló.", type = "error", duration = 10)
@@ -17976,21 +18027,19 @@ server <- function(input, output, session) {
       return()
     }
 
-    connection <- NULL
     tryCatch({
-      connection <- connect_to_supabase()
-      dbWithTransaction(connection, {
-        dbAppendTable(
-          connection,
-          Id(schema = "public", table = "formulario_5_alimentacion_conteo_intake"),
-          csv_data
+      intake_ids <- vapply(seq_len(nrow(csv_data)), function(row_index) {
+        intake_id <- supabase_private_rpc(
+          "entonet_insert_formulario_5",
+          list(p_record = supabase_record_from_row(csv_data, row_index))
         )
-      })
+        as.character(intake_id[[1]])
+      }, character(1))
 
       formulario_5_bulk_upload_result(list(
         type = "success",
         message = paste0(nrow(csv_data), " registros de Formulario 5 guardados como pendientes de revisión."),
-        details = character()
+        details = paste0("Intake ID: ", paste(intake_ids, collapse = ", "))
       ))
       submission_status(paste0(
         nrow(csv_data),
@@ -18002,10 +18051,6 @@ server <- function(input, output, session) {
         message = "La carga de Formulario 5 a Supabase falló.",
         details = conditionMessage(error)
       ))
-    }, finally = {
-      if (!is.null(connection)) {
-        dbDisconnect(connection)
-      }
     })
   })
 
@@ -18068,10 +18113,8 @@ server <- function(input, output, session) {
         if (upload_aborted) {
           NULL
         } else {
-          incProgress(0.10, detail = "Conectando con Supabase")
-          connection <- connect_to_supabase()
           incProgress(0.10, detail = "Verificando que el código de bioensayo no esté registrado")
-          existing_codes <- formulario_7_existing_unique_codes(connection, validated$data$codigo_bioensayo)
+          existing_codes <- formulario_7_existing_unique_codes(codes = validated$data$codigo_bioensayo)
           if (length(existing_codes)) {
             formulario_7_bulk_upload_result(list(
               type = "error",
@@ -18087,8 +18130,7 @@ server <- function(input, output, session) {
           } else {
             total_records <- nrow(validated$data)
             intake_ids <- insert_formulario_7(
-              connection,
-              validated$data,
+              data = validated$data,
               progress_callback = function(current_record, total_records) {
                 incProgress(
                   0.45 / total_records,
@@ -18118,14 +18160,12 @@ server <- function(input, output, session) {
       error_detail <- conditionMessage(error)
       duplicate_error <- grepl("formulario_7_codigo_bioensayo_unique_idx", error_detail, fixed = TRUE)
       error_message <- if (duplicate_error) {
-        "El archivo no fue subido porque Supabase detectó un código de bioensayo repetido. Ningún registro del documento fue guardado."
+        "Supabase detectó un código de bioensayo repetido. Revise los códigos del archivo y los registros ya guardados."
       } else {
-        "La carga de Formulario 7 a Supabase falló. Ningún registro del documento fue guardado."
+        "La carga de Formulario 7 a Supabase se interrumpió. Revise los registros ya guardados antes de volver a intentarla."
       }
       formulario_7_bulk_upload_result(list(type = "error", message = error_message, details = error_detail))
       showNotification(error_message, type = "error", duration = 12)
-    }, finally = {
-      if (!is.null(connection)) dbDisconnect(connection)
     })
   })
 
@@ -18408,22 +18448,13 @@ server <- function(input, output, session) {
         stop("Seleccione un conjunto de datos permitido para su perfil.")
       }
 
-      connection <- NULL
-      data <- data.frame()
-      tryCatch({
-        connection <- connect_to_supabase()
-        data <- switch(
-          dataset,
-          formulario_1 = request_fetch_formulario_1(connection),
-          formulario_5 = request_fetch_formulario_5(connection),
-          formulario_7 = request_fetch_formulario_7(connection),
-          data.frame()
-        )
-      }, finally = {
-        if (!is.null(connection)) {
-          dbDisconnect(connection)
-        }
-      })
+      data <- switch(
+        dataset,
+        formulario_1 = request_fetch_formulario_1(),
+        formulario_5 = request_fetch_formulario_5(),
+        formulario_7 = request_fetch_formulario_7(),
+        data.frame()
+      )
 
       write.csv(data, file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
     }

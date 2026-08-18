@@ -28,6 +28,8 @@ Orden sugerido de ejecucion:
 Permisos privados recientes:
 
 - `038_usuario_perfil_service_api_access.sql`: permite que el servidor consulte perfiles autorizados mediante `service_role`, sin conceder acceso a `anon` ni `authenticated`.
+- `039_formularios_service_api_access.sql`: habilita lectura privada de Formularios 1, 5 y 7 y sus catálogos mediante la API REST del servidor; mantiene revocado el acceso directo de `anon` y `authenticated`.
+- `040_formularios_insert_rpc.sql`: agrega funciones transaccionales de captura para Formularios 1, 5 y 7, ejecutables únicamente por `service_role`.
 
 Para ejecutar todos los scripts desde la raiz del repositorio:
 
@@ -73,5 +75,9 @@ Formulario 1 usa un modelo encabezado-detalle:
 - `formulario_1_ovitrampa_eliminacion_audit`: auditoría mínima con motivo obligatorio cuando un registro se elimina desde revisión.
 
 Estas tablas tienen RLS activado y deniegan acceso directo a los roles
-`anon` y `authenticated`; la aplicación local escribe mediante la conexión
-PostgreSQL restringida configurada en `SUPABASE_DB_URL`.
+`anon` y `authenticated`. Las consultas, descargas y nuevas capturas de los
+Formularios 1, 5 y 7 usan la API privada del servidor con
+`SUPABASE_SERVICE_ROLE_KEY`; ya no dependen de la contraseña de
+`SUPABASE_DB_URL`. Las operaciones administrativas de revisión, edición o
+eliminación continúan usando la conexión PostgreSQL restringida hasta que sean
+migradas a funciones privadas equivalentes.
