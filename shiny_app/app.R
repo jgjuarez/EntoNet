@@ -1136,6 +1136,21 @@ login_identifier_to_email <- function(login_identifier) {
   email
 }
 
+normalize_sat26_login <- function(value) {
+  normalized <- iconv(trimws(value_or_default(value, "")), from = "", to = "ASCII//TRANSLIT")
+  normalized <- tolower(value_or_default(normalized, ""))
+  gsub("[^a-z0-9]+", "", normalized)
+}
+
+is_sat26_survey_login <- function(username, password) {
+  normalize_sat26_login(username) %in% c("encuestasatisfaccion", "encuestasatisfacion") &&
+    identical(value_or_default(password, ""), "26SAT")
+}
+
+is_sat26_survey_session <- function(username) {
+  normalize_sat26_login(username) %in% c("encuestasatisfaccion", "encuestasatisfacion")
+}
+
 public_header <- function(active_tab = NULL, show_login_button = FALSE, language = "es") {
   tab_class <- function(tab) {
     paste(
@@ -2463,6 +2478,27 @@ formulario_1_print_form <- function() {
   )
 }
 
+sat26_authenticated_page <- function() {
+  tagList(
+    div(
+      class = "sat26-standalone-header",
+      img(src = "entonet-header.jpeg", class = "sat26-standalone-logo", alt = "Logo EntoNet"),
+      div(
+        class = "sat26-standalone-actions",
+        actionButton("logout", "Salir", class = "btn-default header-logout")
+      )
+    ),
+    div(
+      class = "sat26-standalone-shell",
+      tags$main(
+        class = "sat26-standalone-workspace",
+        tags$div(id = "sat26_scroll_anchor", class = "sat26-scroll-anchor"),
+        uiOutput("module_area")
+      )
+    )
+  )
+}
+
 ui <- fluidPage(
   tags$head(
     tags$link(rel = "stylesheet", href = "leaflet/leaflet.css"),
@@ -2904,6 +2940,38 @@ ui <- fluidPage(
         max-width: 620px;
         width: 100%;
         object-fit: contain;
+      }
+      .sat26-standalone-header {
+        align-items: center;
+        background: #ffffff;
+        box-shadow: 0 2px 12px rgba(16, 34, 61, 0.10);
+        display: flex;
+        justify-content: center;
+        padding: 18px 24px;
+        position: relative;
+      }
+      .sat26-standalone-logo {
+        display: block;
+        max-height: 92px;
+        max-width: 520px;
+        object-fit: contain;
+        width: min(100%, 520px);
+      }
+      .sat26-standalone-actions {
+        position: absolute;
+        right: 24px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      .sat26-standalone-shell {
+        background: linear-gradient(180deg, #eef5f6 0%, #ffffff 42%, #eef5f6 100%);
+        min-height: calc(100vh - 128px);
+        padding: 34px 20px 64px;
+      }
+      .sat26-standalone-workspace {
+        margin: 0 auto;
+        max-width: 1120px;
+        width: 100%;
       }
       .landing-tabs {
         align-items: stretch;
@@ -5968,6 +6036,10 @@ server <- function(input, output, session) {
       return(landing_page(message, public_language()))
     }
 
+    if (is_sat26_survey_session(user_profile$username)) {
+      return(sat26_authenticated_page())
+    }
+
     authenticated_page()
   })
 
@@ -6301,6 +6373,30 @@ server <- function(input, output, session) {
 
     if (!nzchar(login_user) || !nzchar(login_password)) {
       login_error(div(class = "alert alert-warning", "Ingrese usuario/correo y contraseña."))
+      return()
+    }
+
+    if (is_sat26_survey_login(login_user, login_password)) {
+      user_profile$username <- "EncuestaSatisfaccion"
+      user_profile$email <- ""
+      user_profile$user_id <- ""
+      user_profile$access_token <- ""
+      user_profile$refresh_token <- ""
+      user_profile$name <- "Encuesta SAT26"
+      user_profile$institution <- "EntoNet"
+      user_profile$position <- "Encuesta SAT26"
+      user_profile$country <- "Regional"
+      logged_in(TRUE)
+      public_page("login")
+      active_area("sat26")
+      active_module("intro")
+      active_capture_subdivision(NULL)
+      active_request_subdivision(NULL)
+      active_request_data_subdivision(NULL)
+      active_dataset(NULL)
+      sat26_resume_status(NULL)
+      login_error(NULL)
+      session$sendCustomMessage("sat26ScrollTop", list())
       return()
     }
 
