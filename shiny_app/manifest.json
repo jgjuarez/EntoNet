@@ -2610,7 +2610,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "025c0e4a215085cdafa8198db7ac0394"
+      "checksum": "fc0e05199a331c4100138961bd8a0645"
     },
     "README.md": {
       "checksum": "f73da1f9de72fa682e710e5cb68a4acd"
@@ -2620,6 +2620,9 @@
     },
     "www/ces-logo.png": {
       "checksum": "deba0a19ccbfcab5f0c530c1837230df"
+    },
+    "www/COMISCA.png": {
+      "checksum": "f9dc25014f75738c6ea1d1e3b9399c44"
     },
     "www/entonet-header.jpeg": {
       "checksum": "59c5c6431244778079a5298dcedcb515"
@@ -2634,7 +2637,7 @@
       "checksum": "b7b9c24e797587cce172eb2429dc3e1f"
     },
     "www/formulario_1_version_2_preview.png": {
-      "checksum": "7c546bb1e869b3662dd7ab401ea65598"
+      "checksum": "6220d6bdf32c855bb5bd619270da0382"
     },
     "www/formulario_7_version_2_preview.jpg": {
       "checksum": "875af79f3895dfb0ed7a0cde383a16fa"
@@ -2650,6 +2653,24 @@
     },
     "www/pilares-estrategicos.png": {
       "checksum": "431c7fd1b56ec25d47e966e87ffa8c47"
+    },
+    "www/reactivos-adulticidas.png": {
+      "checksum": "4074ff37fbc7feb06a09d49df838ba45"
+    },
+    "www/reactivos-hero.png": {
+      "checksum": "fe706a9cd7498747660dd63ca9dbd9be"
+    },
+    "www/reactivos-larvicidas.png": {
+      "checksum": "ecfc9258b8585113c13fc09cbf32cb49"
+    },
+    "www/reactivos-residuales.png": {
+      "checksum": "68cda73b63d70fee3c85aee194c191c9"
+    },
+    "www/reactivos-strip.png": {
+      "checksum": "11626d0207c753b4db4d9080b4c8aa0b"
+    },
+    "www/solicitudes-flow.png": {
+      "checksum": "f224f72628b6de4e272f645632bb8911"
     },
     "www/uvg-logo.jpg": {
       "checksum": "42e855435cb89bd60a7581de878d61a2"

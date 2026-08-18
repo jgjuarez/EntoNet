@@ -6,6 +6,7 @@ Repositorio de trabajo para organizar formularios, bases de datos y herramientas
 
 - `base_datos_entonet/`: plantillas CSV, diccionarios de datos y listas de validacion de formularios.
 - `docs/`: notas de arquitectura, integracion entre computadoras y decisiones de base de datos.
+- `docs/formularios/`: memoria reutilizable por formulario con estructura, consultas, soluciones y estilos.
 - `shiny_app/`: espacio para incorporar el codigo de la aplicacion Shiny generada previamente.
 - `supabase/`: scripts SQL y notas para montar la base de datos en Supabase.
 
@@ -16,4 +17,3 @@ Repositorio de trabajo para organizar formularios, bases de datos y herramientas
 3. Guardar datos crudos y plantillas en CSV.
 4. Usar Supabase como base operacional para captura en linea.
 5. Conectar Shiny a Supabase usando variables de entorno, nunca claves escritas directamente en el codigo.
-

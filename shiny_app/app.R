@@ -1166,7 +1166,8 @@ public_header <- function(active_tab = NULL, show_login_button = FALSE, language
       actionButton("landing_governance", tr(language, "Gobernanza Regional", "Regional Governance"), class = tab_class("governance")),
       actionButton("landing_collaborators", tr(language, "Colaboradores", "Collaborators"), class = tab_class("collaborators")),
       actionButton("landing_network_map", tr(language, "Mapa de la Red", "Network Map"), class = tab_class("network_map")),
-      actionButton("landing_network_impact", tr(language, "Impacto de la Red", "Network Impact"), class = tab_class("network_impact"))
+      actionButton("landing_network_impact", tr(language, "Impacto de la Red", "Network Impact"), class = tab_class("network_impact")),
+      actionButton("landing_sat26", tr(language, "Encuesta SAT26", "SAT26 Survey"), class = tab_class("sat26"))
     )
   )
 }
@@ -1190,6 +1191,21 @@ public_footer <- function(language = "es") {
         img(src = "uvg-logo.jpg", class = "footer-logo uvg-footer-logo", alt = "Logo Universidad del Valle de Guatemala")
       )
     )
+  )
+}
+
+sat26_public_page <- function(language = "es") {
+  tagList(
+    public_header("sat26", show_login_button = TRUE, language = language),
+    div(
+      class = "portal-shell sat26-public-shell",
+      tags$main(
+        class = "portal-workspace sat26-public-workspace",
+        tags$div(id = "sat26_scroll_anchor", class = "sat26-scroll-anchor"),
+        uiOutput("module_area")
+      )
+    ),
+    public_footer(language)
   )
 }
 
@@ -1641,6 +1657,7 @@ authenticated_page <- function() {
       tags$main(
         class = "portal-workspace",
         uiOutput("connect_user_greeting"),
+        tags$div(id = "sat26_scroll_anchor", class = "sat26-scroll-anchor"),
         uiOutput("module_area")
       )
     ),
@@ -2510,6 +2527,33 @@ ui <- fluidPage(
       });
     ")),
     tags$script(HTML("
+      function sendEntonetPublicRouteToShiny() {
+        if (typeof Shiny === 'undefined') {
+          return;
+        }
+        var params = new URLSearchParams('');
+        if (window.location.search && window.location.search.length > 1) {
+          params = new URLSearchParams(window.location.search.substring(1));
+        }
+        var survey = (params.get('survey') || '').toLowerCase();
+        var sat26 = (params.get('sat26') || '').toLowerCase();
+        if (survey === 'sat26' || ['1', 'true', 'yes', 'si', 'sí'].indexOf(sat26) >= 0) {
+          Shiny.setInputValue('entonet_public_route', {
+            page: 'sat26',
+            search: window.location.search || '',
+            href: window.location.href || ''
+          }, {priority: 'event'});
+        }
+      }
+      document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(sendEntonetPublicRouteToShiny, 250);
+      });
+      document.addEventListener('shiny:connected', function() {
+        sendEntonetPublicRouteToShiny();
+        setTimeout(sendEntonetPublicRouteToShiny, 500);
+      });
+    ")),
+    tags$script(HTML("
       document.addEventListener('input', function(event) {
         var target = event.target;
         if (!target || !target.id || !target.id.startsWith('f1_')) {
@@ -2711,6 +2755,136 @@ ui <- fluidPage(
             if (link && labels[index]) link.textContent = labels[index];
           });
         }, 25);
+      });
+
+      document.addEventListener('click', function(event) {
+        var button = event.target.closest('[data-sat26-audio]');
+        if (!button) return;
+
+        var action = button.getAttribute('data-sat26-audio');
+        var targetId = button.getAttribute('data-sat26-target');
+        var target = document.getElementById(targetId);
+        if (!window.speechSynthesis || !target) return;
+
+        if (action === 'stop') {
+          window.speechSynthesis.cancel();
+          return;
+        }
+
+        if (action === 'pause') {
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          } else if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.pause();
+          }
+          return;
+        }
+
+        if (action === 'play') {
+          window.speechSynthesis.cancel();
+          var text = target.innerText || target.textContent || '';
+          var utterance = new SpeechSynthesisUtterance(text.replace(/\\s+/g, ' ').trim());
+          utterance.lang = 'es-ES';
+          utterance.rate = 0.92;
+          window.speechSynthesis.speak(utterance);
+        }
+      });
+
+      document.addEventListener('click', function(event) {
+        var navButton = event.target.closest('button[id^=\"sat26_part_\"]');
+        if (!navButton) return;
+        var runScroll = function() {
+          var anchor = document.getElementById('sat26_scroll_anchor');
+          var workspace = document.querySelector('.portal-workspace');
+          var panel = document.querySelector('.sat26-questionnaire-panel');
+          if (workspace) workspace.scrollTop = 0;
+          if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+          window.scrollTo(0, 0);
+          (anchor || panel || workspace || document.body).scrollIntoView({ behavior: 'auto', block: 'start' });
+        };
+        window.setTimeout(runScroll, 60);
+        window.setTimeout(runScroll, 350);
+        window.setTimeout(runScroll, 900);
+      });
+
+      Shiny.addCustomMessageHandler('sat26SaveDraft', function(message) {
+        try {
+          if (!message || !message.code) return;
+          window.localStorage.setItem('sat26-last-code', message.code);
+          window.localStorage.setItem('sat26-draft-' + message.code, JSON.stringify(message));
+        } catch (error) {}
+      });
+
+      Shiny.addCustomMessageHandler('sat26LoadDraft', function(message) {
+        try {
+          var code = (message && message.code ? message.code : '').trim();
+          if (!code) return;
+          var raw = window.localStorage.getItem('sat26-draft-' + code);
+          if (!raw) {
+            Shiny.setInputValue('sat26_resume_payload', { code: code, found: false }, { priority: 'event' });
+            return;
+          }
+          var payload = JSON.parse(raw);
+          payload.found = true;
+          Shiny.setInputValue('sat26_resume_payload', payload, { priority: 'event' });
+        } catch (error) {
+          Shiny.setInputValue('sat26_resume_payload', { code: message && message.code ? message.code : '', found: false }, { priority: 'event' });
+        }
+      });
+
+      Shiny.addCustomMessageHandler('sat26RestoreDraft', function(message) {
+        try {
+          if (!message) return;
+          if (message.code) {
+            window.localStorage.setItem('sat26-last-code', message.code);
+            window.localStorage.setItem('sat26-draft-' + message.code, JSON.stringify(message));
+          }
+          message.found = true;
+          Shiny.setInputValue('sat26_resume_payload', message, { priority: 'event' });
+        } catch (error) {
+          Shiny.setInputValue('sat26_resume_payload', { code: message && message.code ? message.code : '', found: false }, { priority: 'event' });
+        }
+      });
+
+      Shiny.addCustomMessageHandler('sat26RequestNextCode', function() {
+        try {
+          var nextNumber = parseInt(window.localStorage.getItem('sat26-next-number') || '1', 10);
+          if (!Number.isFinite(nextNumber) || nextNumber < 1) nextNumber = 1;
+          var code = '26SAT' + String(nextNumber).padStart(2, '0');
+          window.localStorage.setItem('sat26-next-number', String(nextNumber + 1));
+          window.localStorage.setItem('sat26-last-code', code);
+          Shiny.setInputValue('sat26_generated_code', code, { priority: 'event' });
+        } catch (error) {}
+      });
+
+      Shiny.addCustomMessageHandler('sat26ScrollTop', function(message) {
+        var delay = message && Number.isFinite(Number(message.delay)) ? Number(message.delay) : 80;
+        var doScroll = function() {
+          var anchor = document.getElementById('sat26_scroll_anchor');
+          var workspace = document.querySelector('.portal-workspace');
+          var panel = document.querySelector('.sat26-questionnaire-panel, .sat26-consent-panel');
+          var target = anchor || panel || workspace;
+
+          if (workspace) workspace.scrollTop = 0;
+          if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+          window.scrollTo(0, 0);
+
+          if (target && target.scrollIntoView) {
+            target.scrollIntoView({ behavior: 'auto', block: 'start' });
+          }
+          if (target && target.focus) {
+            target.setAttribute('tabindex', '-1');
+            target.focus({ preventScroll: true });
+          }
+        };
+        doScroll();
+        window.setTimeout(doScroll, delay);
+        window.setTimeout(doScroll, delay + 250);
+        window.setTimeout(doScroll, delay + 700);
       });
     ")),
     tags$style(HTML("
@@ -4198,6 +4372,434 @@ ui <- fluidPage(
         line-height: 1.6;
         margin-bottom: 0;
       }
+      .sat26-form-shell {
+        background: #ffffff;
+        border: 1px solid #d5dde1;
+        box-shadow: 0 8px 24px rgba(16, 34, 61, 0.08);
+        margin: 0 auto 24px auto;
+        max-width: 980px;
+        padding: 34px 42px 30px 42px;
+      }
+      .sat26-form-header {
+        text-align: center;
+      }
+      .sat26-form-logo-row {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        justify-content: center;
+        margin-bottom: 26px;
+      }
+      .sat26-form-logo {
+        object-fit: contain;
+      }
+      .sat26-form-logo-uvg { height: 58px; }
+      .sat26-form-logo-ces { height: 64px; }
+      .sat26-form-logo-entonet { height: 60px; }
+      .sat26-form-logo-comisca { height: 88px; }
+      .sat26-form-header h2 {
+        color: #082243;
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.25;
+        margin: 0 auto 18px auto;
+        max-width: 860px;
+      }
+      .sat26-form-welcome {
+        color: #082243;
+        font-size: 18px;
+        margin-bottom: 18px;
+      }
+      .sat26-form-header p {
+        color: #000000;
+        font-size: 16px;
+        line-height: 1.55;
+        margin-left: auto;
+        margin-right: auto;
+        max-width: 860px;
+      }
+      .sat26-form-emphasis {
+        color: #082243;
+        font-weight: 700;
+      }
+      .sat26-form-subtitle {
+        color: #000000;
+        font-size: 14px;
+        font-style: italic;
+        margin: 18px auto 0 auto;
+        max-width: 860px;
+      }
+      .sat26-form-info-panel {
+        background: #ffffff;
+        border: 1px solid #dbe6e8;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(16, 34, 61, 0.06);
+        margin: 0 auto 24px auto;
+        max-width: 980px;
+        padding: 24px 30px 28px 30px;
+      }
+      .sat26-form-info-panel h3 {
+        color: #008c8f;
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 0;
+        text-align: center;
+      }
+      .sat26-form-info-panel > p {
+        color: #000000;
+        margin-bottom: 18px;
+        text-align: center;
+      }
+      .sat26-resume-panel {
+        background: #f8fbfc;
+        border: 1px solid #dde8eb;
+        border-radius: 10px;
+        margin-top: 18px;
+        padding: 16px 18px 18px 18px;
+      }
+      .sat26-resume-panel h4 {
+        color: #000000;
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0 0 10px 0;
+      }
+      .sat26-resume-row {
+        align-items: end;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+      .sat26-resume-status {
+        color: #000000;
+        font-size: 13pt;
+        margin-top: 10px;
+      }
+      .sat26-form-section-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        margin-top: 12px;
+      }
+      .sat26-form-section-card {
+        background: #f8fbfc;
+        border: 1px solid #dde8eb;
+        border-radius: 10px;
+        padding: 16px;
+        text-align: center;
+      }
+      .sat26-form-section-card h4 {
+        color: #000000;
+        font-size: 16px;
+        margin: 0 0 8px 0;
+      }
+      .sat26-form-section-card p {
+        color: #000000;
+        font-size: 14px;
+        margin-bottom: 0;
+      }
+      .sat26-form-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 22px;
+        flex-wrap: wrap;
+      }
+      .sat26-consent-panel {
+        background: #ffffff;
+        border: 1px solid #dbe6e8;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(16, 34, 61, 0.06);
+        margin: 0 auto 24px auto;
+        max-width: 980px;
+        padding: 24px 30px 28px 30px;
+      }
+      .sat26-consent-panel h3 {
+        color: #082243;
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 0;
+        text-align: center;
+      }
+      .sat26-consent-panel p {
+        color: #000000;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .sat26-consent-modal {
+        max-width: none;
+      }
+      .sat26-consent-section {
+        background: #f8fbfc;
+        border: 1px solid #dde8eb;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        padding: 16px 18px;
+      }
+      .sat26-consent-section h4 {
+        color: #000000;
+        font-size: 17px;
+        margin: 0 0 10px 0;
+      }
+      .sat26-consent-section p,
+      .sat26-consent-section li {
+        color: #000000;
+        font-size: 15px;
+        line-height: 1.55;
+      }
+      .sat26-audio-controls {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin: 0 0 18px 0;
+      }
+      .sat26-audio-controls .btn {
+        min-width: 110px;
+      }
+      .sat26-consent-check {
+        background: #f8fbfc;
+        border: 1px solid #dde8eb;
+        border-radius: 10px;
+        margin-top: 18px;
+        padding: 16px 18px;
+      }
+      .sat26-consent-question {
+        color: #000000;
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0 0 14px 0;
+        text-align: center;
+      }
+      .sat26-consent-choice-row {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      .sat26-consent-choice {
+        border-radius: 999px;
+        font-size: 16px;
+        font-weight: 700;
+        padding: 14px 22px;
+        white-space: normal;
+        width: 100%;
+      }
+      .sat26-consent-choice-yes {
+        background: #008c8f;
+        border-color: #00777a;
+        color: #ffffff;
+      }
+      .sat26-consent-choice-no {
+        background: #ffffff;
+        border-color: #9fb6bc;
+        color: #000000;
+      }
+      .sat26-questionnaire-panel {
+        background: #ffffff;
+        border: 1px solid #dbe6e8;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(16, 34, 61, 0.06);
+        margin: 0 auto 24px auto;
+        max-width: 980px;
+        padding: 28px 34px 32px 34px;
+      }
+      .sat26-section-logo-header {
+        align-items: center;
+        border-bottom: 1px solid #edf2f3;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 18px;
+        padding-bottom: 14px;
+      }
+      .sat26-section-logo-entonet {
+        max-height: 44px;
+        max-width: 280px;
+        object-fit: contain;
+      }
+      .sat26-section-logo-comisca {
+        max-height: 48px;
+        max-width: 300px;
+        object-fit: contain;
+      }
+      .sat26-questionnaire-panel h3 {
+        color: #082243;
+        font-size: 24px;
+        font-weight: 800;
+        margin: 0 0 16px 0;
+        text-align: center;
+      }
+      .sat26-questionnaire-panel h4 {
+        border-top: 1px solid #e7eff1;
+        color: #082243;
+        font-size: 17px;
+        font-weight: 800;
+        margin: 26px 0 12px 0;
+        padding-top: 18px;
+      }
+      .sat26-draft-code {
+        color: #000000;
+        font-size: 13pt;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .sat26-questionnaire-intro {
+        border-bottom: 1px solid #dde8eb;
+        margin-bottom: 22px;
+        padding-bottom: 18px;
+        text-align: center;
+      }
+      .sat26-questionnaire-intro h4 {
+        color: #000000;
+        font-size: 18px;
+        font-weight: 800;
+        line-height: 1.35;
+        margin: 0 0 14px 0;
+      }
+      .sat26-questionnaire-intro p {
+        color: #000000;
+        font-size: 15px;
+        line-height: 1.6;
+        margin-left: auto;
+        margin-right: auto;
+        max-width: 860px;
+      }
+      .sat26-left-intro {
+        text-align: left;
+      }
+      .sat26-left-intro p {
+        max-width: none;
+      }
+      .sat26-compact-intro {
+        border-bottom: 0;
+        margin-bottom: 10px;
+        padding-bottom: 0;
+      }
+      .sat26-section-note {
+        color: #000000;
+        font-size: 13pt;
+        line-height: 1.5;
+        margin: 8px 0 14px 0;
+      }
+      .sat26-form-field {
+        margin-bottom: 18px;
+      }
+      .sat26-form-field .form-group,
+      .sat26-form-field .shiny-input-container,
+      .sat26-form-field .shiny-input-radiogroup,
+      .sat26-form-field .shiny-input-checkboxgroup {
+        max-width: none;
+        width: 100%;
+      }
+      .sat26-form-field label,
+      .sat26-form-field .control-label {
+        color: #000000;
+        font-size: 13pt;
+        font-weight: 400;
+        line-height: 1.45;
+        width: 100%;
+      }
+      .sat26-form-field input,
+      .sat26-form-field select,
+      .sat26-form-field textarea,
+      .sat26-form-field .radio,
+      .sat26-form-field .checkbox,
+      .sat26-form-field .shiny-input-radiogroup label {
+        font-size: 13pt;
+      }
+      .sat26-form-field .radio,
+      .sat26-form-field .checkbox {
+        margin-bottom: 8px;
+        max-width: 100%;
+        width: 100%;
+      }
+      .sat26-form-field .radio label,
+      .sat26-form-field .checkbox label {
+        display: flex;
+        gap: 8px;
+        line-height: 1.45;
+        max-width: 100%;
+        width: 100%;
+      }
+      .sat26-form-field .radio input[type='radio'],
+      .sat26-form-field .checkbox input[type='checkbox'] {
+        flex: 0 0 auto;
+        margin-left: 0;
+        margin-top: 5px;
+        position: static;
+      }
+      .sat26-inline-reset {
+        align-items: end;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+      .sat26-form-reset-row {
+        display: flex;
+        justify-content: flex-end;
+        margin: -4px 0 18px 0;
+      }
+      .sat26-form-reset-row .btn {
+        font-size: 12px;
+        padding: 5px 12px;
+        text-transform: lowercase;
+      }
+      .sat26-optional-note {
+        color: #000000;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin: -6px 0 10px 0;
+        text-transform: uppercase;
+      }
+      .capture-bubble-note {
+        background: #f2fbfb;
+        border: 1px solid #c7ecec;
+        border-radius: 12px;
+        color: #23414a;
+        margin-top: 18px;
+        padding: 14px 16px;
+      }
+      .capture-module-card {
+        background: white;
+        border: 1px solid #d9e7ea;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(16, 34, 61, 0.08);
+        margin-bottom: 24px;
+        padding: 24px 28px;
+      }
+      .capture-module-card h3 {
+        color: #082243;
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 0;
+      }
+      .capture-module-card p {
+        color: #526070;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .capture-bubble-section-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        margin-top: 16px;
+      }
+      .capture-bubble-section {
+        background: #f8fbfc;
+        border: 1px solid #dde8eb;
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .capture-bubble-section h4 {
+        color: #008c8f;
+        font-size: 17px;
+        margin: 0 0 8px 0;
+      }
+      .capture-bubble-section p {
+        font-size: 14px;
+        margin-bottom: 0;
+      }
       .capture-actions {
         text-align: right;
       }
@@ -4945,6 +5547,9 @@ server <- function(input, output, session) {
   active_request_subdivision <- reactiveVal(NULL)
   active_request_data_subdivision <- reactiveVal(NULL)
   active_dataset <- reactiveVal(NULL)
+  sat26_unique_code <- reactiveVal("")
+  sat26_next_code_number <- reactiveVal(1L)
+  sat26_resume_status <- reactiveVal(NULL)
   active_request_reactivos_category <- reactiveVal("larvicidas")
   active_request_reactivos_product <- reactiveVal(1L)
   request_reactivos_catalog <- list(
@@ -5330,6 +5935,10 @@ server <- function(input, output, session) {
   })
 
   output$app_page <- renderUI({
+    if (identical(public_page(), "sat26")) {
+      return(sat26_public_page(public_language()))
+    }
+
     if (!logged_in()) {
       if (identical(public_page(), "password_setup")) {
         return(password_setup_page(password_setup_status(), public_language()))
@@ -5349,7 +5958,6 @@ server <- function(input, output, session) {
       if (identical(public_page(), "network_impact")) {
         return(network_impact_page(public_language()))
       }
-
       message <- login_error()
       if (is.null(message) && (!nzchar(supabase_auth_api_key) || !nzchar(storage_project_url()))) {
         message <- div(
@@ -5391,6 +5999,40 @@ server <- function(input, output, session) {
 
   observeEvent(input$landing_network_impact, {
     public_page("network_impact")
+  })
+
+  observeEvent(input$landing_sat26, {
+    public_page("sat26")
+    active_area("sat26")
+    active_module("intro")
+    sat26_resume_status(NULL)
+  })
+
+  observeEvent(input$entonet_public_route, {
+    route <- input$entonet_public_route
+    if (identical(value_or_default(route$page, ""), "sat26")) {
+      public_page("sat26")
+      active_area("sat26")
+      if (is.null(active_module()) || !nzchar(value_or_default(active_module(), ""))) {
+        active_module("intro")
+      }
+      sat26_resume_status(NULL)
+      session$sendCustomMessage("sat26ScrollTop", list(delay = 120))
+    }
+  }, ignoreInit = FALSE)
+
+  observe({
+    search <- value_or_default(session$clientData$url_search, "")
+    if (!nzchar(search)) return()
+    query <- parseQueryString(search)
+    requested_sat26 <- identical(tolower(value_or_default(query$survey, "")), "sat26") ||
+      value_or_default(query$sat26, "") %in% c("1", "true", "yes", "si", "sí")
+    if (!isTRUE(requested_sat26)) return()
+    public_page("sat26")
+    active_area("sat26")
+    if (is.null(active_module()) || !nzchar(value_or_default(active_module(), ""))) {
+      active_module("intro")
+    }
   })
 
   observeEvent(input$network_country_selector, {
@@ -11191,6 +11833,1319 @@ server <- function(input, output, session) {
     active_dataset(NULL)
   })
 
+  observeEvent(input$sat26_open_consent, {
+    showModal(modalDialog(
+      title = "Consentimiento informado",
+      easyClose = TRUE,
+      size = "l",
+      div(
+        class = "sat26-consent-panel sat26-consent-modal",
+        h3("Consentimiento informado"),
+        div(
+          class = "sat26-audio-controls",
+          tags$button(type = "button", class = "btn btn-primary", `data-sat26-audio` = "play", `data-sat26-target` = "sat26_consent_popup_text", "Escuchar"),
+          tags$button(type = "button", class = "btn btn-default", `data-sat26-audio` = "pause", `data-sat26-target` = "sat26_consent_popup_text", "Pausar"),
+          tags$button(type = "button", class = "btn btn-default", `data-sat26-audio` = "stop", `data-sat26-target` = "sat26_consent_popup_text", "Detener")
+        ),
+        div(
+          id = "sat26_consent_popup_text",
+          div(class = "sat26-consent-section",
+            h4("Información general"),
+            p("Investigadora principal: Norma Padilla"),
+            p("Este formulario de consentimiento en línea forma parte del proceso de consentimiento informado para una evaluación del programa de vigilancia y control de vectores en Centroamérica y República Dominicana. Le proporcionará información que le ayudará a decidir si desea participar o no en esta evaluación. Su participación es completamente voluntaria. Si decide no participar, no habrá ningún tipo de penalización ni consecuencias en su trabajo."),
+            p("Este proyecto está siendo llevado a cabo por la Universidad del Valle de Guatemala, en colaboración con EntoNet y SE-COMISCA, como un esfuerzo conjunto para evaluar las necesidades específicas de la región y apoyar el fortalecimiento de los programas de vigilancia y control de vectores en Centroamérica y República Dominicana.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Quién realiza esta evaluación y de qué trata?"),
+            p("Usted ha sido invitado/a a participar en una entrevista realizada por la Dra. Norma Padilla, investigadora principal del Centro de Estudios en Salud de la Universidad del Valle de Guatemala. El objetivo de este estudio es desarrollar una comprensión general de las prácticas de vigilancia y control de vectores en su país, e identificar necesidades y brechas para implementar estrategias adaptadas a la región."),
+            p("Específicamente, esta evaluación busca:"),
+            tags$ol(
+              tags$li("Comprender la capacidad actual de los países para prevenir y controlar enfermedades transmitidas por mosquitos."),
+              tags$li("Apoyar a los países en el seguimiento de su progreso frente a indicadores estandarizados.")
+            )
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Qué se me pedirá que haga si decido participar?"),
+            p("Se le pedirá que complete una encuesta enfocada en los programas de enfermedades transmitidas por vectores, incluyendo aspectos como gobernanza, financiamiento, recursos humanos, infraestructura, logística, sistemas de información y cooperación entre países. La encuesta tomará aproximadamente 60 minutos.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Qué pasará con la información proporcionada?"),
+            p("Sus respuestas se conservarán únicamente hasta que se presenten y publiquen los resultados del estudio. La información no será utilizada ni distribuida para otras investigaciones.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Qué sucede si no quiero participar o si decido retirarme más adelante?"),
+            p("Su participación es voluntaria. Puede decidir no participar o retirarse en cualquier momento. Si no hace clic en el botón de \"enviar\" al finalizar la encuesta, sus respuestas no serán registradas. Se le preguntará si está dispuesto(a) a ser contactado(a) por correo electrónico o teléfono con fines de aclaración, en caso de que alguna de sus respuestas requiera seguimiento. Si desea retirar sus respuestas después de haber enviado la encuesta, comuníquese con la investigadora principal.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿A quién puedo contactar si tengo preguntas?"),
+            p("Si tiene preguntas sobre su participación o desea retirar sus respuestas, puede comunicarse con la investigadora principal: Norma Padilla, Investigadora Principal, Centro de Estudios en Salud, Universidad del Valle de Guatemala, Guatemala. Correo electrónico: npadilla@uvg.edu.gt."),
+            p("Este proyecto fue aprobado por el Comité de Ética en Investigación del Centro de Estudios en Salud de la Universidad del Valle de Guatemala. Si desea más información, puede contactar a Estela García al teléfono (502) 2507-1500 ext. 21513. Si desea información respecto al cuestionario o implementación de la evaluación comunicarse con la Dra. Norma Padilla (Whatsapp +502 5204 9300) y/o el investigador encargado de su país.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("Instrucciones finales"),
+            p("Puede imprimir este formulario si desea conservar una copia para sus archivos."),
+            p("Si no desea participar en la evaluación, cierre esta página web."),
+            p("Si desea participar, siga las instrucciones a continuación."),
+            p("Al comenzar esta evaluación, confirmo que tengo 18 años o más y que he leído y comprendido esta información. Acepto participar en la evaluación, sabiendo que puedo retirarme en cualquier momento sin penalización.")
+          )
+        ),
+        div(
+          class = "sat26-consent-check",
+          div(class = "sat26-consent-question", "Pregunta 1. Confirma su consentimiento de participación:"),
+          div(
+            class = "sat26-consent-choice-row",
+            actionButton("sat26_consent_yes_popup", "Sí, acepto participar", class = "sat26-consent-choice sat26-consent-choice-yes"),
+            actionButton("sat26_consent_no_popup", "No, no deseo participar", class = "sat26-consent-choice sat26-consent-choice-no")
+          )
+        )
+      ),
+      footer = modalButton("Cerrar")
+    ))
+  })
+
+  observeEvent(input$sat26_open_sections, {
+    showModal(modalDialog(
+      title = "Secciones de la encuesta SAT26",
+      easyClose = TRUE,
+      size = "l",
+      tags$ol(
+        tags$li("Consentimiento e información general"),
+        tags$li("Parte A. Información del encuestado"),
+        tags$li("Parte B. Informe de situacion de enfermedades"),
+        tags$li("Parte C. Gobernanza"),
+        tags$li("Parte D. Finanzas"),
+        tags$li("Parte E. Recursos Humanos"),
+        tags$li("Parte F. Actividades de Control de Vectores para mosquitos"),
+        tags$li("Parte G. Actividades de Vigilancia Vectorial"),
+        tags$li("Parte H. Infraestructura y Logística"),
+        tags$li("Parte I. Sistemas de información"),
+        tags$li("Parte J. Participación comunitaria y comunicación de riesgos"),
+        tags$li("Parte K. Investigación operativa liderada por el Ministerio de Salud"),
+        tags$li("Parte L. Colaboración regional")
+      ),
+      footer = modalButton("Cerrar")
+    ))
+  })
+
+  observeEvent(input$sat26_start, {
+    sat26_unique_code("")
+    sat26_resume_status(NULL)
+    active_area("sat26")
+    active_module("intro")
+    active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
+    active_dataset(NULL)
+  })
+
+  sat26_generate_server_code <- function() {
+    connection <- connect_to_supabase()
+    on.exit(DBI::dbDisconnect(connection), add = TRUE)
+    result <- dbGetQuery(
+      connection,
+      "select nextval('public.encuesta_sat26_codigo_seq')::integer as next_code"
+    )
+    if (!nrow(result) || is.na(result$next_code[[1]])) {
+      stop("Supabase no devolvió un número de secuencia SAT26.")
+    }
+    sprintf("26SAT%02d", as.integer(result$next_code[[1]]))
+  }
+
+  sat26_ensure_unique_code <- function(reset = FALSE) {
+    if (isTRUE(reset)) {
+      sat26_unique_code("")
+    }
+    if (!nzchar(sat26_unique_code())) {
+      code <- tryCatch(
+        sat26_generate_server_code(),
+        error = function(error) {
+          warning(conditionMessage(error), call. = FALSE)
+          sprintf("26SATLOCAL%02d", as.integer(sat26_next_code_number()))
+        }
+      )
+      sat26_unique_code(code)
+      sat26_next_code_number(as.integer(sat26_next_code_number()) + 1L)
+    }
+  }
+
+  observeEvent(input$sat26_resume_lookup, {
+    resume_code <- trimws(value_or_default(input$sat26_resume_code, ""))
+    if (!nzchar(resume_code)) {
+      sat26_resume_status("Ingrese un codigo para buscar el borrador local.")
+      return()
+    }
+    remote_payload <- tryCatch({
+      connection <- connect_to_supabase()
+      on.exit(DBI::dbDisconnect(connection), add = TRUE)
+      record <- dbGetQuery(
+        connection,
+        "
+          select payload::text as payload
+          from public.encuesta_sat26_intake
+          where codigo_unico = $1
+          order by submitted_at desc
+          limit 1
+        ",
+        params = list(resume_code)
+      )
+      if (!nrow(record)) return(NULL)
+      payload <- jsonlite::fromJSON(record$payload[[1]], simplifyVector = FALSE)
+      payload$code <- resume_code
+      payload$found <- TRUE
+      payload
+    }, error = function(error) {
+      sat26_resume_status(paste("No se pudo consultar Supabase; se buscará el borrador local del navegador.", conditionMessage(error)))
+      NULL
+    })
+    if (!is.null(remote_payload)) {
+      sat26_resume_status("Se encontró la encuesta en Supabase. Restaurando respuestas guardadas.")
+      session$sendCustomMessage("sat26RestoreDraft", remote_payload)
+      return()
+    }
+    session$sendCustomMessage("sat26LoadDraft", list(code = resume_code))
+  })
+
+  observeEvent(active_module(), {
+    if (identical(active_area(), "sat26") && (active_module() %in% c("intro", "part_a", "part_b", "part_c", "part_d", "part_e", "part_e2", "part_f", "part_g", "part_g2", "part_h", "part_i", "part_j", "part_k", "part_l"))) {
+      session$sendCustomMessage("sat26ScrollTop", list())
+    }
+  }, ignoreInit = TRUE)
+
+  sat26_generate_code <- function() {
+    current_code <- sat26_unique_code()
+    if (nzchar(current_code)) {
+      return(current_code)
+    }
+
+    resume_code <- trimws(value_or_default(input$sat26_resume_code, ""))
+    if (nzchar(resume_code)) {
+      sat26_unique_code(resume_code)
+      return(resume_code)
+    }
+
+    ""
+  }
+
+  sat26_hr_job_suffixes <- c(
+    supervisor = "Supervisor / Gerente",
+    director = "Director de control vectorial",
+    coordinador = "Coordinador de campo de entomología",
+    ambiental = "Oficial de salud ambiental",
+    tecnico_campo = "Técnico de campo",
+    tecnico_laboratorio = "Técnico de laboratorio",
+    comunitaria = "Oficial de participación comunitaria",
+    datos = "Oficial de datos"
+  )
+  sat26_hr_scalar_ids <- c(
+    "sat26_rrhh_plan",
+    "sat26_rrhh_organigrama",
+    paste0("sat26_rrhh_nacional_conoce_", names(sat26_hr_job_suffixes)),
+    paste0("sat26_rrhh_nacional_cantidad_", names(sat26_hr_job_suffixes)),
+    paste0("sat26_rrhh_subnacional_conoce_", names(sat26_hr_job_suffixes)),
+    paste0("sat26_rrhh_subnacional_cantidad_", names(sat26_hr_job_suffixes)),
+    "sat26_rrhh_suficiencia_vigilancia",
+    "sat26_rrhh_suficiencia_control",
+    paste0("sat26_rrhh_brecha_", names(sat26_hr_job_suffixes)),
+    paste0("sat26_rrhh_adicional_", names(sat26_hr_job_suffixes)),
+    "sat26_rrhh_capacitacion_otro"
+  )
+  sat26_hr_skill_suffixes <- c(
+    gestion_control = "Planificación y gestión de programas de control vectorial",
+    gestion_vigilancia = "Planificación y gestión de programas de vigilancia vectorial",
+    identificacion_mosquitos = "Identificación de mosquitos",
+    operaciones_vigilancia = "Operaciones de vigilancia vectorial (trampeo)",
+    resistencia_insecticidas = "Pruebas de resistencia a insecticidas",
+    participacion_comunitaria = "Participación comunitaria",
+    comunicacion_riesgos = "Comunicación sobre riesgos sanitarios",
+    soporte_datos = "Soporte para gestión de datos",
+    gis = "Cartografía / GIS",
+    analisis_datos = "Gestión y análisis de datos",
+    informes = "Redacción de informes",
+    investigacion_operativa = "Investigación operativa"
+  )
+  sat26_hr_cont_scalar_ids <- c(
+    "sat26_rrhh_necesidad_capacitacion",
+    paste0("sat26_rrhh_prioridad_", names(sat26_hr_skill_suffixes)),
+    "sat26_rrhh_otras_areas",
+    "sat26_rrhh_capacitados_nacional",
+    "sat26_rrhh_capacitados_subnacional",
+    "sat26_rrhh_modalidad_preferida",
+    "sat26_rrhh_online_implementacion",
+    "sat26_rrhh_online_modalidad",
+    "sat26_rrhh_acceso_computadora",
+    "sat26_rrhh_cursos_previos",
+    "sat26_rrhh_cursos_previos_bien",
+    "sat26_rrhh_cursos_previos_mal",
+    "sat26_rrhh_personal_cargo",
+    paste0("sat26_rrhh_formadores_", names(sat26_hr_skill_suffixes))
+  )
+  sat26_control_aedes_activities <- c(
+    criaderos = "Reducción de criaderos (ej. limpieza comunitaria)",
+    larvicidas = "Larvicidas (ej. temephos, IGRs, Bti)",
+    irs_aedes = "Rociado residual dirigido en interiores - <em>Aedes</em> (IRS-<em>Aedes</em>)",
+    ors_aedes = "Rociado residual en exteriores - <em>Aedes</em> (ORS-<em>Aedes</em>)",
+    nebulizacion_interiores = "Nebulización en interiores (insecticida no residual)",
+    nebulizacion_exteriores = "Nebulización en exteriores (insecticida no residual)",
+    wolbachia = "<em>Wolbachia</em>",
+    mosquiteros_febriles = "Distribución de mosquiteros a pacientes febriles",
+    repelentes_febriles = "Distribución de repelentes a pacientes febriles"
+  )
+  sat26_control_anopheles_activities <- c(
+    itns = "Mosquiteros tratados con insecticida (ITNs)",
+    llins = "Mosquiteros con insecticida de larga duración (LLINs)",
+    irs = "Rociado residual en interiores (IRS)",
+    larvicidas = "Aplicación de larvicidas (ej. temephos, IGRs, Bti)",
+    criaderos = "Reducción de criaderos (modificación física, limpiezas comunitarias, etc.)"
+  )
+  sat26_control_quality_activities <- c(
+    calidad_intervenciones = "Calidad de las intervenciones de control vectorial",
+    durabilidad_llin = "Durabilidad física de los LLIN",
+    eficacia_llin = "Eficacia residual del insecticida en LLIN",
+    eficacia_irs = "Eficacia residual del rociado residual en interiores (IRS)",
+    impacto_larvicidas = "Impacto de la aplicación de larvicidas",
+    eficacia_irs_aedes = "Eficacia residual del insecticida en IRS-<em>Aedes</em>",
+    nebulizacion_espacial = "Eficacia en intervenciones de nebulización espacial"
+  )
+  sat26_control_scalar_ids <- c(
+    "sat26_control_aedes_conocimiento",
+    paste0("sat26_control_aedes_frecuencia_", names(sat26_control_aedes_activities)),
+    "sat26_control_aedes_otras_implemento",
+    "sat26_control_aedes_otras_descripcion",
+    "sat26_control_anopheles_conocimiento",
+    paste0("sat26_control_anopheles_frecuencia_", names(sat26_control_anopheles_activities)),
+    "sat26_control_anopheles_otras_implemento",
+    "sat26_control_anopheles_otras_descripcion",
+    paste0("sat26_control_calidad_", names(sat26_control_quality_activities)),
+    "sat26_control_irs_otro",
+    "sat26_control_larvicidas_otro",
+    "sat26_control_irs_aedes_otro",
+    "sat26_control_nebulizacion_otro"
+  )
+  sat26_surveillance_indicators <- c(
+    presencia_adultos = "Presencia de adultos",
+    densidad_adultos = "Densidad de adultos",
+    tasa_picadura = "Tasa de picadura humana",
+    horario_picadura = "Horario de picadura",
+    lugar_picadura = "Lugar de picadura (interior/exterior)",
+    descanso_interior = "Lugar de descanso interior",
+    descanso_exterior = "Lugar de descanso exterior",
+    resistencia_adultos = "Frecuencia de resistencia - adultos (prueba WHO o botella CDC)",
+    resistencia_larvas = "Frecuencia de resistencia - larvas (bioensayo)",
+    intensidad_resistencia = "Intensidad de resistencia",
+    habitat_larvario = "Disponibilidad de hábitats larvarios",
+    habitats_clave = "Hábitats larvarios clave"
+  )
+  sat26_surveillance_aedes_traps <- c(
+    hlc_red = "Recolección con cebo humano (HLC o red de barrido)",
+    luz_cdc = "Trampa de luz CDC",
+    bg_sentinel = "Trampa BG Sentinel",
+    bg_pro = "BG Pro",
+    ventilador = "Otras trampas con ventilador",
+    gravidas = "Trampas grávidas",
+    aspiracion_interiores = "Aspiración en interiores (aspiración manual, Prokopac)",
+    aspiracion_exteriores = "Aspiración en exteriores por aspiración",
+    descanso_exterior = "Otro método de descanso exterior (trampa de pozo, barrera de tela)",
+    cebo_humano = "Trampa con cebo humano",
+    cebo_animal = "Trampa con cebo animal",
+    otro = "Otro",
+    desconozco = "Desconozco"
+  )
+  sat26_surveillance_anopheles_traps <- c(
+    aterrizaje_humano = "Captura por aterrizaje humano",
+    cebo_humano = "Trampa con cebo humano",
+    cebo_animal = "Trampa con cebo animal",
+    ventilador_cdc = "Trampa de ventilador CDC",
+    bg_sentinel = "Trampa BG Sentinel",
+    gravidas = "Trampas grávidas",
+    aspiracion_interiores = "Aspiración en interiores (aspiración manual, Prokopac)",
+    aspiracion_exteriores = "Aspiración en exteriores por aspiración",
+    descanso_exterior = "Otro método de descanso exterior (trampa de pozo, barrera de tela)",
+    salida_ventana = "Trampa de salida por ventana",
+    caja_pasiva = "Trampas de caja pasiva",
+    otro = "Otro",
+    desconozco = "Desconozco"
+  )
+  sat26_surveillance_decisions <- c(
+    estratificar = "Cómo estratificar el control vectorial",
+    estrategias = "Dónde implementar diferentes estrategias de control",
+    larvicidas = "Selección de larvicidas",
+    insecticidas_irs_aedes = "Selección de insecticidas para IRS-<em>Aedes</em>",
+    hogares = "Dónde aplicar insecticidas en hogares y alrededores",
+    recipientes = "Recipientes larvarios clave para reducción de criaderos",
+    control_larval_anopheles = "Dónde implementar control larval (<em>Anopheles</em>)",
+    llin_itn = "Elección de LLIN/ITN a comprar",
+    habitats_anopheles = "Hábitats larvarios clave para manejo de criaderos (<em>Anopheles</em>)",
+    sitios_vigilancia = "Dónde establecer sitios de vigilancia vectorial",
+    mensajes = "Cómo optimizar mensajes de participación comunitaria",
+    otro = "Otro",
+    desconozco = "Desconozco"
+  )
+  sat26_surveillance_scalar_ids <- c(
+    paste0("sat26_vigilancia_aedes_ind_", names(sat26_surveillance_indicators)),
+    paste0("sat26_vigilancia_anopheles_ind_", names(sat26_surveillance_indicators)),
+    "sat26_vigilancia_aedes_sitios",
+    "sat26_vigilancia_aedes_conoce_trampas",
+    "sat26_vigilancia_aedes_trampa_otro",
+    "sat26_vigilancia_aedes_ident_adultos",
+    "sat26_vigilancia_aedes_ident_adultos_otro",
+    "sat26_vigilancia_aedes_ident_larvas",
+    "sat26_vigilancia_aedes_ident_larvas_otro",
+    "sat26_vigilancia_anopheles_sitios",
+    "sat26_vigilancia_anopheles_conoce_trampas",
+    "sat26_vigilancia_anopheles_trampa_otro",
+    "sat26_vigilancia_anopheles_ident_adultos",
+    "sat26_vigilancia_anopheles_ident_adultos_otro",
+    "sat26_vigilancia_anopheles_ident_larvas",
+    "sat26_vigilancia_anopheles_ident_larvas_otro",
+    "sat26_vigilancia_uso_datos",
+    "sat26_vigilancia_decisiones_otro"
+  )
+  sat26_infra_vigilancia_items <- c(
+    sistema_logistico = "Sistema logístico",
+    transporte = "Transporte",
+    oficina = "Espacio de oficina",
+    laboratorio = "Laboratorio",
+    insectario = "Insectario",
+    computadoras = "Computadoras",
+    trampas = "Trampas para mosquitos",
+    suministros = "Suministros entomológicos (aspiradores, vasos, etc.)",
+    moviles = "Dispositivos móviles (tablets, teléfonos, GPS)",
+    adquisicion = "Adquisición de recursos (cadena de suministro)"
+  )
+  sat26_infra_control_items <- c(
+    sistema_logistico = "Sistema logístico",
+    transporte = "Transporte",
+    oficina = "Espacio de oficina",
+    bodega = "Almacenamiento en bodega",
+    computadoras = "Computadoras",
+    rociado = "Equipos de rociado (IRS o nebulizadores)",
+    llins = "Mosquiteros tratados de larga duración (LLINs)",
+    insecticidas_irs = "Insecticidas para IRS",
+    mosquiteros_viremicos = "Mosquiteros para pacientes virémicos",
+    larvicidas = "Larvicidas",
+    epp = "Equipos de protección personal (EPP)",
+    otros_equipos = "Otros equipos / consumibles / suministros",
+    cadena_suministro = "Cadena de suministro"
+  )
+  sat26_infra_scalar_ids <- c(
+    paste0("sat26_infra_vigilancia_", names(sat26_infra_vigilancia_items)),
+    "sat26_infra_laboratorio_gestionado",
+    "sat26_infra_conoce_laboratorio",
+    "sat26_infra_laboratorio_capacidad_otro",
+    "sat26_infra_insectario_gestionado",
+    "sat26_infra_colonia_aedes",
+    "sat26_infra_colonia_anopheles",
+    paste0("sat26_infra_control_", names(sat26_infra_control_items))
+  )
+  sat26_info_scalar_ids <- c(
+    "sat26_info_vigilancia_recoleccion_usa",
+    "sat26_info_vigilancia_recoleccion_otro",
+    "sat26_info_vigilancia_apps",
+    "sat26_info_vigilancia_almacenamiento_otro",
+    "sat26_info_vigilancia_reporte_otro",
+    "sat26_info_vigilancia_limitacion",
+    "sat26_info_control_recoleccion_usa",
+    "sat26_info_control_recoleccion_otro",
+    "sat26_info_control_apps",
+    "sat26_info_control_almacenamiento_otro",
+    "sat26_info_control_reporte_otro",
+    "sat26_info_control_limitacion"
+  )
+  sat26_community_scalar_ids <- c(
+    "sat26_comunidad_participacion",
+    "sat26_comunidad_actividades_otro",
+    "sat26_comunidad_momento_otro"
+  )
+  sat26_research_reference_items <- c(
+    informes = "Informes oficiales del proyecto",
+    articulos = "Artículos de revistas científicas",
+    congresos = "Ponencias y actas en congreso",
+    multilaterales = "Documentos de agencias multilaterales u ONG",
+    tesis = "Tesis y trabajos académicos",
+    financiamiento = "Propuestas, contratos y documentos de financiamiento",
+    prensa = "Comunicados de prensa"
+  )
+  sat26_research_scalar_ids <- c(
+    "sat26_investigacion_agenda",
+    "sat26_investigacion_agenda_vectores",
+    "sat26_investigacion_operativa_aedes",
+    "sat26_investigacion_titulo",
+    "sat26_investigacion_referencias",
+    paste0("sat26_investigacion_ref_nombre_", names(sat26_research_reference_items)),
+    paste0("sat26_investigacion_ref_link_", names(sat26_research_reference_items)),
+    paste0("sat26_investigacion_ref_documento_", names(sat26_research_reference_items)),
+    "sat26_investigacion_compartir_entonet",
+    "sat26_investigacion_compartir_ops"
+  )
+  sat26_research_reference_ids <- paste0("sat26_investigacion_ref_tipo_", names(sat26_research_reference_items))
+  sat26_regional_scalar_ids <- c(
+    "sat26_regional_punto_focal",
+    "sat26_regional_acuerdos",
+    "sat26_regional_frecuencia_intercambio",
+    "sat26_regional_sistemas_invasoras",
+    "sat26_regional_cambio_climatico",
+    "sat26_regional_redes",
+    "sat26_regional_mecanismos",
+    "sat26_regional_plataformas"
+  )
+
+  sat26_build_payload <- function() {
+    if (!identical(active_area(), "sat26") || !(active_module() %in% c("part_a", "part_b", "part_c", "part_d", "part_e", "part_e2", "part_f", "part_g", "part_g2", "part_h", "part_i", "part_j", "part_k", "part_l"))) {
+      return(NULL)
+    }
+
+    code <- sat26_generate_code()
+    if (!nzchar(code)) {
+      return(NULL)
+    }
+    sat26_multi <- function(id) input[[id]] %||% character(0)
+    sat26_value <- function(id) value_or_default(input[[id]], "")
+    list(
+      code = code,
+      section = active_module(),
+      nombre = value_or_default(input$sat26_nombre, ""),
+      cargo = value_or_default(input$sat26_cargo, ""),
+      organizacion = value_or_default(input$sat26_organizacion, ""),
+      country = value_or_default(input$sat26_country, ""),
+      contact_after = value_or_default(input$sat26_contact_after, ""),
+      dengue_2025 = value_or_default(input$sat26_dengue_2025, ""),
+      arbovirus_2025 = input$sat26_arbovirus_2025 %||% character(0),
+      filariasis_activa_2025 = value_or_default(input$sat26_filariasis_activa_2025, ""),
+      filariasis_escenario_2025 = value_or_default(input$sat26_filariasis_escenario_2025, ""),
+      malaria_2025 = value_or_default(input$sat26_malaria_2025, ""),
+      plan_tipo = sat26_value("sat26_plan_tipo"),
+      plan_estado = sat26_value("sat26_plan_estado"),
+      plan_caracteristicas_tipo = sat26_value("sat26_plan_caracteristicas_tipo"),
+      plan_caracteristicas = sat26_multi("sat26_plan_caracteristicas"),
+      plan_aedes_estado = sat26_value("sat26_plan_aedes_estado"),
+      plan_anopheles_estado = sat26_value("sat26_plan_anopheles_estado"),
+      plan_integrado_estado = sat26_value("sat26_plan_integrado_estado"),
+      plan_aedes_caracteristicas = sat26_multi("sat26_plan_aedes_caracteristicas"),
+      plan_anopheles_caracteristicas = sat26_multi("sat26_plan_anopheles_caracteristicas"),
+      plan_integrado_caracteristicas = sat26_multi("sat26_plan_integrado_caracteristicas"),
+      plan_aedes_nombre = sat26_value("sat26_plan_aedes_nombre"),
+      plan_aedes_anio = sat26_value("sat26_plan_aedes_anio"),
+      plan_aedes_documento = sat26_value("sat26_plan_aedes_documento"),
+      plan_anopheles_nombre = sat26_value("sat26_plan_anopheles_nombre"),
+      plan_anopheles_anio = sat26_value("sat26_plan_anopheles_anio"),
+      plan_anopheles_documento = sat26_value("sat26_plan_anopheles_documento"),
+      plan_integrado_nombre = sat26_value("sat26_plan_integrado_nombre"),
+      plan_integrado_anio = sat26_value("sat26_plan_integrado_anio"),
+      plan_integrado_documento = sat26_value("sat26_plan_integrado_documento"),
+      reglamentos_nacionales = sat26_value("sat26_reglamentos_nacionales"),
+      reglamentos_documento = sat26_value("sat26_reglamentos_documento"),
+      prioridad_planes = sat26_value("sat26_prioridad_planes"),
+      asistencia_planes = sat26_value("sat26_asistencia_planes"),
+      normas_vigilancia_aedes = sat26_value("sat26_normas_vigilancia_aedes"),
+      normas_control_aedes = sat26_value("sat26_normas_control_aedes"),
+      normas_vigilancia_anopheles = sat26_value("sat26_normas_vigilancia_anopheles"),
+      normas_control_anopheles = sat26_value("sat26_normas_control_anopheles"),
+      plan_elemento_control_aedes = sat26_value("sat26_plan_elemento_control_aedes"),
+      plan_elemento_vigilancia_aedes = sat26_value("sat26_plan_elemento_vigilancia_aedes"),
+      plan_elemento_control_anopheles = sat26_value("sat26_plan_elemento_control_anopheles"),
+      plan_elemento_vigilancia_anopheles = sat26_value("sat26_plan_elemento_vigilancia_anopheles"),
+      plan_elemento_equipos_insecticidas = sat26_value("sat26_plan_elemento_equipos_insecticidas"),
+      plan_elemento_resistencia = sat26_value("sat26_plan_elemento_resistencia"),
+      plan_elemento_recursos_humanos = sat26_value("sat26_plan_elemento_recursos_humanos"),
+      plan_elemento_formacion = sat26_value("sat26_plan_elemento_formacion"),
+      plan_elemento_participacion = sat26_value("sat26_plan_elemento_participacion"),
+      plan_elemento_sistemas_info = sat26_value("sat26_plan_elemento_sistemas_info"),
+      plan_elemento_investigacion = sat26_value("sat26_plan_elemento_investigacion"),
+      plan_elemento_vulnerables = sat26_value("sat26_plan_elemento_vulnerables"),
+      plan_elemento_monitoreo = sat26_value("sat26_plan_elemento_monitoreo"),
+      descentralizacion = sat26_value("sat26_descentralizacion"),
+      legislacion_24_48 = sat26_value("sat26_legislacion_24_48"),
+      grupo_interministerial = sat26_value("sat26_grupo_interministerial"),
+      grupo_interministerial_reunion = sat26_value("sat26_grupo_interministerial_reunion"),
+      prioridad_agenda = sat26_value("sat26_prioridad_agenda"),
+      factores_prioridad = sat26_multi("sat26_factores_prioridad"),
+      factores_prioridad_otros = sat26_value("sat26_factores_prioridad_otros"),
+      frecuencia_interministerial = sat26_value("sat26_frecuencia_interministerial"),
+      motivadores_institucion = sat26_multi("sat26_motivadores_institucion"),
+      motivadores_institucion_otros = sat26_value("sat26_motivadores_institucion_otros"),
+      presupuesto_vigilancia = sat26_value("sat26_presupuesto_vigilancia"),
+      presupuesto_control = sat26_value("sat26_presupuesto_control"),
+      fin_vigilancia_presupuesto = sat26_value("sat26_fin_vigilancia_presupuesto"),
+      fin_vigilancia_gestion = sat26_value("sat26_fin_vigilancia_gestion"),
+      fin_control_presupuesto = sat26_value("sat26_fin_control_presupuesto"),
+      fin_control_gestion = sat26_value("sat26_fin_control_gestion"),
+      rrhh_capacitacion_sistemas = sat26_multi("sat26_rrhh_capacitacion_sistemas"),
+      rrhh = setNames(lapply(sat26_hr_scalar_ids, sat26_value), sat26_hr_scalar_ids),
+      rrhh_cont = setNames(lapply(sat26_hr_cont_scalar_ids, sat26_value), sat26_hr_cont_scalar_ids),
+      control_aedes_actividades = sat26_multi("sat26_control_aedes_actividades"),
+      control_aedes_otras = sat26_multi("sat26_control_aedes_otras"),
+      control_anopheles_actividades = sat26_multi("sat26_control_anopheles_actividades"),
+      control_anopheles_otras = sat26_multi("sat26_control_anopheles_otras"),
+      control_irs_metodos = sat26_multi("sat26_control_irs_metodos"),
+      control_larvicidas_metodos = sat26_multi("sat26_control_larvicidas_metodos"),
+      control_irs_aedes_metodos = sat26_multi("sat26_control_irs_aedes_metodos"),
+      control_nebulizacion_metodos = sat26_multi("sat26_control_nebulizacion_metodos"),
+      control = setNames(lapply(sat26_control_scalar_ids, sat26_value), sat26_control_scalar_ids),
+      vigilancia_aedes_trampas = sat26_multi("sat26_vigilancia_aedes_trampas"),
+      vigilancia_anopheles_trampas = sat26_multi("sat26_vigilancia_anopheles_trampas"),
+      vigilancia_decisiones = sat26_multi("sat26_vigilancia_decisiones"),
+      vigilancia = setNames(lapply(sat26_surveillance_scalar_ids, sat26_value), sat26_surveillance_scalar_ids),
+      infra_laboratorio_capacidades = sat26_multi("sat26_infra_laboratorio_capacidades"),
+      infraestructura = setNames(lapply(sat26_infra_scalar_ids, sat26_value), sat26_infra_scalar_ids),
+      info_vigilancia_herramientas = sat26_multi("sat26_info_vigilancia_herramientas"),
+      info_control_herramientas = sat26_multi("sat26_info_control_herramientas"),
+      info_vigilancia_recoleccion = sat26_multi("sat26_info_vigilancia_recoleccion"),
+      info_vigilancia_almacenamiento = sat26_multi("sat26_info_vigilancia_almacenamiento"),
+      info_vigilancia_reporte = sat26_multi("sat26_info_vigilancia_reporte"),
+      info_control_recoleccion = sat26_multi("sat26_info_control_recoleccion"),
+      info_control_almacenamiento = sat26_multi("sat26_info_control_almacenamiento"),
+      info_control_reporte = sat26_multi("sat26_info_control_reporte"),
+      sistemas_info = setNames(lapply(sat26_info_scalar_ids, sat26_value), sat26_info_scalar_ids),
+      comunidad_actividades = sat26_multi("sat26_comunidad_actividades"),
+      comunidad_momento = sat26_multi("sat26_comunidad_momento"),
+      comunidad = setNames(lapply(sat26_community_scalar_ids, sat26_value), sat26_community_scalar_ids),
+      investigacion_ref_tipos = setNames(lapply(sat26_research_reference_ids, sat26_multi), sat26_research_reference_ids),
+      investigacion = setNames(lapply(sat26_research_scalar_ids, sat26_value), sat26_research_scalar_ids),
+      colaboracion_regional = setNames(lapply(sat26_regional_scalar_ids, sat26_value), sat26_regional_scalar_ids),
+      saved_at = as.character(Sys.time())
+    )
+  }
+
+  sat26_save_draft <- function() {
+    payload <- sat26_build_payload()
+    if (is.null(payload)) {
+      return()
+    }
+    session$sendCustomMessage("sat26SaveDraft", payload)
+  }
+
+  sat26_submit_to_supabase <- function() {
+    payload <- sat26_build_payload()
+    if (is.null(payload)) {
+      stop("No hay respuestas SAT26 listas para enviar.")
+    }
+    code <- value_or_default(payload$code, "")
+    if (!nzchar(code)) {
+      stop("No se encontró el código único de encuesta.")
+    }
+
+    payload_json <- jsonlite::toJSON(payload, auto_unbox = TRUE, null = "null", na = "null")
+    connection <- connect_to_supabase()
+    on.exit(DBI::dbDisconnect(connection), add = TRUE)
+    dbGetQuery(
+      connection,
+      "
+        insert into public.encuesta_sat26_intake (
+          codigo_unico,
+          encuesta_codigo,
+          encuesta_nombre,
+          formulario_version,
+          payload,
+          actualizado_en
+        )
+        values (
+          $1,
+          'SAT26',
+          'Encuesta SAT26',
+          'web-local-2026-08-15',
+          $2::jsonb,
+          now()
+        )
+        on conflict (codigo_unico) do update
+        set
+          payload = excluded.payload,
+          submitted_at = now(),
+          formulario_version = excluded.formulario_version,
+          actualizado_en = now()
+        returning intake_id::integer, codigo_unico, submitted_at
+      ",
+      params = list(code, as.character(payload_json))
+    )
+  }
+
+  observeEvent(input$sat26_generated_code, {
+    req(nzchar(value_or_default(input$sat26_generated_code, "")))
+    if (!nzchar(sat26_unique_code())) {
+      sat26_unique_code(value_or_default(input$sat26_generated_code, ""))
+    }
+    if (identical(active_area(), "sat26") && active_module() %in% c("part_a", "part_b", "part_c", "part_d", "part_e", "part_e2", "part_f", "part_g", "part_g2", "part_h", "part_i", "part_j", "part_k", "part_l")) {
+      sat26_save_draft()
+    }
+  })
+
+  observeEvent(input$sat26_resume_payload, {
+    payload <- input$sat26_resume_payload
+    if (is.null(payload)) return()
+
+    resume_code <- value_or_default(payload$code, "")
+    if (!isTRUE(payload$found)) {
+      sat26_resume_status(sprintf("No encontramos un borrador local para el codigo %s.", resume_code))
+      return()
+    }
+
+    sat26_unique_code(resume_code)
+    sat26_resume_status(sprintf("Se cargo el borrador %s.", resume_code))
+    active_area("sat26")
+    active_module(value_or_default(payload$section, "part_a"))
+
+    updateTextInput(session, "sat26_nombre", value = value_or_default(payload$nombre, ""))
+    updateTextInput(session, "sat26_cargo", value = value_or_default(payload$cargo, ""))
+    updateTextInput(session, "sat26_organizacion", value = value_or_default(payload$organizacion, ""))
+    updateSelectInput(session, "sat26_country", selected = value_or_default(payload$country, ""))
+    updateRadioButtons(session, "sat26_contact_after", selected = value_or_default(payload$contact_after, ""))
+    updateRadioButtons(session, "sat26_dengue_2025", selected = value_or_default(payload$dengue_2025, ""))
+    updateCheckboxGroupInput(session, "sat26_arbovirus_2025", selected = unlist(payload$arbovirus_2025 %||% character(0), use.names = FALSE))
+    updateRadioButtons(session, "sat26_filariasis_activa_2025", selected = value_or_default(payload$filariasis_activa_2025, ""))
+    updateRadioButtons(session, "sat26_filariasis_escenario_2025", selected = value_or_default(payload$filariasis_escenario_2025, ""))
+    updateRadioButtons(session, "sat26_malaria_2025", selected = value_or_default(payload$malaria_2025, ""))
+    updateRadioButtons(session, "sat26_plan_tipo", selected = value_or_default(payload$plan_tipo, ""))
+    updateRadioButtons(session, "sat26_plan_estado", selected = value_or_default(payload$plan_estado, ""))
+    updateRadioButtons(session, "sat26_plan_caracteristicas_tipo", selected = value_or_default(payload$plan_caracteristicas_tipo, ""))
+    updateCheckboxGroupInput(session, "sat26_plan_caracteristicas", selected = unlist(payload$plan_caracteristicas %||% character(0), use.names = FALSE))
+    updateRadioButtons(session, "sat26_plan_aedes_estado", selected = value_or_default(payload$plan_aedes_estado, ""))
+    updateRadioButtons(session, "sat26_plan_anopheles_estado", selected = value_or_default(payload$plan_anopheles_estado, ""))
+    updateRadioButtons(session, "sat26_plan_integrado_estado", selected = value_or_default(payload$plan_integrado_estado, ""))
+    updateCheckboxGroupInput(session, "sat26_plan_aedes_caracteristicas", selected = unlist(payload$plan_aedes_caracteristicas %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_plan_anopheles_caracteristicas", selected = unlist(payload$plan_anopheles_caracteristicas %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_plan_integrado_caracteristicas", selected = unlist(payload$plan_integrado_caracteristicas %||% character(0), use.names = FALSE))
+    updateTextInput(session, "sat26_plan_aedes_nombre", value = value_or_default(payload$plan_aedes_nombre, ""))
+    updateTextInput(session, "sat26_plan_aedes_anio", value = value_or_default(payload$plan_aedes_anio, ""))
+    updateTextInput(session, "sat26_plan_aedes_documento", value = value_or_default(payload$plan_aedes_documento, ""))
+    updateTextInput(session, "sat26_plan_anopheles_nombre", value = value_or_default(payload$plan_anopheles_nombre, ""))
+    updateTextInput(session, "sat26_plan_anopheles_anio", value = value_or_default(payload$plan_anopheles_anio, ""))
+    updateTextInput(session, "sat26_plan_anopheles_documento", value = value_or_default(payload$plan_anopheles_documento, ""))
+    updateTextInput(session, "sat26_plan_integrado_nombre", value = value_or_default(payload$plan_integrado_nombre, ""))
+    updateTextInput(session, "sat26_plan_integrado_anio", value = value_or_default(payload$plan_integrado_anio, ""))
+    updateTextInput(session, "sat26_plan_integrado_documento", value = value_or_default(payload$plan_integrado_documento, ""))
+    updateRadioButtons(session, "sat26_reglamentos_nacionales", selected = value_or_default(payload$reglamentos_nacionales, ""))
+    updateTextInput(session, "sat26_reglamentos_documento", value = value_or_default(payload$reglamentos_documento, ""))
+    updateRadioButtons(session, "sat26_prioridad_planes", selected = value_or_default(payload$prioridad_planes, ""))
+    updateRadioButtons(session, "sat26_asistencia_planes", selected = value_or_default(payload$asistencia_planes, ""))
+    updateRadioButtons(session, "sat26_normas_vigilancia_aedes", selected = value_or_default(payload$normas_vigilancia_aedes, ""))
+    updateRadioButtons(session, "sat26_normas_control_aedes", selected = value_or_default(payload$normas_control_aedes, ""))
+    updateRadioButtons(session, "sat26_normas_vigilancia_anopheles", selected = value_or_default(payload$normas_vigilancia_anopheles, ""))
+    updateRadioButtons(session, "sat26_normas_control_anopheles", selected = value_or_default(payload$normas_control_anopheles, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_control_aedes", selected = value_or_default(payload$plan_elemento_control_aedes, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_vigilancia_aedes", selected = value_or_default(payload$plan_elemento_vigilancia_aedes, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_control_anopheles", selected = value_or_default(payload$plan_elemento_control_anopheles, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_vigilancia_anopheles", selected = value_or_default(payload$plan_elemento_vigilancia_anopheles, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_equipos_insecticidas", selected = value_or_default(payload$plan_elemento_equipos_insecticidas, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_resistencia", selected = value_or_default(payload$plan_elemento_resistencia, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_recursos_humanos", selected = value_or_default(payload$plan_elemento_recursos_humanos, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_formacion", selected = value_or_default(payload$plan_elemento_formacion, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_participacion", selected = value_or_default(payload$plan_elemento_participacion, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_sistemas_info", selected = value_or_default(payload$plan_elemento_sistemas_info, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_investigacion", selected = value_or_default(payload$plan_elemento_investigacion, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_vulnerables", selected = value_or_default(payload$plan_elemento_vulnerables, ""))
+    updateRadioButtons(session, "sat26_plan_elemento_monitoreo", selected = value_or_default(payload$plan_elemento_monitoreo, ""))
+    updateRadioButtons(session, "sat26_descentralizacion", selected = value_or_default(payload$descentralizacion, ""))
+    updateRadioButtons(session, "sat26_legislacion_24_48", selected = value_or_default(payload$legislacion_24_48, ""))
+    updateRadioButtons(session, "sat26_grupo_interministerial", selected = value_or_default(payload$grupo_interministerial, ""))
+    updateTextAreaInput(session, "sat26_grupo_interministerial_reunion", value = value_or_default(payload$grupo_interministerial_reunion, ""))
+    updateRadioButtons(session, "sat26_prioridad_agenda", selected = value_or_default(payload$prioridad_agenda, ""))
+    updateCheckboxGroupInput(session, "sat26_factores_prioridad", selected = unlist(payload$factores_prioridad %||% character(0), use.names = FALSE))
+    updateTextAreaInput(session, "sat26_factores_prioridad_otros", value = value_or_default(payload$factores_prioridad_otros, ""))
+    updateRadioButtons(session, "sat26_frecuencia_interministerial", selected = value_or_default(payload$frecuencia_interministerial, ""))
+    updateCheckboxGroupInput(session, "sat26_motivadores_institucion", selected = unlist(payload$motivadores_institucion %||% character(0), use.names = FALSE))
+    updateTextAreaInput(session, "sat26_motivadores_institucion_otros", value = value_or_default(payload$motivadores_institucion_otros, ""))
+    updateRadioButtons(session, "sat26_presupuesto_vigilancia", selected = value_or_default(payload$presupuesto_vigilancia, ""))
+    updateRadioButtons(session, "sat26_presupuesto_control", selected = value_or_default(payload$presupuesto_control, ""))
+    updateRadioButtons(session, "sat26_fin_vigilancia_presupuesto", selected = value_or_default(payload$fin_vigilancia_presupuesto, ""))
+    updateRadioButtons(session, "sat26_fin_vigilancia_gestion", selected = value_or_default(payload$fin_vigilancia_gestion, ""))
+    updateRadioButtons(session, "sat26_fin_control_presupuesto", selected = value_or_default(payload$fin_control_presupuesto, ""))
+    updateRadioButtons(session, "sat26_fin_control_gestion", selected = value_or_default(payload$fin_control_gestion, ""))
+    updateCheckboxGroupInput(session, "sat26_rrhh_capacitacion_sistemas", selected = unlist(payload$rrhh_capacitacion_sistemas %||% character(0), use.names = FALSE))
+    rrhh_payload <- payload$rrhh %||% list()
+    for (id in sat26_hr_scalar_ids) {
+      value <- value_or_default(rrhh_payload[[id]], "")
+      if (startsWith(id, "sat26_rrhh_organigrama") ||
+          startsWith(id, "sat26_rrhh_nacional_cantidad_") ||
+          startsWith(id, "sat26_rrhh_subnacional_cantidad_") ||
+          startsWith(id, "sat26_rrhh_adicional_") ||
+          identical(id, "sat26_rrhh_capacitacion_otro")) {
+        updateTextInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    rrhh_cont_payload <- payload$rrhh_cont %||% list()
+    for (id in sat26_hr_cont_scalar_ids) {
+      value <- value_or_default(rrhh_cont_payload[[id]], "")
+      if (identical(id, "sat26_rrhh_otras_areas") ||
+          identical(id, "sat26_rrhh_cursos_previos_bien") ||
+          identical(id, "sat26_rrhh_cursos_previos_mal")) {
+        updateTextAreaInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    updateCheckboxGroupInput(session, "sat26_control_aedes_actividades", selected = unlist(payload$control_aedes_actividades %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_control_aedes_otras", selected = unlist(payload$control_aedes_otras %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_control_anopheles_actividades", selected = unlist(payload$control_anopheles_actividades %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_control_anopheles_otras", selected = unlist(payload$control_anopheles_otras %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_control_irs_metodos", selected = unlist(payload$control_irs_metodos %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_control_larvicidas_metodos", selected = unlist(payload$control_larvicidas_metodos %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_control_irs_aedes_metodos", selected = unlist(payload$control_irs_aedes_metodos %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_control_nebulizacion_metodos", selected = unlist(payload$control_nebulizacion_metodos %||% character(0), use.names = FALSE))
+    control_payload <- payload$control %||% list()
+    for (id in sat26_control_scalar_ids) {
+      value <- value_or_default(control_payload[[id]], "")
+      if (grepl("_otro$|_descripcion$", id)) {
+        updateTextAreaInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    updateCheckboxGroupInput(session, "sat26_vigilancia_aedes_trampas", selected = unlist(payload$vigilancia_aedes_trampas %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_vigilancia_anopheles_trampas", selected = unlist(payload$vigilancia_anopheles_trampas %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_vigilancia_decisiones", selected = unlist(payload$vigilancia_decisiones %||% character(0), use.names = FALSE))
+    vigilancia_payload <- payload$vigilancia %||% list()
+    for (id in sat26_surveillance_scalar_ids) {
+      value <- value_or_default(vigilancia_payload[[id]], "")
+      if (grepl("_otro$", id)) {
+        updateTextAreaInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    updateCheckboxGroupInput(session, "sat26_infra_laboratorio_capacidades", selected = unlist(payload$infra_laboratorio_capacidades %||% character(0), use.names = FALSE))
+    infraestructura_payload <- payload$infraestructura %||% list()
+    for (id in sat26_infra_scalar_ids) {
+      value <- value_or_default(infraestructura_payload[[id]], "")
+      if (grepl("_otro$", id)) {
+        updateTextAreaInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    updateCheckboxGroupInput(session, "sat26_info_vigilancia_herramientas", selected = unlist(payload$info_vigilancia_herramientas %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_info_control_herramientas", selected = unlist(payload$info_control_herramientas %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_info_vigilancia_recoleccion", selected = unlist(payload$info_vigilancia_recoleccion %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_info_vigilancia_almacenamiento", selected = unlist(payload$info_vigilancia_almacenamiento %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_info_vigilancia_reporte", selected = unlist(payload$info_vigilancia_reporte %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_info_control_recoleccion", selected = unlist(payload$info_control_recoleccion %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_info_control_almacenamiento", selected = unlist(payload$info_control_almacenamiento %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_info_control_reporte", selected = unlist(payload$info_control_reporte %||% character(0), use.names = FALSE))
+    sistemas_info_payload <- payload$sistemas_info %||% list()
+    for (id in sat26_info_scalar_ids) {
+      value <- value_or_default(sistemas_info_payload[[id]], "")
+      if (grepl("_otro$|_apps$", id)) {
+        updateTextAreaInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    updateCheckboxGroupInput(session, "sat26_comunidad_actividades", selected = unlist(payload$comunidad_actividades %||% character(0), use.names = FALSE))
+    updateCheckboxGroupInput(session, "sat26_comunidad_momento", selected = unlist(payload$comunidad_momento %||% character(0), use.names = FALSE))
+    comunidad_payload <- payload$comunidad %||% list()
+    for (id in sat26_community_scalar_ids) {
+      value <- value_or_default(comunidad_payload[[id]], "")
+      if (grepl("_otro$", id)) {
+        updateTextAreaInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    investigacion_ref_tipos_payload <- payload$investigacion_ref_tipos %||% list()
+    for (id in sat26_research_reference_ids) {
+      updateCheckboxGroupInput(session, id, selected = unlist(investigacion_ref_tipos_payload[[id]] %||% character(0), use.names = FALSE))
+    }
+    investigacion_payload <- payload$investigacion %||% list()
+    for (id in sat26_research_scalar_ids) {
+      value <- value_or_default(investigacion_payload[[id]], "")
+      if (grepl("_titulo$|_referencias$|_nombre_|_link_|_documento_", id)) {
+        updateTextAreaInput(session, id, value = value)
+      } else {
+        updateRadioButtons(session, id, selected = value)
+      }
+    }
+    colaboracion_regional_payload <- payload$colaboracion_regional %||% list()
+    for (id in sat26_regional_scalar_ids) {
+      updateRadioButtons(session, id, selected = value_or_default(colaboracion_regional_payload[[id]], ""))
+    }
+  })
+
+  observeEvent(input$sat26_back_home, {
+    active_area(NULL)
+    active_module(NULL)
+    active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
+    active_dataset(NULL)
+  })
+
+  sat26_show_next_step <- function() {
+    showModal(modalDialog(
+      title = "Siguiente paso",
+      easyClose = TRUE,
+      div(
+        class = "module-panel",
+        p("Perfecto. El siguiente paso será construir la primera página de preguntas de la sección A para que el cuestionario avance por bloques."),
+        p("Por ahora la versión local ya tiene la portada formal y el consentimiento funcional.")
+      ),
+      footer = modalButton("Cerrar")
+    ))
+  }
+
+  sat26_close_survey <- function() {
+    removeModal()
+    active_area(NULL)
+    active_module(NULL)
+    active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
+    active_dataset(NULL)
+    showModal(modalDialog(
+      title = "Encuesta cerrada",
+      easyClose = TRUE,
+      div(
+        class = "module-panel",
+        p("Gracias por su tiempo. Como no aceptó participar, el cuestionario no se abrirá.")
+      ),
+      footer = modalButton("Cerrar")
+    ))
+  }
+
+  observeEvent(input$sat26_consent_yes_popup, {
+    removeModal()
+    active_area("sat26")
+    sat26_ensure_unique_code()
+    active_module("part_a")
+  })
+
+  observeEvent(input$sat26_consent_no_popup, {
+    sat26_close_survey()
+  })
+
+  observeEvent(input$sat26_consent_yes, {
+    sat26_ensure_unique_code()
+    active_module("part_a")
+  })
+
+  observeEvent(input$sat26_consent_no, {
+    sat26_close_survey()
+  })
+
+  observeEvent(input$sat26_country_reset, {
+    updateSelectInput(session, "sat26_country", selected = "")
+  })
+
+  observeEvent(input$sat26_contact_reset, {
+    updateRadioButtons(session, "sat26_contact_after", selected = character(0))
+  })
+
+  observeEvent(input$sat26_back_to_consent, {
+    active_module("intro")
+  })
+
+  sat26_scroll_top <- function(delay = 120) {
+    session$sendCustomMessage("sat26ScrollTop", list(delay = delay))
+  }
+
+  sat26_go_to <- function(module) {
+    sat26_save_draft()
+    active_module(module)
+    sat26_scroll_top()
+  }
+
+  observeEvent(input$sat26_part_a_continue, {
+    sat26_go_to("part_b")
+  })
+
+  observeEvent(
+    list(input$sat26_nombre, input$sat26_cargo, input$sat26_organizacion, input$sat26_country, input$sat26_contact_after),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    list(
+      input$sat26_dengue_2025,
+      input$sat26_arbovirus_2025,
+      input$sat26_filariasis_activa_2025,
+      input$sat26_filariasis_escenario_2025,
+      input$sat26_malaria_2025
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(input$sat26_part_b_back, {
+    sat26_go_to("part_a")
+  })
+
+  observeEvent(input$sat26_part_b_continue, {
+    sat26_go_to("part_c")
+  })
+
+  observeEvent(input$sat26_part_c_back, {
+    sat26_go_to("part_b")
+  })
+
+  observeEvent(input$sat26_part_c_continue, {
+    sat26_go_to("part_d")
+  })
+
+  observeEvent(input$sat26_part_d_back, {
+    sat26_go_to("part_c")
+  })
+
+  observeEvent(input$sat26_part_d_continue, {
+    sat26_go_to("part_e")
+  })
+
+  observeEvent(input$sat26_part_e_back, {
+    sat26_go_to("part_d")
+  })
+
+  observeEvent(input$sat26_part_e_continue, {
+    sat26_go_to("part_e2")
+  })
+
+  observeEvent(input$sat26_part_e2_back, {
+    sat26_go_to("part_e")
+  })
+
+  observeEvent(input$sat26_part_e2_continue, {
+    sat26_go_to("part_f")
+  })
+
+  observeEvent(input$sat26_part_f_back, {
+    sat26_go_to("part_e2")
+  })
+
+  observeEvent(input$sat26_part_f_continue, {
+    sat26_go_to("part_g")
+  })
+
+  observeEvent(input$sat26_part_g_back, {
+    sat26_go_to("part_f")
+  })
+
+  observeEvent(input$sat26_part_g_continue, {
+    sat26_go_to("part_g2")
+  })
+
+  observeEvent(input$sat26_part_g2_back, {
+    sat26_go_to("part_g")
+  })
+
+  observeEvent(input$sat26_part_g2_continue, {
+    sat26_go_to("part_h")
+  })
+
+  observeEvent(input$sat26_part_h_back, {
+    sat26_go_to("part_g2")
+  })
+
+  observeEvent(input$sat26_part_h_continue, {
+    sat26_go_to("part_i")
+  })
+
+  observeEvent(input$sat26_part_i_back, {
+    sat26_go_to("part_h")
+  })
+
+  observeEvent(input$sat26_part_i_continue, {
+    sat26_go_to("part_j")
+  })
+
+  observeEvent(input$sat26_part_j_back, {
+    sat26_go_to("part_i")
+  })
+
+  observeEvent(input$sat26_part_j_continue, {
+    sat26_go_to("part_k")
+  })
+
+  observeEvent(input$sat26_part_k_back, {
+    sat26_go_to("part_j")
+  })
+
+  observeEvent(input$sat26_part_k_continue, {
+    sat26_go_to("part_l")
+  })
+
+  observeEvent(input$sat26_part_l_back, {
+    sat26_go_to("part_k")
+  })
+
+  observeEvent(input$sat26_part_l_finish, {
+    tryCatch({
+      sat26_save_draft()
+      saved_record <- withProgress(message = "Guardando encuesta SAT26 en Supabase", value = 0, {
+        incProgress(0.35, detail = "Preparando respuestas")
+        record <- sat26_submit_to_supabase()
+        incProgress(1, detail = "Encuesta guardada")
+        record
+      })
+      showModal(modalDialog(
+        title = NULL,
+        easyClose = TRUE,
+        size = "m",
+        div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Gracias por completar la encuesta"),
+          p("Gracias por tomarse el tiempo para completar esta encuesta. Esta información será analizada y los resultados se resumirán a nivel regional."),
+          p("Estamos comprometidos con la protección de la información y no proporcionaremos información a nivel de país sin autorización."),
+          p(class = "sat26-draft-code", paste("Código único guardado:", saved_record$codigo_unico[[1]]))
+        ),
+        footer = modalButton("Cerrar")
+      ))
+    }, error = function(error) {
+      showModal(modalDialog(
+        title = "No se pudo guardar en Supabase",
+        easyClose = TRUE,
+        div(
+          class = "module-panel",
+          p("La encuesta permanece guardada localmente en este navegador con su código único. Revise la conexión a Supabase y vuelva a intentar finalizar."),
+          p(class = "text-danger", conditionMessage(error))
+        ),
+        footer = modalButton("Cerrar")
+      ))
+    })
+  })
+
+  observeEvent(input$sat26_plan_integrado_estado, {
+    if (nzchar(value_or_default(input$sat26_plan_integrado_estado, ""))) {
+      updateRadioButtons(session, "sat26_plan_aedes_estado", selected = character(0))
+      updateRadioButtons(session, "sat26_plan_anopheles_estado", selected = character(0))
+    }
+    sat26_save_draft()
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input$sat26_plan_aedes_estado, input$sat26_plan_anopheles_estado), {
+    if (nzchar(value_or_default(input$sat26_plan_aedes_estado, "")) || nzchar(value_or_default(input$sat26_plan_anopheles_estado, ""))) {
+      updateRadioButtons(session, "sat26_plan_integrado_estado", selected = character(0))
+    }
+    sat26_save_draft()
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$sat26_plan_integrado_caracteristicas, {
+    if (length(input$sat26_plan_integrado_caracteristicas %||% character(0)) > 0) {
+      updateCheckboxGroupInput(session, "sat26_plan_aedes_caracteristicas", selected = character(0))
+      updateCheckboxGroupInput(session, "sat26_plan_anopheles_caracteristicas", selected = character(0))
+    }
+    sat26_save_draft()
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input$sat26_plan_aedes_caracteristicas, input$sat26_plan_anopheles_caracteristicas), {
+    if (length(input$sat26_plan_aedes_caracteristicas %||% character(0)) > 0 || length(input$sat26_plan_anopheles_caracteristicas %||% character(0)) > 0) {
+      updateCheckboxGroupInput(session, "sat26_plan_integrado_caracteristicas", selected = character(0))
+    }
+    sat26_save_draft()
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$sat26_plan_estado_reset, {
+    updateRadioButtons(session, "sat26_plan_aedes_estado", selected = character(0))
+    updateRadioButtons(session, "sat26_plan_anopheles_estado", selected = character(0))
+    updateRadioButtons(session, "sat26_plan_integrado_estado", selected = character(0))
+    sat26_save_draft()
+  })
+
+  observeEvent(input$sat26_plan_caracteristicas_reset, {
+    updateCheckboxGroupInput(session, "sat26_plan_aedes_caracteristicas", selected = character(0))
+    updateCheckboxGroupInput(session, "sat26_plan_anopheles_caracteristicas", selected = character(0))
+    updateCheckboxGroupInput(session, "sat26_plan_integrado_caracteristicas", selected = character(0))
+    sat26_save_draft()
+  })
+
+  observeEvent(
+    list(
+      input$sat26_plan_tipo,
+      input$sat26_plan_estado,
+      input$sat26_plan_caracteristicas_tipo,
+      input$sat26_plan_caracteristicas,
+      input$sat26_plan_aedes_estado,
+      input$sat26_plan_anopheles_estado,
+      input$sat26_plan_integrado_estado,
+      input$sat26_plan_aedes_caracteristicas,
+      input$sat26_plan_anopheles_caracteristicas,
+      input$sat26_plan_integrado_caracteristicas,
+      input$sat26_plan_aedes_nombre,
+      input$sat26_plan_aedes_anio,
+      input$sat26_plan_aedes_documento,
+      input$sat26_plan_anopheles_nombre,
+      input$sat26_plan_anopheles_anio,
+      input$sat26_plan_anopheles_documento,
+      input$sat26_plan_integrado_nombre,
+      input$sat26_plan_integrado_anio,
+      input$sat26_plan_integrado_documento,
+      input$sat26_reglamentos_nacionales,
+      input$sat26_reglamentos_documento,
+      input$sat26_prioridad_planes,
+      input$sat26_asistencia_planes,
+      input$sat26_normas_vigilancia_aedes,
+      input$sat26_normas_control_aedes,
+      input$sat26_normas_vigilancia_anopheles,
+      input$sat26_normas_control_anopheles,
+      input$sat26_plan_elemento_control_aedes,
+      input$sat26_plan_elemento_vigilancia_aedes,
+      input$sat26_plan_elemento_control_anopheles,
+      input$sat26_plan_elemento_vigilancia_anopheles,
+      input$sat26_plan_elemento_equipos_insecticidas,
+      input$sat26_plan_elemento_resistencia,
+      input$sat26_plan_elemento_recursos_humanos,
+      input$sat26_plan_elemento_formacion,
+      input$sat26_plan_elemento_participacion,
+      input$sat26_plan_elemento_sistemas_info,
+      input$sat26_plan_elemento_investigacion,
+      input$sat26_plan_elemento_vulnerables,
+      input$sat26_plan_elemento_monitoreo,
+      input$sat26_descentralizacion,
+      input$sat26_legislacion_24_48,
+      input$sat26_grupo_interministerial,
+      input$sat26_grupo_interministerial_reunion,
+      input$sat26_prioridad_agenda,
+      input$sat26_factores_prioridad,
+      input$sat26_factores_prioridad_otros,
+      input$sat26_frecuencia_interministerial,
+      input$sat26_motivadores_institucion,
+      input$sat26_motivadores_institucion_otros
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    list(
+      input$sat26_presupuesto_vigilancia,
+      input$sat26_presupuesto_control,
+      input$sat26_fin_vigilancia_presupuesto,
+      input$sat26_fin_vigilancia_gestion,
+      input$sat26_fin_control_presupuesto,
+      input$sat26_fin_control_gestion
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    c(
+      lapply(sat26_hr_scalar_ids, function(id) input[[id]]),
+      list(input$sat26_rrhh_capacitacion_sistemas)
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    lapply(sat26_hr_cont_scalar_ids, function(id) input[[id]]),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    c(
+      lapply(sat26_control_scalar_ids, function(id) input[[id]]),
+      list(
+        input$sat26_control_aedes_actividades,
+        input$sat26_control_aedes_otras,
+        input$sat26_control_anopheles_actividades,
+        input$sat26_control_anopheles_otras,
+        input$sat26_control_irs_metodos,
+        input$sat26_control_larvicidas_metodos,
+        input$sat26_control_irs_aedes_metodos,
+        input$sat26_control_nebulizacion_metodos
+      )
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    c(
+      lapply(sat26_surveillance_scalar_ids, function(id) input[[id]]),
+      list(
+        input$sat26_vigilancia_aedes_trampas,
+        input$sat26_vigilancia_anopheles_trampas,
+        input$sat26_vigilancia_decisiones
+      )
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    c(
+      lapply(sat26_infra_scalar_ids, function(id) input[[id]]),
+      list(input$sat26_infra_laboratorio_capacidades)
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    c(
+      lapply(sat26_info_scalar_ids, function(id) input[[id]]),
+      list(
+        input$sat26_info_vigilancia_herramientas,
+        input$sat26_info_control_herramientas,
+        input$sat26_info_vigilancia_recoleccion,
+        input$sat26_info_vigilancia_almacenamiento,
+        input$sat26_info_vigilancia_reporte,
+        input$sat26_info_control_recoleccion,
+        input$sat26_info_control_almacenamiento,
+        input$sat26_info_control_reporte
+      )
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    c(
+      lapply(sat26_community_scalar_ids, function(id) input[[id]]),
+      list(
+        input$sat26_comunidad_actividades,
+        input$sat26_comunidad_momento
+      )
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    c(
+      lapply(sat26_research_scalar_ids, function(id) input[[id]]),
+      lapply(sat26_research_reference_ids, function(id) input[[id]])
+    ),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
+  observeEvent(
+    lapply(sat26_regional_scalar_ids, function(id) input[[id]]),
+    {
+      sat26_save_draft()
+    },
+    ignoreInit = TRUE
+  )
+
   select_capture_subdivision <- function(subdivision) {
     active_area("data")
     active_module("capture")
@@ -12089,12 +14044,75 @@ server <- function(input, output, session) {
       column(
         width = 12,
         div(
-          class = "capture-title-card",
-          h2(HTML("<strong>EntoNet</strong> - Red Entomológica para la Vigilancia y Control de Vectores")),
-          p("EntoNet es una iniciativa regional financiada por los Centros para el Control y la Prevención de Enfermedades de los Estados Unidos (CDC) que busca fortalecer la vigilancia entomológica y el control de vectores de importancia médica en Centroamérica y República Dominicana. La red promueve la interoperabilidad, estandarización e integración de datos entomológicos generados por ministerios de salud, instituciones académicas y programas nacionales de control vectorial.")
+          class = "sat26-form-shell",
+          div(
+            class = "sat26-form-header",
+            div(
+              class = "sat26-form-logo-row",
+              img(src = "entonet-header.jpeg", class = "header-logo sat26-form-logo-entonet", alt = "EntoNet"),
+              img(src = "COMISCA.png", class = "sat26-form-logo sat26-form-logo-comisca", alt = "COMISCA y SICA")
+            ),
+            h2(HTML("Evaluación Regional de Necesidades y Fortalecimiento de Capacidades para la Vigilancia y el Control de Vectores en Centroamérica y República Dominicana")),
+            p(class = "sat26-form-welcome", "¡Bienvenido(a)!"),
+            p("Le invitamos a participar en esta encuesta, cuyo propósito es identificar las necesidades, fortalezas y oportunidades para fortalecer las capacidades regionales en materia de vigilancia y control de vectores en Centroamérica y República Dominicana."),
+            p("Su participación es fundamental y sus respuestas contribuirán a orientar acciones, estrategias e iniciativas de fortalecimiento de capacidades en la región. La información proporcionada será tratada de manera confidencial y utilizada únicamente con fines relacionados con esta evaluación."),
+            p(class = "sat26-form-emphasis", "Por favor, complete la siguiente encuesta."),
+            p(class = "sat26-form-emphasis", "¡Muchas gracias por su valiosa colaboración!"),
+            div(
+              class = "sat26-form-subtitle",
+              "Esta encuesta responde a la estrategia regional 2025-2030 del Sistema de Integración Centroamericano para el control de vectores."
+            )
+          )
+        ),
+        div(
+          class = "sat26-form-info-panel",
+          h3("Encuesta SAT26"),
+          p("Antes de iniciar, la persona participante debe leer el consentimiento y confirmar que acepta participar."),
+          div(
+            class = "sat26-form-section-grid",
+            div(
+              class = "sat26-form-section-card",
+              h4("Consentimiento"),
+              p("Explica el propósito del estudio, el carácter voluntario de la participación, la confidencialidad de las respuestas y la posibilidad de retirarse en cualquier momento.")
+            ),
+            div(
+              class = "sat26-form-section-card",
+              h4("Contexto"),
+              p("La encuesta se alinea con la estrategia 2025-2030 del Sistema de Integración Centroamericano para el control de vectores y con el fortalecimiento regional de EntoNet.")
+            ),
+            div(
+              class = "sat26-form-section-card",
+              h4("Flujo"),
+              p("Después del consentimiento, la interfaz avanzará por secciones A-K para completar la evaluación de forma ordenada.")
+            )
+          ),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_open_consent", "Ver consentimiento", class = "btn-primary"),
+            actionButton("sat26_open_sections", "Ver secciones", class = "btn-secondary"),
+            actionButton("sat26_start", "Iniciar encuesta", class = "btn-primary")
+          ),
+          div(
+            class = "sat26-resume-panel",
+            h4("Continuar con un codigo existente"),
+            div(
+              class = "sat26-resume-row",
+              textInput("sat26_resume_code", "Ingrese su codigo unico:", value = ""),
+              actionButton("sat26_resume_lookup", "Buscar", class = "btn-default")
+            ),
+            uiOutput("sat26_resume_status_ui")
+          )
         )
       )
     )
+  })
+
+  output$sat26_resume_status_ui <- renderUI({
+    status <- sat26_resume_status()
+    if (is.null(status) || !nzchar(status)) {
+      return(NULL)
+    }
+    div(class = "sat26-resume-status", status)
   })
 
   output$portal_sidebar <- renderUI({
@@ -12184,6 +14202,1203 @@ server <- function(input, output, session) {
 
     if (is.null(area)) {
       return(uiOutput("portal_intro_area"))
+    }
+
+    if (identical(area, "sat26")) {
+      sat26_plan_estado_choices <- c(
+        "Versión finalizada" = "finalizada",
+        "Versión borrador" = "borrador",
+        "No existe plan" = "no_existe",
+        "Desconozco" = "desconozco"
+      )
+      sat26_si_no_desconozco_choices <- c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")
+      sat26_normas_choices <- c("Sí" = "si", "No" = "no", "En desarrollo" = "en_desarrollo", "Desconozco" = "desconozco")
+      sat26_plan_elementos_choices <- c("Plan general" = "plan_general", "Plan separado" = "plan_separado", "No incluido" = "no_incluido", "Desconozco" = "desconozco")
+      sat26_fin_suficiencia_choices <- c("Suficiente" = "suficiente", "Insuficiente" = "insuficiente", "Desconozco" = "desconozco")
+      sat26_radio_field <- function(id, label, choices) {
+        div(class = "sat26-form-field", radioButtons(id, HTML(label), choices = choices, selected = character(0)))
+      }
+      sat26_radio_field_html <- function(id, label, choice_names, choice_values) {
+        div(
+          class = "sat26-form-field",
+          radioButtons(
+            id,
+            HTML(label),
+            choiceNames = choice_names,
+            choiceValues = choice_values,
+            selected = character(0)
+          )
+        )
+      }
+      sat26_text_field <- function(id, label, placeholder = "") {
+        div(class = "sat26-form-field", textInput(id, HTML(label), placeholder = placeholder))
+      }
+      sat26_textarea_field <- function(id, label, placeholder = "") {
+        div(class = "sat26-form-field", textAreaInput(id, HTML(label), placeholder = placeholder, rows = 3))
+      }
+
+      if (identical(module, "part_i")) {
+        sat26_info_system_choices <- c(
+          "Recolección de datos" = "recoleccion",
+          "Almacenamiento de datos" = "almacenamiento",
+          "Presentación de datos" = "presentacion",
+          "Desconozco" = "desconozco"
+        )
+        sat26_info_collect_choices <- c(
+          "Formularios en papel" = "papel",
+          "Smartphone o tablet" = "smartphone_tablet",
+          "Fotografías" = "fotografias",
+          "Escáneres de código de barras" = "codigos_barras",
+          "Sistemas de posicionamiento global (GPS)" = "gps",
+          "Actualmente en planificación para captura electrónica de datos" = "planificacion_electronica",
+          "Otro" = "otro",
+          "Desconozco" = "desconozco"
+        )
+        sat26_info_storage_choices <- c(
+          "Papel" = "papel",
+          "Excel" = "excel",
+          "DHIS2" = "dhis2",
+          "Otra base de datos en línea" = "otra_bd_linea",
+          "Base de datos en Access" = "access",
+          "Actualmente desarrollando almacenamiento en línea" = "desarrollando_linea",
+          "Otro" = "otro",
+          "Desconozco" = "desconozco"
+        )
+        sat26_info_report_choices <- c(
+          "Manualmente en Excel" = "excel_manual",
+          "Paneles en línea (gráficas, tablas, etc.)" = "paneles_linea",
+          "Mapas electrónicos" = "mapas_electronicos",
+          "Informes generados automáticamente desde una base de datos en línea" = "informes_automaticos",
+          "Otro" = "otro",
+          "Desconozco" = "desconozco"
+        )
+        sat26_info_limit_choices <- c(
+          "Suficiente" = "suficiente",
+          "Menor a lo suficiente" = "menor_suficiente",
+          "Gravemente limitante" = "gravemente_limitante",
+          "Desconozco" = "desconozco"
+        )
+        sat26_checkbox_field <- function(id, label, choices) {
+          div(class = "sat26-form-field", checkboxGroupInput(id, HTML(label), choices = choices, selected = character(0)))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte I: Sistemas de Información"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta sección documenta las herramientas utilizadas para recolectar, almacenar, presentar y utilizar datos de vigilancia y control vectorial.")
+          ),
+          h4("I1. Uso conocido de herramientas"),
+          sat26_checkbox_field("sat26_info_vigilancia_herramientas", "I1a. Indique para cuál de los siguientes sistemas conoce el uso de herramientas en vigilancia vectorial:", sat26_info_system_choices),
+          sat26_checkbox_field("sat26_info_control_herramientas", "I1b. Indique para cuál de los siguientes sistemas conoce el uso de herramientas en control vectorial:", sat26_info_system_choices),
+          h4("I2. Recolección de datos de vigilancia vectorial"),
+          sat26_radio_field("sat26_info_vigilancia_recoleccion_usa", "I2a. ¿Utiliza alguna herramienta para la recolección de datos de vigilancia vectorial?", sat26_si_no_desconozco_choices),
+          sat26_checkbox_field("sat26_info_vigilancia_recoleccion", "I2b. Manejo de datos: ¿qué herramientas se utilizan actualmente en el campo para registrar datos de vigilancia vectorial?", sat26_info_collect_choices),
+          conditionalPanel(condition = "input.sat26_info_vigilancia_recoleccion && input.sat26_info_vigilancia_recoleccion.indexOf('otro') >= 0", sat26_textarea_field("sat26_info_vigilancia_recoleccion_otro", "I2b.1 Si ha seleccionado “Otro”, indique qué otras herramientas se utilizan para registrar datos de vigilancia vectorial:")),
+          sat26_textarea_field("sat26_info_vigilancia_apps", "I2c. ¿Qué aplicaciones o software se utilizan actualmente para recolectar datos de vigilancia vectorial?"),
+          h4("I3. Almacenamiento de datos de vigilancia vectorial"),
+          sat26_checkbox_field("sat26_info_vigilancia_almacenamiento", "I3. ¿Qué herramientas se utilizan actualmente para almacenar datos de vigilancia vectorial?", sat26_info_storage_choices),
+          conditionalPanel(condition = "input.sat26_info_vigilancia_almacenamiento && input.sat26_info_vigilancia_almacenamiento.indexOf('otro') >= 0", sat26_textarea_field("sat26_info_vigilancia_almacenamiento_otro", "I3.1 Si ha seleccionado “Otro”, indique qué otras herramientas se utilizan para almacenar datos de vigilancia vectorial:")),
+          h4("I4. Reporte de datos de vigilancia vectorial"),
+          sat26_checkbox_field("sat26_info_vigilancia_reporte", "I4. ¿Qué herramientas se utilizan actualmente para presentar o reportar datos de vigilancia vectorial?", sat26_info_report_choices),
+          conditionalPanel(condition = "input.sat26_info_vigilancia_reporte && input.sat26_info_vigilancia_reporte.indexOf('otro') >= 0", sat26_textarea_field("sat26_info_vigilancia_reporte_otro", "I4.1 Si ha seleccionado “Otro”, indique qué otras herramientas se utilizan para presentar o reportar datos de vigilancia vectorial:")),
+          sat26_radio_field("sat26_info_vigilancia_limitacion", "I5. ¿Los sistemas de información actuales limitan el uso de datos de vigilancia vectorial para la toma de decisiones?", sat26_info_limit_choices),
+          h4("I6. Recolección de datos de control vectorial"),
+          sat26_radio_field("sat26_info_control_recoleccion_usa", "I6a. ¿Utiliza herramientas de recolección de datos para control vectorial?", sat26_si_no_desconozco_choices),
+          sat26_checkbox_field("sat26_info_control_recoleccion", "I6b. Manejo de datos: ¿qué herramientas se utilizan actualmente en el campo para registrar datos de control vectorial?", sat26_info_collect_choices),
+          conditionalPanel(condition = "input.sat26_info_control_recoleccion && input.sat26_info_control_recoleccion.indexOf('otro') >= 0", sat26_textarea_field("sat26_info_control_recoleccion_otro", "I6b.1 Si ha seleccionado “Otro”, indique qué otras herramientas se utilizan para registrar datos de control vectorial:")),
+          sat26_textarea_field("sat26_info_control_apps", "I6c. ¿Qué aplicaciones o software se utilizan actualmente para recolectar datos de control vectorial?"),
+          h4("I7. Almacenamiento de datos de control vectorial"),
+          sat26_checkbox_field("sat26_info_control_almacenamiento", "I7. ¿Qué herramientas se utilizan actualmente para almacenar datos de control vectorial?", sat26_info_storage_choices),
+          conditionalPanel(condition = "input.sat26_info_control_almacenamiento && input.sat26_info_control_almacenamiento.indexOf('otro') >= 0", sat26_textarea_field("sat26_info_control_almacenamiento_otro", "I7.1 Si ha seleccionado “Otro”, indique qué otras herramientas se utilizan para almacenar datos de control vectorial:")),
+          h4("I8. Reporte de datos de control vectorial"),
+          sat26_checkbox_field("sat26_info_control_reporte", "I8. ¿Qué herramientas se utilizan actualmente para presentar o reportar datos de control vectorial?", sat26_info_report_choices),
+          conditionalPanel(condition = "input.sat26_info_control_reporte && input.sat26_info_control_reporte.indexOf('otro') >= 0", sat26_textarea_field("sat26_info_control_reporte_otro", "I8.1 Si ha seleccionado “Otro”, indique qué otras herramientas se utilizan para presentar o reportar datos de control vectorial:")),
+          sat26_radio_field("sat26_info_control_limitacion", "I9. ¿Los sistemas de información actuales limitan el uso de datos de control vectorial para la toma de decisiones?", sat26_info_limit_choices),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_i_back", "Volver a Parte H", class = "btn-secondary"),
+            actionButton("sat26_part_i_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_j")) {
+        sat26_community_participation_choices <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "Desconozco las contribuciones que la comunidad ha hecho en la vigilancia o control vectorial" = "desconozco"
+        )
+        sat26_community_activity_choices <- c(
+          "Vigilancia vectorial" = "vigilancia_vectorial",
+          "Control vectorial" = "control_vectorial",
+          "Comunicación de riesgos / educación" = "comunicacion_riesgos_educacion",
+          "Reporte de enfermedades o brotes" = "reporte_enfermedades_brotes",
+          "Investigación" = "investigacion",
+          "Otro" = "otro",
+          "Desconozco" = "desconozco"
+        )
+        sat26_community_timing_choices <- c(
+          "Después de la declaración de un brote y la movilización de una fuerza de tarea" = "despues_brote",
+          "Regularmente durante el año" = "regularmente_anio",
+          "Antes del inicio de la temporada de lluvias" = "antes_lluvias",
+          "Otro" = "otro",
+          "Desconozco" = "desconozco"
+        )
+        sat26_checkbox_field <- function(id, label, choices) {
+          div(class = "sat26-form-field", checkboxGroupInput(id, HTML(label), choices = choices, selected = character(0)))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte J: Participación comunitaria y comunicación de riesgos"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta sección documenta si las comunidades participaron en actividades estructuradas de vigilancia o control vectorial, y en qué momentos o actividades se involucraron.")
+          ),
+          sat26_radio_field("sat26_comunidad_participacion", "J1. ¿Participaron miembros de la comunidad en la implementación de actividades de vigilancia o control vectorial entre 2022 y 2024? Se refiere a actividades comunitarias estructuradas, no a reportes espontáneos o contribuciones informales.", sat26_community_participation_choices),
+          sat26_checkbox_field("sat26_comunidad_actividades", "J2. ¿En qué actividades participaron los miembros de la comunidad entre 2022 y 2024?", sat26_community_activity_choices),
+          conditionalPanel(condition = "input.sat26_comunidad_actividades && input.sat26_comunidad_actividades.indexOf('otro') >= 0", sat26_textarea_field("sat26_comunidad_actividades_otro", "J2.1 Si seleccionó la opción de “Otro”, describa brevemente en qué actividades participaron miembros de la comunidad:")),
+          sat26_checkbox_field("sat26_comunidad_momento", "J3. ¿Cuándo se involucró a las comunidades entre 2022 y 2024?", sat26_community_timing_choices),
+          conditionalPanel(condition = "input.sat26_comunidad_momento && input.sat26_comunidad_momento.indexOf('otro') >= 0", sat26_textarea_field("sat26_comunidad_momento_otro", "J3.1 Si seleccionó la opción de “Otro”, indique en qué periodo de tiempo se involucró a las comunidades:")),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_j_back", "Volver a Parte I", class = "btn-secondary"),
+            actionButton("sat26_part_j_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_k")) {
+        sat26_research_yes_no_agenda <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "Desconozco si el ministerio cuenta con una agenda de investigación" = "desconozco"
+        )
+        sat26_research_yes_no_priorities <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "Desconozco si la agenda de investigación prioriza el control y vigilancia de vectores" = "desconozco"
+        )
+        sat26_research_yes_no_operations <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "Desconozco las investigaciones operativas que el Ministerio ha realizado respecto a la vigilancia y control de vectores" = "desconozco"
+        )
+        sat26_reference_type_choices <- c(
+          "Nombre" = "nombre",
+          "Hipervínculo" = "hipervinculo",
+          "Documento" = "documento",
+          "Desconozco" = "desconozco"
+        )
+        sat26_reference_fields <- function() {
+          tagList(lapply(seq_along(sat26_research_reference_items), function(index) {
+            ref_id <- names(sat26_research_reference_items)[[index]]
+            ref_label <- sat26_research_reference_items[[ref_id]]
+            tagList(
+              div(
+                class = "sat26-form-field",
+                checkboxGroupInput(
+                  paste0("sat26_investigacion_ref_tipo_", ref_id),
+                  paste0("K3b.", index, ".1 Seleccione el tipo de referencia disponible para: ", ref_label),
+                  choices = sat26_reference_type_choices,
+                  selected = character(0)
+                )
+              ),
+              sat26_textarea_field(paste0("sat26_investigacion_ref_nombre_", ref_id), paste0("K3c.", index, ".1 Ingrese los nombres que conozca para: ", ref_label)),
+              sat26_textarea_field(paste0("sat26_investigacion_ref_link_", ref_id), paste0("K3d.", index, ".1 Ingrese los hipervínculos disponibles para: ", ref_label)),
+              sat26_textarea_field(paste0("sat26_investigacion_ref_documento_", ref_id), paste0("K3e.", index, ".1 Describa los documentos disponibles o indique dónde se encuentran para: ", ref_label))
+            )
+          }))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte K: Investigación operativa liderada por el Ministerio de Salud"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p(HTML("Esta sección documenta si el Ministerio de Salud cuenta con una agenda de investigación y si ha desarrollado investigación operativa para mejorar la vigilancia o el control de vectores, incluyendo <em>Aedes</em>."))
+          ),
+          h4("K1. Agenda de investigación"),
+          sat26_radio_field("sat26_investigacion_agenda", "K1a. ¿El Ministerio de Salud cuenta con una agenda priorizada de investigación básica y aplicada?", sat26_research_yes_no_agenda),
+          sat26_radio_field("sat26_investigacion_agenda_vectores", "K1b. ¿La agenda de investigación incluye prioridades relacionadas con el control y vigilancia de vectores?", sat26_research_yes_no_priorities),
+          h4(HTML("K2. Investigación operativa para <em>Aedes</em>")),
+          sat26_radio_field("sat26_investigacion_operativa_aedes", "K2. ¿El Ministerio de Salud llevó a cabo investigación operativa para mejorar la vigilancia o el control de <em>Aedes</em> entre 2021 y 2023?", sat26_research_yes_no_operations),
+          h4("K3. Datos del proyecto de investigación operativa"),
+          p(class = "sat26-section-note", "En caso de haber respondido “Sí”, proporcione los siguientes datos del proyecto de investigación operativa."),
+          sat26_textarea_field("sat26_investigacion_titulo", "K3a. ¿Cuál fue el título del proyecto?"),
+          sat26_textarea_field("sat26_investigacion_referencias", "K3b. Referencias. Incluya referencias a publicaciones, informes o conjuntos de datos relevantes."),
+          p(class = "sat26-section-note", "K3b-K3e. Para cada tipo de referencia, seleccione primero si cuenta con nombre, hipervínculo o documento; luego complete los campos disponibles. En esta versión local, los documentos se describen como texto; más adelante podemos convertirlos en carga de archivos."),
+          sat26_reference_fields(),
+          h4("K5. Permiso para compartir con EntoNet"),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("La Red de Entomología de Salud Pública (EntoNet) es una iniciativa regional establecida en 2017 que reúne a países de América Central y República Dominicana para fortalecer la vigilancia entomológica y el control vectorial."),
+            p("Con sede en la UVG y en coordinación con SECOMISCA, EntoNet fomenta la colaboración técnica para mejorar el manejo integrado de vectores y el monitoreo de resistencia a insecticidas en la región.")
+          ),
+          sat26_radio_field("sat26_investigacion_compartir_entonet", "K5. ¿Está de acuerdo en que la información proporcionada en esta encuesta sea compartida con EntoNet?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          h4("K6. Permiso para compartir con OPS/OMS"),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("La OMS (Organización Mundial de la Salud) es el organismo especializado de las Naciones Unidas dedicado a la salud y seguridad mundiales.")
+          ),
+          sat26_radio_field("sat26_investigacion_compartir_ops", "K6. ¿Está de acuerdo en que la información proporcionada en esta encuesta sea compartida con la OPS/OMS si así se solicita?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_k_back", "Volver a Parte J", class = "btn-secondary"),
+            actionButton("sat26_part_k_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_l")) {
+        sat26_regional_punto_focal_choices <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "Desconozco si existe un punto focal para colaborar con socios regionales" = "desconozco",
+          "No entiendo qué es un punto focal" = "no_entiendo"
+        )
+        sat26_regional_agreements_choices <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "En desarrollo" = "en_desarrollo",
+          "Desconozco los planes que se tienen respecto a acuerdos entre socios regionales" = "desconozco"
+        )
+        sat26_regional_frequency_choices <- c(
+          "No se comparte información con otros países" = "no_comparte",
+          "Cada semana" = "semanal",
+          "Cada 2 semanas" = "cada_2_semanas",
+          "Cada mes" = "mensual",
+          "Cada 3 meses" = "cada_3_meses",
+          "Cada 6 meses" = "cada_6_meses",
+          "Cada año" = "anual",
+          "Desconozco si se comparte información con otros países" = "desconozco"
+        )
+        sat26_regional_invasive_choices <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "En desarrollo" = "en_desarrollo",
+          "Existen sistemas operativos para el monitoreo de vectores, pero se encuentran en desuso" = "en_desuso",
+          "Desconozco si existen sistemas operativos para el monitoreo de vectores" = "desconozco"
+        )
+        sat26_regional_climate_choices <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "En desarrollo" = "en_desarrollo",
+          "Desconozco la coordinación que se tiene con socios regionales" = "desconozco"
+        )
+        sat26_regional_network_choices <- c(
+          "Sí, EntoNet" = "si_entonet",
+          "Sí, otra red equivalente" = "si_otra_red",
+          "No" = "no",
+          "Desconozco si mi país participa activamente en redes regionales" = "desconozco",
+          "No entiendo qué es una red regional como EntoNet" = "no_entiendo"
+        )
+        sat26_regional_mechanism_choices <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "Desconozco si mi país cuenta con mecanismos para compartir conocimientos con socios regionales" = "desconozco"
+        )
+        sat26_regional_platform_choices <- c(
+          "Sí" = "si",
+          "No" = "no",
+          "Ocasionalmente" = "ocasionalmente",
+          "Desconozco si mi país comparte información con otros países de la región" = "desconozco",
+          "Sé que mi país comparte información con otros, pero desconozco qué tan frecuentemente lo hace" = "comparte_desconoce_frecuencia"
+        )
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte L: Colaboración regional"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta sección documenta la colaboración regional, el intercambio de información y los mecanismos de coordinación para vigilancia y control vectorial.")
+          ),
+          sat26_radio_field("sat26_regional_punto_focal", "L1. ¿Existe un punto focal designado para colaborar con socios regionales en vigilancia y control vectorial? Un punto focal se refiere a una persona designada específicamente para apoyar en estos temas y avanzar los esfuerzos de varias entidades hacia un objetivo común.", sat26_regional_punto_focal_choices),
+          sat26_radio_field("sat26_regional_acuerdos", "L2. ¿Existen acuerdos formales con socios regionales para apoyar la vigilancia y control vectorial, por ejemplo intercambio de datos o asistencia técnica?", sat26_regional_agreements_choices),
+          sat26_radio_field("sat26_regional_frecuencia_intercambio", "L3. ¿Qué tan frecuentemente se comparte información, datos y buenas prácticas con otros países a través de plataformas regionales?", sat26_regional_frequency_choices),
+          sat26_radio_field("sat26_regional_sistemas_invasoras", "L4. ¿Existen sistemas operativos para el monitoreo de especies invasoras de vectores que representen amenazas transfronterizas y para contribuir a sistemas regionales de alerta temprana?", sat26_regional_invasive_choices),
+          sat26_radio_field("sat26_regional_cambio_climatico", "L5. ¿Existe coordinación sistemática con socios regionales para abordar los impactos del cambio climático sobre la distribución de vectores entre países?", sat26_regional_climate_choices),
+          sat26_radio_field("sat26_regional_redes", "L6. ¿Su país participa activamente en redes regionales como EntoNet o su equivalente, incluyendo participación y contribuciones consistentes?", sat26_regional_network_choices),
+          sat26_radio_field("sat26_regional_mecanismos", "L7. ¿Existen mecanismos formales para intercambiar conocimientos técnicos con socios regionales, por ejemplo a través de EntoNet u otra red equivalente, que incluyan participación y contribuciones consistentes?", sat26_regional_mechanism_choices),
+          sat26_radio_field("sat26_regional_plataformas", "L8. ¿Se comparten regularmente información, datos y buenas prácticas a través de plataformas regionales establecidas con otros países de la región?", sat26_regional_platform_choices),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_l_back", "Volver a Parte K", class = "btn-secondary"),
+            actionButton("sat26_part_l_finish", "Finalizar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_h")) {
+        sat26_infra_vig_choices <- c("Suficiente" = "suficiente", "Insuficiente" = "insuficiente", "Desconozco" = "desconozco")
+        sat26_infra_control_choices <- c("Suficiente" = "suficiente", "Menor a lo suficiente" = "menor_suficiente", "Gravemente limitante" = "gravemente_limitante", "Desconozco" = "desconozco")
+        sat26_lab_capacity_choices <- c("PCR" = "pcr", "ELISA" = "elisa", "Laboratorio entomológico de campo (bioensayos, microscopía)" = "ento_campo", "Semi-campo" = "semi_campo", "Otro" = "otro", "Desconozco" = "desconozco")
+        sat26_infra_fields <- function(prefix, label_prefix, items, choices) {
+          tagList(lapply(seq_along(items), function(index) {
+            item_id <- names(items)[[index]]
+            sat26_radio_field(paste0(prefix, item_id), paste0(label_prefix, index, ". ", items[[item_id]]), choices)
+          }))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte H: Infraestructura y Logística"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta sección documenta la suficiencia de infraestructura y logística para actividades de vigilancia y control vectorial, así como capacidades de laboratorio e insectario.")
+          ),
+          h4("H1. Infraestructura para vigilancia vectorial"),
+          p(class = "sat26-section-note", "H1a. En cuanto a la vigilancia vectorial, ¿qué formas de infraestructura tienen los recursos adecuados para desarrollar sus actividades?"),
+          sat26_infra_fields("sat26_infra_vigilancia_", "H1a.", sat26_infra_vigilancia_items, sat26_infra_vig_choices),
+          sat26_radio_field("sat26_infra_laboratorio_gestionado", "H1b. ¿El laboratorio de la zona está gestionado y mantenido por el programa de control vectorial?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_radio_field("sat26_infra_conoce_laboratorio", "H1c. ¿Conoce acerca de las capacidades de los laboratorios en la zona?", c("Sí" = "si", "No hay laboratorios cercanos en la zona" = "no_laboratorios_cercanos", "Desconozco" = "desconozco")),
+          div(class = "sat26-form-field", checkboxGroupInput("sat26_infra_laboratorio_capacidades", "H1c.1 ¿Cuál es la capacidad de los laboratorios?", choices = sat26_lab_capacity_choices, selected = character(0))),
+          conditionalPanel(condition = "input.sat26_infra_laboratorio_capacidades && input.sat26_infra_laboratorio_capacidades.indexOf('otro') >= 0", sat26_textarea_field("sat26_infra_laboratorio_capacidad_otro", "H1c.2 Si ha seleccionado “Otro”, describa brevemente con qué otras capacidades cuenta su laboratorio:")),
+          sat26_radio_field("sat26_infra_insectario_gestionado", "H1d. ¿El insectario está gestionado y mantenido por el programa de control vectorial?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_radio_field("sat26_infra_colonia_aedes", "H1e. ¿Mantienen una colonia de laboratorio de mosquitos <em>Aedes</em>?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_radio_field("sat26_infra_colonia_anopheles", "H1f. ¿Mantienen una colonia de laboratorio de mosquitos <em>Anopheles</em>?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          h4("H2. Infraestructura para control vectorial"),
+          p(class = "sat26-section-note", "H2a. En cuanto al control vectorial, ¿cuáles de las siguientes infraestructuras son suficientes o limitantes?"),
+          sat26_infra_fields("sat26_infra_control_", "H2a.", sat26_infra_control_items, sat26_infra_control_choices),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_h_back", "Volver a Parte G", class = "btn-secondary"),
+            actionButton("sat26_part_h_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_g2")) {
+        sat26_sites_choices <- c("0" = "0", "1-4" = "1_4", "5-9" = "5_9", "10+" = "10_mas", "Desconozco" = "desconozco")
+        sat26_ident_adult_choices <- c("Morfológicamente con microscopio" = "morfologia", "Molecular (PCR)" = "pcr", "No se identifican" = "no_identifican", "Otro" = "otro", "Desconozco" = "desconozco")
+        sat26_ident_larva_choices <- c("Como adultos con microscopio" = "adultos_microscopio", "Como larvas con microscopio" = "larvas_microscopio", "Molecular (PCR)" = "pcr", "No se identifican" = "no_identifican", "Otro" = "otro", "Desconozco" = "desconozco")
+        sat26_checkbox_html <- function(id, label, choices) {
+          div(class = "sat26-form-field", checkboxGroupInput(id, HTML(label), choiceNames = lapply(names(choices), HTML), choiceValues = unname(choices), selected = character(0)))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte G: Vigilancia Vectorial (cont.)"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p(HTML("Esta continuación documenta el manejo rutinario de la vigilancia de <em>Anopheles</em> y el uso de datos entomológicos para orientar decisiones de control vectorial."))
+          ),
+          h4(HTML("G3. Manejo de vigilancia rutinaria de <em>Anopheles</em>")),
+          sat26_radio_field("sat26_vigilancia_anopheles_sitios", "G3a. Respecto a la rutina de vigilancia, ¿cuántos sitios fueron monitoreados? Un sitio de vigilancia equivale a toda una aldea o área, que puede contener múltiples estaciones de muestreo o trampas.", sat26_sites_choices),
+          sat26_radio_field("sat26_vigilancia_anopheles_conoce_trampas", "G3b. ¿Conoce qué trampas se usan para recolectar mosquitos <em>Anopheles</em> adultos?", sat26_si_no_desconozco_choices),
+          sat26_checkbox_html("sat26_vigilancia_anopheles_trampas", "G3c. ¿Qué trampas utiliza para recolectar mosquitos <em>Anopheles</em> adultos?", sat26_surveillance_anopheles_traps),
+          conditionalPanel(condition = "input.sat26_vigilancia_anopheles_trampas && input.sat26_vigilancia_anopheles_trampas.indexOf('otro') >= 0", sat26_textarea_field("sat26_vigilancia_anopheles_trampa_otro", "G3c.1 Si ha seleccionado “Otro”, describa brevemente cómo es la trampa usada para recolectar mosquitos <em>Anopheles</em> adultos:")),
+          sat26_radio_field("sat26_vigilancia_anopheles_ident_adultos", "G3d. ¿Cómo se identifican los mosquitos <em>Anopheles</em> adultos para la vigilancia rutinaria?", sat26_ident_adult_choices),
+          conditionalPanel(condition = "input.sat26_vigilancia_anopheles_ident_adultos == 'otro'", sat26_textarea_field("sat26_vigilancia_anopheles_ident_adultos_otro", "G3d.1 Si ha seleccionado “Otro”, describa brevemente el método de identificación usado para mosquitos <em>Anopheles</em> adultos:")),
+          sat26_radio_field("sat26_vigilancia_anopheles_ident_larvas", "G3e. ¿Cómo se identifican las larvas de <em>Anopheles</em> para la vigilancia rutinaria?", sat26_ident_larva_choices),
+          conditionalPanel(condition = "input.sat26_vigilancia_anopheles_ident_larvas == 'otro'", sat26_textarea_field("sat26_vigilancia_anopheles_ident_larvas_otro", "G3e.1 Si ha seleccionado “Otro”, describa brevemente el método de identificación usado para larvas de <em>Anopheles</em>:")),
+          h4("G4. Uso de datos entomológicos"),
+          sat26_radio_field("sat26_vigilancia_uso_datos", "G4a. ¿Se utilizan los datos entomológicos para orientar las decisiones de control vectorial?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_checkbox_html("sat26_vigilancia_decisiones", "G4b. ¿Qué decisiones de control vectorial se informan mediante datos entomológicos?", sat26_surveillance_decisions),
+          conditionalPanel(condition = "input.sat26_vigilancia_decisiones && input.sat26_vigilancia_decisiones.indexOf('otro') >= 0", sat26_textarea_field("sat26_vigilancia_decisiones_otro", "G4b.1 Si ha seleccionado “Otro”, describa brevemente qué decisiones de control vectorial se informan mediante datos entomológicos:")),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_g2_back", "Volver a Parte G", class = "btn-secondary"),
+            actionButton("sat26_part_g2_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_g")) {
+        sat26_indicator_choices <- c("1+ (una vez al año o más)" = "1_mas", "1- (menos de una vez al año)" = "1_menos", "0 (no se monitorea)" = "0", "Desconozco" = "desconozco")
+        sat26_sites_choices <- c("0" = "0", "1-4" = "1_4", "5-9" = "5_9", "10+" = "10_mas", "Desconozco" = "desconozco")
+        sat26_ident_adult_choices <- c("Morfológicamente con microscopio" = "morfologia", "Molecular (PCR)" = "pcr", "No se identifican" = "no_identifican", "Otro" = "otro", "Desconozco" = "desconozco")
+        sat26_ident_larva_choices <- c("Como adultos con microscopio" = "adultos_microscopio", "Como larvas con microscopio" = "larvas_microscopio", "Molecular (PCR)" = "pcr", "No se identifican" = "no_identifican", "Otro" = "otro", "Desconozco" = "desconozco")
+        sat26_checkbox_html <- function(id, label, choices) {
+          div(class = "sat26-form-field", checkboxGroupInput(id, HTML(label), choiceNames = lapply(names(choices), HTML), choiceValues = unname(choices), selected = character(0)))
+        }
+        sat26_indicator_fields <- function(prefix, label_prefix) {
+          tagList(lapply(seq_along(sat26_surveillance_indicators), function(index) {
+            indicator_id <- names(sat26_surveillance_indicators)[[index]]
+            sat26_radio_field(paste0(prefix, indicator_id), paste0(label_prefix, index, ". ", sat26_surveillance_indicators[[indicator_id]]), sat26_indicator_choices)
+          }))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte G: Actividades de Vigilancia Vectorial"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p(HTML("Esta primera pantalla documenta indicadores de vigilancia para vectores <em>Aedes</em> y el manejo rutinario de la vigilancia de <em>Aedes</em>. La siguiente pantalla continuará con <em>Anopheles</em> y uso de datos entomológicos."))
+          ),
+          h4(HTML("G1. Indicadores de vigilancia vectorial")),
+          p(class = "sat26-section-note", HTML("G1a. En cualquier región del país, ¿con qué frecuencia se midieron los siguientes indicadores de vigilancia para vectores <em>Aedes</em> entre 2022 y 2024?")),
+          sat26_indicator_fields("sat26_vigilancia_aedes_ind_", "G1a."),
+          p(class = "sat26-section-note", HTML("G1b. En cualquier región del país, ¿con qué frecuencia se midieron los siguientes indicadores de vigilancia para vectores <em>Anopheles</em> entre 2022 y 2024?")),
+          sat26_indicator_fields("sat26_vigilancia_anopheles_ind_", "G1b."),
+          h4(HTML("G2. Manejo de vigilancia rutinaria de <em>Aedes</em>")),
+          sat26_radio_field("sat26_vigilancia_aedes_sitios", "G2a. Respecto a la rutina de vigilancia, ¿cuántos sitios fueron monitoreados? Un sitio de vigilancia equivale a toda una aldea o área, que puede contener múltiples estaciones de muestreo o trampas.", sat26_sites_choices),
+          sat26_radio_field("sat26_vigilancia_aedes_conoce_trampas", "G2b. ¿Conoce qué trampas se usan para recolectar mosquitos <em>Aedes</em> adultos?", sat26_si_no_desconozco_choices),
+          sat26_checkbox_html("sat26_vigilancia_aedes_trampas", "G2c. ¿Qué trampas utiliza para recolectar mosquitos <em>Aedes</em> adultos?", sat26_surveillance_aedes_traps),
+          conditionalPanel(condition = "input.sat26_vigilancia_aedes_trampas && input.sat26_vigilancia_aedes_trampas.indexOf('otro') >= 0", sat26_textarea_field("sat26_vigilancia_aedes_trampa_otro", "G2c.1 Si ha seleccionado “Otro”, describa brevemente cómo es la trampa usada para recolectar mosquitos <em>Aedes</em> adultos:")),
+          sat26_radio_field("sat26_vigilancia_aedes_ident_adultos", "G2d. ¿Cómo se identifican los mosquitos <em>Aedes</em> adultos para la vigilancia rutinaria?", sat26_ident_adult_choices),
+          conditionalPanel(condition = "input.sat26_vigilancia_aedes_ident_adultos == 'otro'", sat26_textarea_field("sat26_vigilancia_aedes_ident_adultos_otro", "G2d.1 Si ha seleccionado “Otro”, describa brevemente el método de identificación usado para mosquitos <em>Aedes</em> adultos:")),
+          sat26_radio_field("sat26_vigilancia_aedes_ident_larvas", "G2e. ¿Cómo se identifican las larvas de <em>Aedes</em> para la vigilancia rutinaria?", sat26_ident_larva_choices),
+          conditionalPanel(condition = "input.sat26_vigilancia_aedes_ident_larvas == 'otro'", sat26_textarea_field("sat26_vigilancia_aedes_ident_larvas_otro", "G2e.1 Si ha seleccionado “Otro”, describa brevemente el método de identificación usado para larvas de mosquitos <em>Aedes</em>:")),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_g_back", "Volver a Parte F", class = "btn-secondary"),
+            actionButton("sat26_part_g_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_f")) {
+        sat26_freq_choices <- c("Rutinaria" = "rutinaria", "Estacional" = "estacional", "Solo durante brotes" = "brotes", "Nunca" = "nunca", "Desconozco" = "desconozco")
+        sat26_quality_choices <- c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")
+        sat26_activity_checkbox <- function(id, label, choices) {
+          div(class = "sat26-form-field", checkboxGroupInput(id, HTML(label), choiceNames = lapply(names(choices), HTML), choiceValues = unname(choices), selected = character(0)))
+        }
+        sat26_activity_frequency_fields <- function(prefix, label_prefix, activities) {
+          tagList(lapply(seq_along(activities), function(index) {
+            activity_id <- names(activities)[[index]]
+            sat26_radio_field(paste0(prefix, activity_id), paste0(label_prefix, index, ". ", activities[[activity_id]]), sat26_freq_choices)
+          }))
+        }
+        sat26_quality_fields <- function(prefix, activities) {
+          tagList(lapply(seq_along(activities), function(index) {
+            activity_id <- names(activities)[[index]]
+            sat26_radio_field(paste0(prefix, activity_id), paste0("F5a.", index, ". ", activities[[activity_id]]), sat26_quality_choices)
+          }))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte F: Actividades de Control de Vectores para mosquitos"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p(HTML("Esta sección documenta las actividades de control vectorial implementadas para vectores <em>Aedes</em> y <em>Anopheles</em>, su frecuencia y los métodos de garantía de calidad utilizados."))
+          ),
+          h4(HTML("F1. Control de vectores <em>Aedes</em>")),
+          sat26_radio_field("sat26_control_aedes_conocimiento", "F1a. ¿Tiene conocimiento de las actividades implementadas en 2025 respecto al control de vectores <em>Aedes</em>?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_activity_checkbox(
+            "sat26_control_aedes_actividades",
+            "F1b. Para el control de vectores <em>Aedes</em>, ¿cuáles de las siguientes actividades se implementaron en 2025?",
+            c(sat26_control_aedes_activities, "Desconozco" = "desconozco")
+          ),
+          p(class = "sat26-section-note", HTML("F1c. Para el control de vectores <em>Aedes</em>, ¿qué tan frecuentemente se implementaron estas actividades en 2025?")),
+          sat26_activity_frequency_fields("sat26_control_aedes_frecuencia_", "F1c.", sat26_control_aedes_activities),
+          h4(HTML("F2. Otras actividades de control para <em>Aedes</em>")),
+          sat26_radio_field("sat26_control_aedes_otras_implemento", "F2a. ¿Implementó alguna otra actividad de control vectorial para <em>Aedes</em> durante 2022-2024?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_activity_checkbox(
+            "sat26_control_aedes_otras",
+            "F2b. ¿Qué otras actividades de control de <em>Aedes</em> se utilizaron en 2025? Marque todas las que apliquen.",
+            c("Casas a prueba de mosquitos" = "casas_prueba", "Control biológico larval (peces o copépodos)" = "control_biologico", "Redes para hamacas" = "redes_hamacas", "Técnica de insecto estéril" = "insecto_esteril", "Otro" = "otro", "Desconozco" = "desconozco")
+          ),
+          conditionalPanel(condition = "input.sat26_control_aedes_otras && input.sat26_control_aedes_otras.indexOf('otro') >= 0", sat26_textarea_field("sat26_control_aedes_otras_descripcion", "F2b.1 Si seleccionó “Otro”, describa brevemente qué otras actividades se realizaron para el control de <em>Aedes</em>:")),
+          h4(HTML("F3. Control de vectores <em>Anopheles</em>")),
+          sat26_radio_field("sat26_control_anopheles_conocimiento", "F3a. ¿Tiene conocimiento de las actividades implementadas en 2025 respecto al control de vectores <em>Anopheles</em>?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_activity_checkbox(
+            "sat26_control_anopheles_actividades",
+            "F3b. Para el control de vectores <em>Anopheles</em>, ¿cuáles de las siguientes actividades se implementaron en 2025?",
+            c(sat26_control_anopheles_activities, "Desconozco" = "desconozco")
+          ),
+          p(class = "sat26-section-note", HTML("F3c. Para el control de vectores <em>Anopheles</em>, ¿qué tan frecuentemente se implementaron estas actividades en 2025?")),
+          sat26_activity_frequency_fields("sat26_control_anopheles_frecuencia_", "F3c.", sat26_control_anopheles_activities),
+          h4(HTML("F4. Otras actividades de control para <em>Anopheles</em>")),
+          sat26_radio_field("sat26_control_anopheles_otras_implemento", "F4a. ¿Implementó alguna otra actividad de control vectorial para <em>Anopheles</em> durante 2022-2024?", c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")),
+          sat26_activity_checkbox(
+            "sat26_control_anopheles_otras",
+            "F4b. ¿Qué otras actividades de control para <em>Anopheles</em> se han utilizado en 2025? Marque todas las que correspondan.",
+            c("Rociado en exteriores" = "rociado_exteriores", "Casas a prueba de mosquitos" = "casas_prueba", "Rociado de barrera" = "rociado_barrera", "Control biológico larval (peces o copépodos)" = "control_biologico", "Redes para hamacas" = "redes_hamacas", "Otro" = "otro", "Desconozco" = "desconozco")
+          ),
+          conditionalPanel(condition = "input.sat26_control_anopheles_otras && input.sat26_control_anopheles_otras.indexOf('otro') >= 0", sat26_textarea_field("sat26_control_anopheles_otras_descripcion", "F4b.1 Si seleccionó “Otro”, describa brevemente qué otras actividades se realizaron para el control de <em>Anopheles</em>:")),
+          h4("F5. Garantía de calidad en intervenciones de control vectorial"),
+          p(class = "sat26-section-note", "F5a. ¿Existe un método o sistema para evaluar las siguientes actividades?"),
+          sat26_quality_fields("sat26_control_calidad_", sat26_control_quality_activities),
+          h4("F5b. Métodos de evaluación"),
+          sat26_activity_checkbox("sat26_control_irs_metodos", "F5b.1 Con respecto al rociado residual en interiores (IRS), ¿qué métodos se utilizan para medir la eficacia residual del insecticida?", c("Tasa de mortalidad de mosquitos adultos" = "mortalidad_adultos", "Densidad de mosquitos" = "densidad", "Índice de mosquitos inmaduros" = "indice_inmaduros", "Pruebas de contacto en superficie" = "contacto_superficie", "Análisis de la alteración de la pared rociada" = "pared_rociada", "Otro" = "otro", "Desconozco" = "desconozco")),
+          conditionalPanel(condition = "input.sat26_control_irs_metodos && input.sat26_control_irs_metodos.indexOf('otro') >= 0", sat26_textarea_field("sat26_control_irs_otro", "F5b.1.1 Si seleccionó “Otro”, coloque los nombres de otros métodos para medir la eficacia residual del IRS:")),
+          sat26_activity_checkbox("sat26_control_larvicidas_metodos", "F5b.2 Con respecto a los larvicidas, ¿qué métodos se utilizan para monitorear el impacto de su aplicación?", c("Evaluación de hábitats tratados con insecticida (presencia o abundancia de larvas)" = "habitats_tratados", "Inspecciones aleatorias de hábitats larvarios tratados" = "inspecciones", "Densidad de mosquitos adultos" = "densidad_adultos", "Otro" = "otro", "Desconozco" = "desconozco")),
+          conditionalPanel(condition = "input.sat26_control_larvicidas_metodos && input.sat26_control_larvicidas_metodos.indexOf('otro') >= 0", sat26_textarea_field("sat26_control_larvicidas_otro", "F5b.2.1 Si seleccionó “Otro”, coloque los nombres de otros métodos para medir el impacto de la aplicación de larvicidas:")),
+          sat26_activity_checkbox("sat26_control_irs_aedes_metodos", "F5b.3 En el caso de IRS-<em>Aedes</em>, ¿qué métodos se utilizan para medir la eficacia residual del insecticida?", c("Bioensayos de pared" = "bioensayos_pared", "Otro" = "otro", "Desconozco" = "desconozco")),
+          conditionalPanel(condition = "input.sat26_control_irs_aedes_metodos && input.sat26_control_irs_aedes_metodos.indexOf('otro') >= 0", sat26_textarea_field("sat26_control_irs_aedes_otro", "F5b.3.1 Si seleccionó “Otro”, coloque los nombres de otros métodos para medir la eficacia residual del insecticida contra IRS-<em>Aedes</em>:")),
+          sat26_activity_checkbox("sat26_control_nebulizacion_metodos", "F5b.4 En cuanto a la nebulización espacial, ¿qué métodos se utilizan para medir la eficacia de la intervención?", c("Evaluación de protocolos de nebulización" = "protocolos", "Evaluación de residuos" = "residuos", "Número de mosquitos adultos" = "adultos", "Otro" = "otro", "Desconozco" = "desconozco")),
+          conditionalPanel(condition = "input.sat26_control_nebulizacion_metodos && input.sat26_control_nebulizacion_metodos.indexOf('otro') >= 0", sat26_textarea_field("sat26_control_nebulizacion_otro", "F5b.4.1 Si seleccionó “Otro”, coloque los nombres de otros métodos para medir la eficacia de la nebulización espacial:")),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_f_back", "Volver a Parte E", class = "btn-secondary"),
+            actionButton("sat26_part_f_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_e2")) {
+        sat26_priority_choices <- c("Alta" = "alta", "Media" = "media", "Baja" = "baja", "Desconozco" = "desconozco")
+        sat26_trained_choices_national <- c("Desconozco" = "desconozco", "0" = "0", "1-5" = "1_5", "6-10" = "6_10", "10+" = "10_mas")
+        sat26_trained_choices_subnational <- c("Desconozco" = "desconozco", "0" = "0", "1-10" = "1_10", "10+" = "10_mas")
+        sat26_formador_choices <- c("0" = "0", "1-5" = "1_5", "5+" = "5_mas", "Desconozco" = "desconozco")
+        sat26_hr_skill_fields <- function(prefix, label_prefix, choices) {
+          tagList(lapply(seq_along(sat26_hr_skill_suffixes), function(index) {
+            skill_id <- names(sat26_hr_skill_suffixes)[[index]]
+            sat26_radio_field(
+              paste0(prefix, skill_id),
+              paste0(label_prefix, index, ". ", sat26_hr_skill_suffixes[[skill_id]]),
+              choices
+            )
+          }))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte E: Recursos Humanos (cont.)"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta continuación documenta necesidades de capacitación, formatos preferidos de aprendizaje, experiencias previas y potenciales instructores dentro del programa.")
+          ),
+          h4("E7. Acceso a capacitación"),
+          sat26_radio_field(
+            "sat26_rrhh_necesidad_capacitacion",
+            "E7. ¿Quién tiene mayor necesidad de acceso a la capacitación: el personal nacional o subnacional?",
+            c("Nacional" = "nacional", "Subnacional" = "subnacional", "Ambos" = "ambos", "Desconozco" = "desconozco")
+          ),
+          h4("E8. Priorización de la capacitación"),
+          p(class = "sat26-section-note", "E8a. ¿Qué nivel de prioridad tienen las siguientes habilidades para la formación del personal en apoyo a la vigilancia vectorial?"),
+          sat26_hr_skill_fields("sat26_rrhh_prioridad_", "E8a.", sat26_priority_choices),
+          sat26_textarea_field(
+            "sat26_rrhh_otras_areas",
+            "E8b. ¿Hay otras áreas donde se requiera desarrollo de capacidades para apoyar las operaciones de vigilancia vectorial? Si la respuesta es sí, descríbalas:"
+          ),
+          h4("E9-E10. Personal capacitado en entomología en salud pública"),
+          sat26_radio_field(
+            "sat26_rrhh_capacitados_nacional",
+            "E9. Indique el número de miembros del personal nacional que recibieron capacitación en entomología en salud pública durante 2022-2024.",
+            sat26_trained_choices_national
+          ),
+          sat26_radio_field(
+            "sat26_rrhh_capacitados_subnacional",
+            "E10. Indique el número de miembros del personal subnacional que recibieron capacitación en entomología en salud pública durante 2022-2024.",
+            sat26_trained_choices_subnational
+          ),
+          h4("E11-E13. Formato de los cursos de capacitación"),
+          sat26_radio_field(
+            "sat26_rrhh_modalidad_preferida",
+            "E11. ¿Cuál es su modalidad de aprendizaje preferida?",
+            c("Presencial / capacitación práctica" = "presencial_practica", "Presencial / curso corto basado en conferencias" = "presencial_conferencias", "Online / capacitación impartida mediante plataforma en línea" = "online", "Desconozco" = "desconozco")
+          ),
+          sat26_radio_field(
+            "sat26_rrhh_online_implementacion",
+            "E12. En caso de utilizar aprendizaje en línea, ¿cómo preferiría que se implementen los cursos?",
+            c("Curso intensivo, durante periodo de tiempo corto (5 días o menos en una sola semana)" = "intensivo_corto", "Curso intensivo, durante periodo de tiempo largo (1 día por semana, durante 5 semanas)" = "intensivo_largo", "Desconozco" = "desconozco")
+          ),
+          sat26_radio_field(
+            "sat26_rrhh_online_modalidad",
+            "E13. ¿Qué modalidad de capacitación en línea le sería más útil para su aprendizaje?",
+            c("Reuniones en línea interactivas en vivo" = "reuniones_vivo", "Videos pregrabados" = "videos_pregrabados", "Basada en conferencias" = "conferencias", "Basada en actividades" = "actividades", "Desconozco" = "desconozco")
+          ),
+          h4("E14-E15. Acceso y experiencia previa"),
+          sat26_radio_field(
+            "sat26_rrhh_acceso_computadora",
+            "E14. ¿Tiene acceso a una computadora con conectividad a internet suficiente para completar la capacitación en línea?",
+            c("Sí" = "si", "No" = "no", "Tengo acceso a una computadora, pero tendría poca conectividad" = "computadora_poca_conectividad", "Desconozco" = "desconozco")
+          ),
+          sat26_radio_field(
+            "sat26_rrhh_cursos_previos",
+            "E15. ¿Ha participado en cursos de capacitación previamente, ya sea por su cuenta o con su personal?",
+            c("Sí" = "si", "No" = "no", "No lo recuerdo" = "no_recuerdo", "Desconozco" = "desconozco")
+          ),
+          sat26_textarea_field(
+            "sat26_rrhh_cursos_previos_bien",
+            "E15a. Mencione qué ha funcionado bien en cursos de capacitación previos en los que usted o su personal hayan participado:"
+          ),
+          sat26_textarea_field(
+            "sat26_rrhh_cursos_previos_mal",
+            "E15b. Mencione qué NO ha funcionado bien en cursos de capacitación previos en los que usted o su personal hayan participado:"
+          ),
+          h4("E16. Potenciales instructores"),
+          sat26_radio_field(
+            "sat26_rrhh_personal_cargo",
+            "E16. ¿Tiene personal a su cargo?",
+            c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")
+          ),
+          p(class = "sat26-section-note", "E16a. Potenciales instructores: ¿Cuenta con personal que se sienta con la confianza para capacitar a otros participantes en las siguientes habilidades?"),
+          sat26_hr_skill_fields("sat26_rrhh_formadores_", "E16a.", sat26_formador_choices),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_e2_back", "Volver a Parte E", class = "btn-secondary"),
+            actionButton("sat26_part_e2_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_e")) {
+        sat26_hr_knowledge_choices <- c(
+          "Desconozco existencia" = "desconozco_existencia",
+          "No existe" = "no_existe",
+          "Desconozco números" = "desconozco_numeros",
+          "Conozco números" = "conozco_numeros"
+        )
+        sat26_hr_sufficiency_choices <- c(
+          "Suficiente" = "suficiente",
+          "Menor a lo suficiente" = "menor_suficiente",
+          "Gravemente limitante" = "gravemente_limitante",
+          "Desconozco" = "desconozco"
+        )
+        sat26_hr_gap_choices <- c(
+          "Desconozco" = "desconozco",
+          "Tenemos suficientes" = "suficientes",
+          "No hay" = "no_hay",
+          "Necesitamos más" = "necesitamos_mas"
+        )
+        sat26_hr_job_fields <- function(prefix, label_prefix, choices) {
+          tagList(lapply(seq_along(sat26_hr_job_suffixes), function(index) {
+            job_id <- names(sat26_hr_job_suffixes)[[index]]
+            sat26_radio_field(
+              paste0(prefix, job_id),
+              paste0(label_prefix, index, ". ", sat26_hr_job_suffixes[[job_id]]),
+              choices
+            )
+          }))
+        }
+        sat26_hr_count_fields <- function(prefix, label_prefix) {
+          tagList(lapply(seq_along(sat26_hr_job_suffixes), function(index) {
+            job_id <- names(sat26_hr_job_suffixes)[[index]]
+            sat26_text_field(
+              paste0(prefix, job_id),
+              paste0(label_prefix, index, ". ", sat26_hr_job_suffixes[[job_id]], ":")
+            )
+          }))
+        }
+
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte E: Recursos Humanos"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta primera parte de Recursos Humanos documenta la existencia de un plan de personal, la disponibilidad de puestos clave a nivel nacional y subnacional, brechas de personal y sistemas de capacitación utilizados.")
+          ),
+          h4("E1. Plan de recursos humanos"),
+          sat26_radio_field(
+            "sat26_rrhh_plan",
+            "E1. ¿Existe un plan de recursos humanos adecuado para el programa de control de enfermedades transmitidas por vectores? Un plan adecuado debería incluir los puestos del personal involucrado en el programa y explicar las funciones de cada uno.",
+            c("Sí" = "si", "En desarrollo" = "en_desarrollo", "No" = "no", "Desconozco" = "desconozco")
+          ),
+          sat26_text_field("sat26_rrhh_organigrama", "E1.1 Si respondió “sí”, coloque el enlace o referencia al organigrama:"),
+          h4("E2. Puestos a nivel nacional"),
+          p(class = "sat26-section-note", "E2a. Respecto a los siguientes puestos de trabajo, indique de cuáles conoce la cantidad de miembros activos a nivel nacional."),
+          sat26_hr_job_fields("sat26_rrhh_nacional_conoce_", "E2a.", sat26_hr_knowledge_choices),
+          h4("E2b. Cantidad de personas a nivel nacional"),
+          sat26_hr_count_fields("sat26_rrhh_nacional_cantidad_", "E2b."),
+          h4("E3. Puestos a nivel subnacional"),
+          p(class = "sat26-section-note", "E3a. Respecto a los siguientes puestos de trabajo, indique de cuáles conoce la cantidad de miembros activos a nivel subnacional."),
+          sat26_hr_job_fields("sat26_rrhh_subnacional_conoce_", "E3a.", sat26_hr_knowledge_choices),
+          h4("E3b. Cantidad de personas a nivel subnacional"),
+          sat26_hr_count_fields("sat26_rrhh_subnacional_cantidad_", "E3b."),
+          h4("E4. Suficiencia de personal"),
+          p(class = "sat26-section-note", "Suficiente = existen recursos para llevar a cabo las actividades; Menor a lo suficiente = existen recursos para algunas, pero no todas las actividades; Gravemente limitante = no es posible implementar la mayoría de actividades; Desconozco = no conozco la cantidad de personal disponible."),
+          sat26_radio_field("sat26_rrhh_suficiencia_vigilancia", "E4a. En cuanto a la vigilancia vectorial, ¿hay suficiente personal para realizar las actividades planificadas?", sat26_hr_sufficiency_choices),
+          sat26_radio_field("sat26_rrhh_suficiencia_control", "E4b. En cuanto al control vectorial, ¿hay suficiente personal para realizar las actividades planificadas?", sat26_hr_sufficiency_choices),
+          h4("E5. Brechas de personal"),
+          p(class = "sat26-section-note", "E5a. Indique si se necesita más personal en los siguientes puestos para llevar a cabo las actividades de vigilancia y control vectorial. Incluye puestos vacantes y puestos nuevos que deben crearse."),
+          sat26_hr_job_fields("sat26_rrhh_brecha_", "E5a.", sat26_hr_gap_choices),
+          h4("E5b. Trabajadores adicionales necesarios"),
+          sat26_hr_count_fields("sat26_rrhh_adicional_", "E5b."),
+          h4("E6. Sistemas de capacitación y fortalecimiento de capacidades"),
+          div(
+            class = "sat26-form-field",
+            checkboxGroupInput(
+              "sat26_rrhh_capacitacion_sistemas",
+              "E6. Marque los sistemas de capacitación y fortalecimiento de capacidades que se utilizan para entrenar al personal en su programa.",
+              choices = c(
+                "Capacitación en el puesto de trabajo" = "puesto_trabajo",
+                "Cursos nacionales" = "cursos_nacionales",
+                "Cursos regionales/internacionales" = "cursos_regionales_internacionales",
+                "Formación de posgrado" = "posgrado",
+                "Programa de formación de formadores" = "formadores",
+                "Capacitación brindada por países vecinos (cooperación Sur-Sur)" = "sur_sur",
+                "Otro" = "otro",
+                "Desconozco" = "desconozco"
+              ),
+              selected = character(0)
+            )
+          ),
+          conditionalPanel(
+            condition = "input.sat26_rrhh_capacitacion_sistemas && input.sat26_rrhh_capacitacion_sistemas.indexOf('otro') >= 0",
+            sat26_text_field("sat26_rrhh_capacitacion_otro", "E6.1 Si ha seleccionado “Otro”, describa brevemente los sistemas que se usan para entrenar al personal:")
+          ),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_e_back", "Volver a Parte D", class = "btn-secondary"),
+            actionButton("sat26_part_e_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_d")) {
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte D: Finanzas"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta sección documenta si la vigilancia y el control vectorial de mosquitos están incluidos en el presupuesto nacional, y si las finanzas limitan las operaciones.")
+          ),
+          sat26_radio_field(
+            "sat26_presupuesto_vigilancia",
+            "D1. ¿Está incluida la vigilancia vectorial de mosquitos en el presupuesto anual del ministerio de salud nacional? Esto incluye, por ejemplo, el número de casos reportados de mosquitos.",
+            c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")
+          ),
+          sat26_radio_field(
+            "sat26_presupuesto_control",
+            "D2. ¿Está incluido el control vectorial de mosquitos en el presupuesto anual del ministerio de salud nacional? Esto se refiere a intervenciones físicas, químicas o biológicas en los mosquitos. Por ejemplo, la aplicación de insecticidas.",
+            c("Sí" = "si", "No" = "no", "Desconozco" = "desconozco")
+          ),
+          h4("D3. Finanzas para vigilancia vectorial"),
+          p(class = "sat26-section-note", "Con respecto a la vigilancia o monitoreo vectorial, indique si las finanzas limitan las operaciones. Suficiente = existen recursos para llevar a cabo las actividades; Insuficiente = no es posible implementar la mayoría de las actividades; Desconozco = desconozco los recursos que se necesitan para llevar a cabo las actividades."),
+          sat26_radio_field(
+            "sat26_fin_vigilancia_presupuesto",
+            "D3a. Presupuesto disponible: ¿se ha asignado un presupuesto adecuado para la vigilancia vectorial?",
+            sat26_fin_suficiencia_choices
+          ),
+          sat26_radio_field(
+            "sat26_fin_vigilancia_gestion",
+            "D3b. Gestión financiera: ¿el sistema de gestión financiera facilita el acceso oportuno a los fondos?",
+            sat26_fin_suficiencia_choices
+          ),
+          h4("D4. Finanzas para control vectorial"),
+          p(class = "sat26-section-note", "Con respecto al control o intervención vectorial, indique si las finanzas limitan las operaciones. Suficiente = existen recursos para llevar a cabo las actividades; Insuficiente = no es posible implementar la mayoría de las actividades; Desconozco = desconozco los recursos que se necesitan para llevar a cabo las actividades."),
+          sat26_radio_field(
+            "sat26_fin_control_presupuesto",
+            "D4a. Presupuesto disponible: ¿se ha calculado adecuadamente un presupuesto dentro del plan para control vectorial?",
+            sat26_fin_suficiencia_choices
+          ),
+          sat26_radio_field(
+            "sat26_fin_control_gestion",
+            "D4b. Gestión financiera: ¿el sistema de gestión financiera apoya las actividades de vigilancia vectorial?",
+            sat26_fin_suficiencia_choices
+          ),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_d_back", "Volver a Parte C", class = "btn-secondary"),
+            actionButton("sat26_part_d_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_c")) {
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte C: Gobernanza"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro sat26-left-intro sat26-compact-intro",
+            p("Esta sección documenta planes estratégicos, normativas, estructuras de coordinación y priorización nacional para la vigilancia y control de vectores transmitidos por mosquitos.")
+          ),
+          h4("C1. Planes estratégicos nacionales"),
+          p(class = "sat26-section-note", HTML("C1a. ¿Cuenta su país con un plan estratégico de respuesta para enfermedades transmitidas por mosquitos que incorpore el control de <em>Aedes</em> y/o <em>Anopheles</em>?")),
+          conditionalPanel(
+            condition = "!input.sat26_plan_integrado_estado",
+            sat26_radio_field("sat26_plan_aedes_estado", "C1a.1 Solo para <em>Aedes</em>", sat26_plan_estado_choices),
+            sat26_radio_field("sat26_plan_anopheles_estado", "C1a.2 Solo para <em>Anopheles</em>", sat26_plan_estado_choices)
+          ),
+          conditionalPanel(
+            condition = "!input.sat26_plan_aedes_estado && !input.sat26_plan_anopheles_estado",
+            sat26_radio_field("sat26_plan_integrado_estado", "C1a.3 <em>Aedes</em> y <em>Anopheles</em> integrado", sat26_plan_estado_choices)
+          ),
+          div(
+            class = "sat26-form-reset-row",
+            actionButton("sat26_plan_estado_reset", "reset", class = "btn-default")
+          ),
+          p(class = "sat26-section-note", "C1b. De las siguientes características de planes estratégicos, seleccione aquellas de las cuales conoce el dato correspondiente:"),
+          conditionalPanel(
+            condition = "!input.sat26_plan_integrado_caracteristicas || input.sat26_plan_integrado_caracteristicas.length == 0",
+            div(class = "sat26-form-field", checkboxGroupInput("sat26_plan_aedes_caracteristicas", HTML("C1b.1 Solo para <em>Aedes</em>"), choices = c("Nombre" = "nombre", "Último año de actualización" = "anio_actualizacion", "Documento del plan" = "documento", "Desconozco" = "desconozco"), selected = character(0))),
+            div(class = "sat26-form-field", checkboxGroupInput("sat26_plan_anopheles_caracteristicas", HTML("C1b.2 Solo para <em>Anopheles</em>"), choices = c("Nombre" = "nombre", "Último año de actualización" = "anio_actualizacion", "Documento del plan" = "documento", "Desconozco" = "desconozco"), selected = character(0)))
+          ),
+          conditionalPanel(
+            condition = "(!input.sat26_plan_aedes_caracteristicas || input.sat26_plan_aedes_caracteristicas.length == 0) && (!input.sat26_plan_anopheles_caracteristicas || input.sat26_plan_anopheles_caracteristicas.length == 0)",
+            div(class = "sat26-form-field", checkboxGroupInput("sat26_plan_integrado_caracteristicas", HTML("C1b.3 <em>Aedes</em> y <em>Anopheles</em> integrado"), choices = c("Nombre" = "nombre", "Último año de actualización" = "anio_actualizacion", "Documento del plan" = "documento", "Desconozco" = "desconozco"), selected = character(0)))
+          ),
+          div(
+            class = "sat26-form-reset-row",
+            actionButton("sat26_plan_caracteristicas_reset", "reset", class = "btn-default")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_aedes_caracteristicas && input.sat26_plan_aedes_caracteristicas.indexOf('nombre') >= 0",
+            sat26_text_field("sat26_plan_aedes_nombre", "C1b.1.1 Ingrese el nombre del plan estratégico para <em>Aedes</em>:")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_aedes_caracteristicas && input.sat26_plan_aedes_caracteristicas.indexOf('anio_actualizacion') >= 0",
+            sat26_text_field("sat26_plan_aedes_anio", "C1b.1.2 Ingrese el año en que el plan de <em>Aedes</em> se actualizó por última vez:", "YYYY")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_aedes_caracteristicas && input.sat26_plan_aedes_caracteristicas.indexOf('documento') >= 0",
+            sat26_text_field("sat26_plan_aedes_documento", "C1b.1.3 Coloque el enlace o referencia al documento del plan de <em>Aedes</em>:")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_anopheles_caracteristicas && input.sat26_plan_anopheles_caracteristicas.indexOf('nombre') >= 0",
+            sat26_text_field("sat26_plan_anopheles_nombre", "C1b.2.1 Ingrese el nombre del plan estratégico para <em>Anopheles</em>:")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_anopheles_caracteristicas && input.sat26_plan_anopheles_caracteristicas.indexOf('anio_actualizacion') >= 0",
+            sat26_text_field("sat26_plan_anopheles_anio", "C1b.2.2 Ingrese el año en que el plan de <em>Anopheles</em> se actualizó por última vez:", "YYYY")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_anopheles_caracteristicas && input.sat26_plan_anopheles_caracteristicas.indexOf('documento') >= 0",
+            sat26_text_field("sat26_plan_anopheles_documento", "C1b.2.3 Coloque el enlace o referencia al documento del plan de <em>Anopheles</em>:")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_integrado_caracteristicas && input.sat26_plan_integrado_caracteristicas.indexOf('nombre') >= 0",
+            sat26_text_field("sat26_plan_integrado_nombre", "C1b.3.1 Ingrese el nombre del plan estratégico integrado de <em>Aedes</em> y <em>Anopheles</em>:")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_integrado_caracteristicas && input.sat26_plan_integrado_caracteristicas.indexOf('anio_actualizacion') >= 0",
+            sat26_text_field("sat26_plan_integrado_anio", "C1b.3.2 Ingrese el año en que el plan integrado se actualizó por última vez:", "YYYY")
+          ),
+          conditionalPanel(
+            condition = "input.sat26_plan_integrado_caracteristicas && input.sat26_plan_integrado_caracteristicas.indexOf('documento') >= 0",
+            sat26_text_field("sat26_plan_integrado_documento", "C1b.3.3 Coloque el enlace o referencia al documento del plan integrado de <em>Aedes</em> y <em>Anopheles</em>:")
+          ),
+          sat26_radio_field("sat26_reglamentos_nacionales", "C1e. ¿Existen Reglamentos, Normativas o Guías Nacionales que rigen el plan estratégico de vigilancia y control vectorial de mosquitos?", sat26_si_no_desconozco_choices),
+          sat26_text_field("sat26_reglamentos_documento", "C1e.1 Si corresponde, coloque el enlace o referencia al reglamento, normativa, guía nacional y/o plan estratégico:"),
+          h4("C2. Priorización y asistencia técnica"),
+          sat26_radio_field("sat26_prioridad_planes", "C2a. A nivel personal, ¿qué nivel de prioridad considera que tiene la formulación/revisión de los planes estratégicos nacionales?", c("Alta" = "alta", "Media" = "media", "Baja" = "baja", "Desconozco" = "desconozco")),
+          sat26_radio_field("sat26_asistencia_planes", "C2b. ¿Necesita asistencia técnica para formular/actualizar los planes estratégicos nacionales?", c("Sí" = "si", "No" = "no", "No me encargo de ello" = "no_encargo", "Desconozco" = "desconozco")),
+          h4("C3. Normas para implementación de planes"),
+          sat26_radio_field("sat26_normas_vigilancia_aedes", "C3a.1 Vigilancia del vector <em>Aedes</em>", sat26_normas_choices),
+          sat26_radio_field("sat26_normas_control_aedes", "C3a.2 Control del vector <em>Aedes</em>", sat26_normas_choices),
+          sat26_radio_field("sat26_normas_vigilancia_anopheles", "C3a.3 Vigilancia del vector <em>Anopheles</em>", sat26_normas_choices),
+          sat26_radio_field("sat26_normas_control_anopheles", "C3a.4 Control del vector <em>Anopheles</em>", sat26_normas_choices),
+          h4("C4. Elementos incluidos en los planes"),
+          p(class = "sat26-section-note", "Seleccione si los elementos están incluidos en el plan general, en un plan separado, no están incluidos o si lo desconoce."),
+          sat26_radio_field("sat26_plan_elemento_control_aedes", "C4a.1 Control del vector <em>Aedes</em>", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_vigilancia_aedes", "C4a.2 Vigilancia del vector <em>Aedes</em>", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_control_anopheles", "C4a.3 Control del vector <em>Anopheles</em>", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_vigilancia_anopheles", "C4a.4 Vigilancia del vector <em>Anopheles</em>", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_equipos_insecticidas", "C4a.5 Gestión de equipos e insecticidas para control de mosquitos", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_resistencia", "C4a.6 Gestión de resistencia a insecticidas", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_recursos_humanos", "C4a.7 Recursos humanos (personal necesario)", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_formacion", "C4a.8 Plan de formación para personal de entomología en salud pública", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_participacion", "C4a.9 Participación comunitaria y comunicación de riesgos", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_sistemas_info", "C4a.10 Sistemas de información para datos de vigilancia y control vectorial", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_investigacion", "C4a.11 Investigación operativa (estadística, etc.)", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_vulnerables", "C4a.12 Grupos vulnerables por género, discapacidad y otros factores", sat26_plan_elementos_choices),
+          sat26_radio_field("sat26_plan_elemento_monitoreo", "C4a.13 Plan de monitoreo y evaluación del progreso del programa de vigilancia y control vectorial", sat26_plan_elementos_choices),
+          h4("C5-C7. Gestión, legislación y coordinación"),
+          sat26_radio_field("sat26_descentralizacion", "C5. ¿La gestión del control de enfermedades transmitidas por vectores está centralizada o descentralizada?", c("Centralizada" = "centralizada", "En proceso de descentralización" = "en_proceso", "Descentralizada" = "descentralizada", "El país es demasiado pequeño para descentralizarse" = "pais_pequeno", "Desconozco qué es el concepto de descentralización" = "desconozco_concepto", "Entiendo el concepto, pero no sabría decir si la gestión está descentralizada" = "desconozco_estado", "Desconozco" = "desconozco")),
+          sat26_radio_field("sat26_legislacion_24_48", "C6. ¿Existe legislación vigente que clasifique la malaria y el dengue como enfermedades de notificación obligatoria en un plazo de 24-48 horas?", sat26_si_no_desconozco_choices),
+          sat26_radio_field("sat26_grupo_interministerial", "C7a. ¿Existe un grupo de trabajo interministerial funcional que colabore con el control vectorial?", c("Sí" = "si", "En desarrollo" = "en_desarrollo", "No" = "no", "No entiendo qué es un grupo de trabajo interministerial" = "no_entiendo", "Entiendo qué es, pero desconozco si existe uno" = "desconozco_existencia", "Desconozco" = "desconozco")),
+          conditionalPanel(condition = "input.sat26_grupo_interministerial == 'si'", sat26_textarea_field("sat26_grupo_interministerial_reunion", "C7a.1 Si respondió “sí”, ¿tuvieron una reunión en 2025? Describa:")),
+          h4("C8. Priorización en la agenda nacional"),
+          sat26_radio_field("sat26_prioridad_agenda", "C8a. ¿Cómo percibe que la vigilancia y control de vectores transmitidos por mosquitos es priorizada actualmente dentro de la agenda nacional de salud pública?", c("Muy alta prioridad" = "muy_alta", "Alta prioridad" = "alta", "Prioridad media" = "media", "Baja prioridad" = "baja", "No se considera una prioridad actualmente" = "no_prioridad", "Desconozco" = "desconozco")),
+          div(class = "sat26-form-field", checkboxGroupInput("sat26_factores_prioridad", "C8b. ¿Qué factores considera que han influido en ese nivel de prioridad? Marque todas las que apliquen.", choices = c("Casos reportados / carga de enfermedad" = "casos", "Opinión o presión de autoridades superiores" = "autoridades", "Requisitos de cooperación internacional" = "cooperacion", "Costos operativos de la vigilancia y control" = "costos", "Interés de la comunidad" = "comunidad", "Experiencias pasadas" = "experiencias", "Otros" = "otros", "Desconozco" = "desconozco"), selected = character(0))),
+          conditionalPanel(condition = "input.sat26_factores_prioridad && input.sat26_factores_prioridad.indexOf('otros') >= 0", sat26_textarea_field("sat26_factores_prioridad_otros", "C8b.1 Si ha seleccionado “Otros”, describa brevemente las razones:")),
+          sat26_radio_field("sat26_frecuencia_interministerial", "C8c. ¿Con qué frecuencia se discuten temas estratégicos de vigilancia y control de vectores en espacios interministeriales?", c("Frecuentemente (3+ veces al año)" = "frecuentemente", "Ocasionalmente (1-3 veces al año)" = "ocasionalmente", "Solo en contextos de emergencia o brotes" = "emergencias", "Casi nunca" = "casi_nunca", "No existe un espacio interministerial activo" = "no_espacio", "No participo en los espacios interministeriales" = "no_participo", "Desconozco" = "desconozco")),
+          div(class = "sat26-form-field", checkboxGroupInput("sat26_motivadores_institucion", "C8d. ¿Qué motivaría a su institución a darle un mayor enfoque al programa de vigilancia y control de vectores? Marque las 3 más relevantes.", choices = c("Disponibilidad de recursos sostenibles" = "recursos", "Presión o apoyo político de alto nivel" = "apoyo_politico", "Éxitos visibles en territorio" = "exitos", "Mejora de los indicadores de salud" = "indicadores", "Mayor participación comunitaria" = "participacion", "Alianzas con cooperación o sector privado" = "alianzas", "No sabría decir qué puede motivar a mi institución" = "no_sabria", "Otras" = "otras", "Desconozco" = "desconozco"), selected = character(0))),
+          conditionalPanel(condition = "input.sat26_motivadores_institucion && input.sat26_motivadores_institucion.indexOf('otras') >= 0", sat26_textarea_field("sat26_motivadores_institucion_otros", "C8d.1 Si ha seleccionado “Otras”, describa brevemente qué puede motivar a su institución:")),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_c_back", "Volver a Parte B", class = "btn-secondary"),
+            actionButton("sat26_part_c_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_b")) {
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte B: Informe de situacion de enfermedades"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-form-field",
+            radioButtons(
+              "sat26_dengue_2025",
+              "B1. ¿Cuál de los siguientes escenarios describe mejor la transmisión del dengue en 2025? Incluya casos confirmados o sospechosos.",
+              choices = c(
+                "No hubo casos (confirmados o sospechosos) de dengue." = "sin_casos",
+                "Zona no endémica con un brote (>1 caso donde normalmente no hay casos)." = "zona_no_endemica_brote",
+                "Transmision endemica (transmision continua durante todo el anio; puede o no superar el umbral de brote)." = "transmision_endemica",
+                "Desconozco acerca de la transmisión de dengue." = "desconozco",
+                "No estoy autorizado/a a compartir esta información" = "no_autorizado"
+              ),
+              selected = character(0)
+            )
+          ),
+          div(
+            class = "sat26-form-field",
+            checkboxGroupInput(
+              "sat26_arbovirus_2025",
+              "B2. ¿Se confirmó la transmisión de algunos de los siguientes arbovirus en 2025? Seleccione los virus de los cuales hay pacientes confirmados.",
+              choices = c(
+                "Zika" = "zika",
+                "Chikungunya" = "chikungunya",
+                "Ninguno" = "ninguno",
+                "Desconozco" = "desconozco"
+              ),
+              selected = character(0)
+            )
+          ),
+          div(
+            class = "sat26-form-field",
+            radioButtons(
+              "sat26_filariasis_activa_2025",
+              "B3a. ¿Hubo transmisión activa de filariasis linfática (elefantiasis) en 2025?",
+              choices = c(
+                "Sí" = "si",
+                "No" = "no",
+                "Desconozco" = "desconozco"
+              ),
+              selected = character(0)
+            )
+          ),
+          conditionalPanel(
+            condition = "input.sat26_filariasis_activa_2025 == 'si'",
+            div(
+              class = "sat26-form-field sat26-conditional-field",
+              radioButtons(
+                "sat26_filariasis_escenario_2025",
+                "B3b. Si la respuesta es sí, ¿cuál de los siguientes escenarios describe mejor la transmisión de filariasis linfática?",
+                choices = c(
+                  "Más de 1 caso en donde normalmente no hay casos (zona no endémica con un brote)." = "zona_no_endemica_brote",
+                  "Transmisión continua durante todo el año; puede o no superar el umbral de brote (transmisión endémica)." = "transmision_endemica"
+                ),
+                selected = character(0)
+              )
+            )
+          ),
+          div(
+            class = "sat26-form-field",
+            radioButtons(
+              "sat26_malaria_2025",
+              "B4. ¿Cuál de las siguientes opciones describe mejor la transmisión de malaria en 2025, a lo largo del continuo de transmisión?",
+              choices = c(
+                "Manteniendo cero (sin transmisión)." = "manteniendo_cero",
+                "Muy baja (menos de 100-250 casos por cada 1000 habitantes en riesgo, API)." = "muy_baja",
+                "Moderada (250-450 casos por cada 1000 API, incidencia anual parasitaria)." = "moderada",
+                "Alta (más de 450 casos por cada 1000 API)." = "alta",
+                "Desconozco la situación de transmisión de malaria." = "desconozco"
+              ),
+              selected = character(0)
+            )
+          ),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_part_b_back", "Volver a Parte A", class = "btn-secondary"),
+            actionButton("sat26_part_b_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      if (identical(module, "part_a")) {
+        return(div(
+          class = "sat26-questionnaire-panel",
+          div(
+            class = "sat26-section-logo-header",
+            img(src = "entonet-header.jpeg", class = "sat26-section-logo-entonet", alt = "EntoNet"),
+            img(src = "COMISCA.png", class = "sat26-section-logo-comisca", alt = "COMISCA y SICA")
+          ),
+          h3("Parte A: Información del encuestado"),
+          div(class = "sat26-draft-code", paste("Codigo unico de encuesta:", sat26_generate_code())),
+          div(
+            class = "sat26-questionnaire-intro",
+            h4("Evaluación Regional de Necesidades y Fortalecimiento de Capacidades para la Vigilancia y el Control de Vectores en Centroamérica y República Dominicana."),
+            p("Esta encuesta fue diseñada para evaluar la capacidad de los programas nacionales de control de enfermedades transmitidas por vectores para facilitar respuestas eficaces ante brotes de enfermedades transmitidas por mosquitos y para mejorar la vigilancia y el control vectorial de forma rutinaria. La encuesta fue desarrollada por el consorcio Pacific Mosquito Surveillance Strengthening for Impact (PacMOSSI), gestionado por la Universidad James Cook y la Comunidad del Pacífico (SPC), y adaptada localmente por la Universidad del Valle de Guatemala y la red de \"Vigilancia y Control de Vectores de Centroamérica y la República Dominicana\" (EntoNet)."),
+            p("El objetivo de esta evaluación de necesidades es doble: 1) comprender la capacidad actual de los países para prevenir y controlar las enfermedades transmitidas por mosquitos, y 2) ayudar a los países a hacer seguimiento de su progreso en relación con indicadores estandarizados. Agradecemos que se tome el tiempo para completar esta encuesta, la cual no debería tomar más de 60 minutos."),
+            p("Después de completar la encuesta, le enviaremos un informe resumen con sus respuestas. También podríamos publicar en una revista científica un resumen regional de los resultados de la encuesta en Centroamérica y República Dominicana. Sin embargo, respetamos la confidencialidad de los datos por país y no se divulgarán sin autorización.")
+          ),
+          div(
+            class = "sat26-form-field",
+            textInput("sat26_nombre", "A1. Ingrese su nombre:")
+          ),
+          div(
+            class = "sat26-form-field",
+            textInput("sat26_cargo", "A2. Ingrese el cargo que ocupa en su unidad:")
+          ),
+          div(
+            class = "sat26-form-field",
+            textInput("sat26_organizacion", "A3. Ingrese el nombre de la organización a la que pertenece:")
+          ),
+          div(
+            class = "sat26-form-field sat26-inline-reset",
+            selectInput(
+              "sat26_country",
+              "A4. Elija el país al que pertenece:",
+              choices = c(
+                "Seleccione" = "",
+                "Guatemala" = "Guatemala",
+                "El Salvador" = "El Salvador",
+                "Honduras" = "Honduras",
+                "Nicaragua" = "Nicaragua",
+                "Costa Rica" = "Costa Rica",
+                "Panamá" = "Panamá",
+                "Belice" = "Belice",
+                "República Dominicana" = "República Dominicana"
+              ),
+              selected = ""
+            ),
+            actionButton("sat26_country_reset", "reset", class = "btn-default")
+          ),
+          div(
+            class = "sat26-form-field",
+            p(class = "sat26-optional-note", "Opcional"),
+            div(
+              class = "sat26-inline-reset",
+              radioButtons(
+                "sat26_contact_after",
+                "A5. ¿Está de acuerdo en ser contactado por teléfono o correo electrónico después de completar esta encuesta, en caso de que sea necesario aclarar alguna respuesta?",
+                choices = c("Sí" = "si", "No" = "no"),
+                selected = character(0),
+                inline = TRUE
+              ),
+              actionButton("sat26_contact_reset", "reset", class = "btn-default")
+            )
+          ),
+          div(
+            class = "sat26-form-actions",
+            actionButton("sat26_back_to_consent", "Volver al consentimiento", class = "btn-secondary"),
+            actionButton("sat26_part_a_continue", "Continuar", class = "btn-primary")
+          )
+        ))
+      }
+
+      return(div(
+        class = "sat26-consent-panel",
+        h3("Consentimiento informado"),
+        div(
+          class = "sat26-audio-controls",
+          tags$button(type = "button", class = "btn btn-primary", `data-sat26-audio` = "play", `data-sat26-target` = "sat26_consent_page_text", "Escuchar"),
+          tags$button(type = "button", class = "btn btn-default", `data-sat26-audio` = "pause", `data-sat26-target` = "sat26_consent_page_text", "Pausar"),
+          tags$button(type = "button", class = "btn btn-default", `data-sat26-audio` = "stop", `data-sat26-target` = "sat26_consent_page_text", "Detener")
+        ),
+        div(
+          id = "sat26_consent_page_text",
+          div(class = "sat26-consent-section",
+            h4("Información general"),
+            p("Investigadora principal: Norma Padilla"),
+            p("Este formulario de consentimiento en línea forma parte del proceso de consentimiento informado para una evaluación del programa de vigilancia y control de vectores en Centroamérica y República Dominicana. Le proporcionará información que le ayudará a decidir si desea participar o no en esta evaluación. Su participación es completamente voluntaria. Si decide no participar, no habrá ningún tipo de penalización ni consecuencias en su trabajo."),
+            p("Este proyecto está siendo llevado a cabo por la Universidad del Valle de Guatemala, en colaboración con EntoNet y SE-COMISCA, como un esfuerzo conjunto para evaluar las necesidades específicas de la región y apoyar el fortalecimiento de los programas de vigilancia y control de vectores en Centroamérica y República Dominicana.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Quién realiza esta evaluación y de qué trata?"),
+            p("Usted ha sido invitado/a a participar en una entrevista realizada por la Dra. Norma Padilla, investigadora principal del Centro de Estudios en Salud de la Universidad del Valle de Guatemala. El objetivo de este estudio es desarrollar una comprensión general de las prácticas de vigilancia y control de vectores en su país, e identificar necesidades y brechas para implementar estrategias adaptadas a la región."),
+            p("Específicamente, esta evaluación busca:"),
+            tags$ol(
+              tags$li("Comprender la capacidad actual de los países para prevenir y controlar enfermedades transmitidas por mosquitos."),
+              tags$li("Apoyar a los países en el seguimiento de su progreso frente a indicadores estandarizados.")
+            )
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Qué se me pedirá que haga si decido participar?"),
+            p("Se le pedirá que complete una encuesta enfocada en los programas de enfermedades transmitidas por vectores, incluyendo aspectos como gobernanza, financiamiento, recursos humanos, infraestructura, logística, sistemas de información y cooperación entre países. La encuesta tomará aproximadamente 60 minutos.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Qué pasará con la información proporcionada?"),
+            p("Sus respuestas se conservarán únicamente hasta que se presenten y publiquen los resultados del estudio. La información no será utilizada ni distribuida para otras investigaciones.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿Qué sucede si no quiero participar o si decido retirarme más adelante?"),
+            p("Su participación es voluntaria. Puede decidir no participar o retirarse en cualquier momento. Si no hace clic en el botón de \"enviar\" al finalizar la encuesta, sus respuestas no serán registradas. Se le preguntará si está dispuesto(a) a ser contactado(a) por correo electrónico o teléfono con fines de aclaración, en caso de que alguna de sus respuestas requiera seguimiento. Si desea retirar sus respuestas después de haber enviado la encuesta, comuníquese con la investigadora principal.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("¿A quién puedo contactar si tengo preguntas?"),
+            p("Si tiene preguntas sobre su participación o desea retirar sus respuestas, puede comunicarse con la investigadora principal: Norma Padilla, Investigadora Principal, Centro de Estudios en Salud, Universidad del Valle de Guatemala, Guatemala. Correo electrónico: npadilla@uvg.edu.gt."),
+            p("Este proyecto fue aprobado por el Comité de Ética en Investigación del Centro de Estudios en Salud de la Universidad del Valle de Guatemala. Si desea más información, puede contactar a Estela García al teléfono (502) 2507-1500 ext. 21513. Si desea información respecto al cuestionario o implementación de la evaluación comunicarse con la Dra. Norma Padilla (Whatsapp +502 5204 9300) y/o el investigador encargado de su país.")
+          ),
+          div(class = "sat26-consent-section",
+            h4("Instrucciones finales"),
+            p("Puede imprimir este formulario si desea conservar una copia para sus archivos."),
+            p("Si no desea participar en la evaluación, cierre esta página web."),
+            p("Si desea participar, siga las instrucciones a continuación."),
+            p("Al comenzar esta evaluación, confirmo que tengo 18 años o más y que he leído y comprendido esta información. Acepto participar en la evaluación, sabiendo que puedo retirarme en cualquier momento sin penalización.")
+          )
+        ),
+        div(
+          class = "sat26-consent-check",
+          div(class = "sat26-consent-question", "Pregunta 1. Confirma su consentimiento de participación:"),
+          div(
+            class = "sat26-consent-choice-row",
+            actionButton("sat26_consent_yes", "Sí, acepto participar", class = "sat26-consent-choice sat26-consent-choice-yes"),
+            actionButton("sat26_consent_no", "No, no deseo participar", class = "sat26-consent-choice sat26-consent-choice-no")
+          ),
+          checkboxInput("sat26_contact_ok", "Acepto ser contactado(a) si alguna respuesta requiere aclaración.", value = FALSE)
+        ),
+        div(
+          class = "sat26-form-actions",
+          actionButton("sat26_back_home", "Volver a portada", class = "btn-secondary")
+        )
+      ))
     }
 
     if (identical(area, "data")) {
