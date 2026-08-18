@@ -39,6 +39,19 @@ Esta guía documenta decisiones tomadas durante la construcción local de la enc
   - preserve compatibilidad con respuestas tipo texto, selección única y selección múltiple.
 - Las preguntas tipo matriz deben mapearse a una columna por fila/variable.
 
+## Captura y exportación de selecciones múltiples
+
+- La base conserva la respuesta original de cada `checkboxGroupInput()` como un arreglo JSONB. Ese arreglo es la fuente primaria y permite reconstruir exactamente las opciones elegidas.
+- La exportación para análisis no debe concatenar opciones con `;` en una sola celda.
+- Cada opción debe tener una columna binaria independiente con el sufijo `_sel_<opcion>`:
+  - `1`: la opción fue seleccionada.
+  - `0`: la pregunta está presente en el registro, pero la opción no fue seleccionada.
+  - vacío/`NULL`: el arreglo de la pregunta no existe en el registro, por ejemplo porque la versión era anterior o la sección no fue alcanzada.
+- Los campos de texto asociados a “Otro” se mantienen en una columna separada; nunca se reemplazan por la columna binaria de selección.
+- El diccionario debe registrar tanto el valor técnico almacenado (`option_value`) como la etiqueta visible (`option_label`).
+- La vista analítica de Supabase debe ser reproducible desde el diccionario y no debe modificar el JSONB original.
+- En vistas ubicadas en el esquema `public`, utilizar `security_invoker = true` y conceder acceso únicamente a los roles que realmente exportan los datos.
+
 ## Opciones de respuesta
 
 - De aquí en adelante, las preguntas de selección deben incluir una opción “Desconozco” cuando aplique.
@@ -72,3 +85,10 @@ Esta guía documenta decisiones tomadas durante la construcción local de la enc
 - El código permite retomar un borrador.
 - El prototipo usa guardado local del navegador; la versión productiva debe migrar a Supabase.
 - El guardado debe incluir la sección activa para llevar a la persona al punto pendiente.
+
+## Archivos analíticos SAT26
+
+- `encuesta_sat26_columnas_captura.csv`: diccionario final de columnas escalares y binarias.
+- `encuesta_sat26_opciones_multiples.csv`: correspondencia auditable entre pregunta múltiple, opción almacenada y columna `1/0`.
+- `encuesta_sat26_captura_template.csv`: encabezado plano esperado para exportaciones.
+- `public.encuesta_sat26_export`: vista de Supabase con una fila por `codigo_unico`.

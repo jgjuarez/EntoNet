@@ -18,3 +18,12 @@
 - Se agregó una vista pública de la encuesta para abrir SAT26 sin login con `?survey=sat26` o `?sat26=1`.
 - Se agregó una secuencia central en Supabase para generar códigos únicos SAT26 sin depender del navegador.
 - La recuperación por código ahora consulta primero Supabase y luego el borrador local del navegador.
+
+## 2026-08-18
+
+- Se reemplazó la exportación de selecciones múltiples separadas por `;` por columnas binarias `1/0`.
+- Se mantuvieron intactos los arreglos JSONB originales en `public.encuesta_sat26_intake` como fuente primaria.
+- Se agregó `public.encuesta_sat26_export`, una vista plana con una fila por `codigo_unico` y acceso restringido a `service_role`.
+- Se amplió el diccionario con `option_value` y `option_label`.
+- Se agregó `encuesta_sat26_opciones_multiples.csv` para documentar las 227 columnas binarias derivadas.
+- El campo técnico heredado `plan_caracteristicas`, que ya no tiene control visible, se excluyó de la exportación plana; permanecen las variables vigentes para planes de *Aedes*, *Anopheles* e integrado.

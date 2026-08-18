@@ -36,6 +36,9 @@ Este flujo renderiza una página pública dedicada de SAT26, sin sidebar ni boto
 - `codigo_unico` es el identificador lógico único.
 - Al finalizar, la app hace `upsert` por `codigo_unico`.
 - La opción de continuar con un código existente busca primero en Supabase y luego en el borrador local del navegador.
+- El JSONB de `public.encuesta_sat26_intake` conserva las selecciones múltiples originales como arreglos.
+- La vista `public.encuesta_sat26_export` presenta cada opción múltiple en una columna binaria (`1` seleccionada, `0` no seleccionada y `NULL` si la pregunta no existe en el registro).
+- La vista analítica usa `security_invoker = true` y solo concede lectura a `service_role`; no está expuesta a participantes anónimos.
 - Documentar el mapeo de preguntas, validaciones y lógica de salto.
 
 ## Archivos previstos
@@ -47,6 +50,9 @@ Este flujo renderiza una página pública dedicada de SAT26, sin sidebar ni boto
 - `04_estilos.md`
 - `05_cambios.md`
 - `06_guia_elaboracion_cuestionarios.md`
+- `encuesta_sat26_columnas_captura.csv`
+- `encuesta_sat26_opciones_multiples.csv`
+- `encuesta_sat26_captura_template.csv`
 
 ## Estado inicial
 
