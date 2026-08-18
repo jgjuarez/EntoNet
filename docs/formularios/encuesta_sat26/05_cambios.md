@@ -30,3 +30,4 @@
 - Se agregó la opción administrativa `Solicitudes > Encuestas`, visible únicamente para la cuenta personal administradora autorizada.
 - La tarjeta `Encuesta de satisfacción 2026` permite descargar en CSV la vista protegida `public.encuesta_sat26_export` directamente desde Supabase.
 - La descarga mantiene una fila por `codigo_unico`, las 530 columnas analíticas y las selecciones múltiples separadas en columnas binarias `1/0`.
+- El inicio de sesión consulta `usuario_perfil` mediante la API privada de Supabase y deja la conexión PostgreSQL directa únicamente como respaldo, evitando bloquear el acceso cuando las credenciales del pooler están desactualizadas.

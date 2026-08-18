@@ -25,6 +25,10 @@ Orden sugerido de ejecucion:
 19. `026_formulario_7_sinergista_resultado_diagnostico.sql`
 20. Scripts futuros de catalogos, permisos y vistas.
 
+Permisos privados recientes:
+
+- `038_usuario_perfil_service_api_access.sql`: permite que el servidor consulte perfiles autorizados mediante `service_role`, sin conceder acceso a `anon` ni `authenticated`.
+
 Para ejecutar todos los scripts desde la raiz del repositorio:
 
 ```bash

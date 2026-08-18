@@ -1165,7 +1165,7 @@ supabase_auth_send_password_recovery <- function(email) {
   body
 }
 
-fetch_usuario_perfil <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
+fetch_usuario_perfil_from_database <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
   connection <- connect_to_supabase()
   on.exit(dbDisconnect(connection), add = TRUE)
 
@@ -1199,6 +1199,109 @@ fetch_usuario_perfil <- function(login_identifier = NULL, auth_user_id = NULL, a
      limit 1"
   )
   dbGetQuery(connection, query, params = as.list(candidates))
+}
+
+fetch_usuario_perfil_from_api <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
+  project_url <- storage_project_url()
+  if (!nzchar(project_url)) {
+    stop("SUPABASE_URL no está configurado.")
+  }
+  if (!nzchar(supabase_service_role_key)) {
+    stop("SUPABASE_SERVICE_ROLE_KEY no está configurado en el servidor.")
+  }
+
+  profile_fields <- "usuario,user_id,email,id_institucion,rol,pais,nombre,activo"
+  perform_profile_request <- function(request) {
+    response <- request |>
+      req_headers(
+        Authorization = paste("Bearer", supabase_service_role_key),
+        apikey = supabase_service_role_key,
+        Accept = "application/json"
+      ) |>
+      req_error(is_error = function(response) FALSE) |>
+      req_perform()
+
+    if (resp_status(response) >= 300) {
+      stop(sprintf("La API privada de perfiles respondió HTTP %s.", resp_status(response)))
+    }
+
+    profile <- resp_body_json(response, check_type = FALSE, simplifyVector = TRUE)
+    if (length(profile) == 0) return(data.frame())
+    if (!is.data.frame(profile)) profile <- as.data.frame(profile, stringsAsFactors = FALSE)
+    profile
+  }
+
+  if (!is.null(auth_user_id) && grepl("^[0-9a-fA-F-]{36}$", auth_user_id)) {
+    profile <- perform_profile_request(
+      request(paste0(project_url, "/rest/v1/usuario_perfil")) |>
+        req_url_query(
+          select = profile_fields,
+          user_id = paste0("eq.", auth_user_id),
+          limit = 1
+        )
+    )
+    if (nrow(profile) > 0) return(profile[1, , drop = FALSE])
+  }
+
+  candidates <- unique(tolower(trimws(c(
+    login_identifier,
+    auth_email,
+    sub("@.*$", "", value_or_default(auth_email, ""))
+  ))))
+  candidates <- candidates[
+    nzchar(candidates) & grepl("^[a-z0-9._+@-]+$", candidates)
+  ]
+  if (length(candidates) == 0) return(data.frame())
+
+  profile_filter <- paste0(
+    "(",
+    paste(
+      c(
+        paste0("usuario.ilike.", candidates),
+        paste0("email.ilike.", candidates)
+      ),
+      collapse = ","
+    ),
+    ")"
+  )
+  profile <- perform_profile_request(
+    request(paste0(project_url, "/rest/v1/usuario_perfil")) |>
+      req_url_query(
+        select = profile_fields,
+        `or` = profile_filter,
+        limit = 1
+      )
+  )
+  if (nrow(profile) == 0) return(profile)
+
+  normalized_usernames <- tolower(trimws(profile$usuario))
+  normalized_emails <- tolower(trimws(profile$email))
+  exact_match <- normalized_usernames %in% candidates | normalized_emails %in% candidates
+  if (!any(exact_match)) return(data.frame())
+  profile[exact_match, , drop = FALSE][1, , drop = FALSE]
+}
+
+fetch_usuario_perfil <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
+  api_error <- NULL
+  profile <- tryCatch(
+    fetch_usuario_perfil_from_api(login_identifier, auth_user_id, auth_email),
+    error = function(error) {
+      api_error <<- conditionMessage(error)
+      NULL
+    }
+  )
+  if (!is.null(profile)) return(profile)
+
+  tryCatch(
+    fetch_usuario_perfil_from_database(login_identifier, auth_user_id, auth_email),
+    error = function(error) {
+      stop(paste(
+        "No se pudo consultar el perfil autorizado.",
+        paste0("API: ", value_or_default(api_error, "no disponible")),
+        "La conexión PostgreSQL de respaldo tampoco está disponible."
+      ))
+    }
+  )
 }
 
 login_identifier_to_email <- function(login_identifier) {
