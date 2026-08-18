@@ -6394,6 +6394,7 @@ server <- function(input, output, session) {
       active_request_subdivision(NULL)
       active_request_data_subdivision(NULL)
       active_dataset(NULL)
+      sat26_unique_code("")
       sat26_resume_status(NULL)
       login_error(NULL)
       session$sendCustomMessage("sat26ScrollTop", list())
@@ -12035,6 +12036,9 @@ server <- function(input, output, session) {
   })
 
   sat26_generate_server_code <- function() {
+    if (!nzchar(db_url)) {
+      stop("SUPABASE_DB_URL no esta disponible para la app en este servidor.", call. = FALSE)
+    }
     connection <- connect_to_supabase()
     on.exit(DBI::dbDisconnect(connection), add = TRUE)
     result <- dbGetQuery(
@@ -12055,12 +12059,28 @@ server <- function(input, output, session) {
       code <- tryCatch(
         sat26_generate_server_code(),
         error = function(error) {
-          warning(conditionMessage(error), call. = FALSE)
-          sprintf("26SATLOCAL%02d", as.integer(sat26_next_code_number()))
+          error_detail <- conditionMessage(error)
+          message <- if (!nzchar(db_url)) {
+            "SUPABASE_DB_URL no esta disponible en el servidor. Agregue la variable de entorno y reinicie/redeploy la app."
+          } else {
+            paste(
+              "SUPABASE_DB_URL si esta definido, pero la conexion a Supabase fallo.",
+              "Revise host, usuario, password, puerto y que use el Session pooler."
+            )
+          }
+          warning(paste(message, error_detail), call. = FALSE)
+          sat26_resume_status(message)
+          showNotification(message, type = "error", duration = NULL)
+          if (tolower(Sys.getenv("ENTONET_ALLOW_LOCAL_SAT26_CODE", unset = "")) %in% c("1", "true", "yes", "si", "sí")) {
+            return(sprintf("26SATLOCAL%02d", as.integer(sat26_next_code_number())))
+          }
+          ""
         }
       )
-      sat26_unique_code(code)
-      sat26_next_code_number(as.integer(sat26_next_code_number()) + 1L)
+      if (nzchar(code)) {
+        sat26_unique_code(code)
+        sat26_next_code_number(as.integer(sat26_next_code_number()) + 1L)
+      }
     }
   }
 
@@ -12801,7 +12821,9 @@ server <- function(input, output, session) {
     removeModal()
     active_area("sat26")
     sat26_ensure_unique_code()
-    active_module("part_a")
+    if (nzchar(sat26_unique_code())) {
+      active_module("part_a")
+    }
   })
 
   observeEvent(input$sat26_consent_no_popup, {
@@ -12810,7 +12832,9 @@ server <- function(input, output, session) {
 
   observeEvent(input$sat26_consent_yes, {
     sat26_ensure_unique_code()
-    active_module("part_a")
+    if (nzchar(sat26_unique_code())) {
+      active_module("part_a")
+    }
   })
 
   observeEvent(input$sat26_consent_no, {
@@ -14184,9 +14208,8 @@ server <- function(input, output, session) {
           ),
           div(
             class = "sat26-form-actions",
-            actionButton("sat26_open_consent", "Ver consentimiento", class = "btn-primary"),
-            actionButton("sat26_open_sections", "Ver secciones", class = "btn-secondary"),
-            actionButton("sat26_start", "Iniciar encuesta", class = "btn-primary")
+            actionButton("sat26_open_consent", "Iniciar nueva encuesta", class = "btn-primary"),
+            actionButton("sat26_open_sections", "Ver secciones", class = "btn-secondary")
           ),
           div(
             class = "sat26-resume-panel",
