@@ -12036,19 +12036,106 @@ server <- function(input, output, session) {
   })
 
   sat26_generate_server_code <- function() {
-    if (!nzchar(db_url)) {
-      stop("SUPABASE_DB_URL no esta disponible para la app en este servidor.", call. = FALSE)
+    database_error <- NULL
+    if (nzchar(db_url)) {
+      database_code <- tryCatch({
+        connection <- connect_to_supabase()
+        on.exit(DBI::dbDisconnect(connection), add = TRUE)
+        result <- dbGetQuery(
+          connection,
+          "select nextval('public.encuesta_sat26_codigo_seq')::integer as next_code"
+        )
+        if (!nrow(result) || is.na(result$next_code[[1]])) {
+          stop("Supabase no devolvió un número de secuencia SAT26.")
+        }
+        sprintf("26SAT%02d", as.integer(result$next_code[[1]]))
+      }, error = function(error) {
+        database_error <<- conditionMessage(error)
+        ""
+      })
+      if (nzchar(database_code)) {
+        return(database_code)
+      }
     }
-    connection <- connect_to_supabase()
-    on.exit(DBI::dbDisconnect(connection), add = TRUE)
-    result <- dbGetQuery(
-      connection,
-      "select nextval('public.encuesta_sat26_codigo_seq')::integer as next_code"
-    )
-    if (!nrow(result) || is.na(result$next_code[[1]])) {
-      stop("Supabase no devolvió un número de secuencia SAT26.")
+
+    if (!nzchar(storage_project_url()) || !nzchar(supabase_service_role_key)) {
+      stop(paste(
+        "No se pudo conectar por PostgreSQL y la ruta API de respaldo no está configurada.",
+        value_or_default(database_error, "SUPABASE_DB_URL no está disponible.")
+      ), call. = FALSE)
     }
-    sprintf("26SAT%02d", as.integer(result$next_code[[1]]))
+
+    response <- request(paste0(storage_project_url(), "/rest/v1/rpc/next_encuesta_sat26_code")) |>
+      req_headers(
+        Authorization = paste("Bearer", supabase_service_role_key),
+        apikey = supabase_service_role_key,
+        `Content-Type` = "application/json"
+      ) |>
+      req_body_raw("{}", type = "application/json") |>
+      req_error(is_error = function(response) FALSE) |>
+      req_perform()
+    if (resp_status(response) >= 300) {
+      stop(sprintf(
+        "La API de Supabase rechazó la generación del código (HTTP %s).",
+        resp_status(response)
+      ), call. = FALSE)
+    }
+    code <- resp_body_json(response, check_type = FALSE)
+    code <- if (is.character(code)) code[[1]] else value_or_default(code, "")
+    if (!grepl("^26SAT[0-9]+$", code)) {
+      stop("La API de Supabase no devolvió un código SAT26 válido.", call. = FALSE)
+    }
+    code
+  }
+
+  sat26_api_request <- function(path) {
+    if (!nzchar(storage_project_url()) || !nzchar(supabase_service_role_key)) {
+      stop("La API privada de Supabase no está configurada en el servidor.", call. = FALSE)
+    }
+    request(paste0(storage_project_url(), "/rest/v1/", path)) |>
+      req_headers(
+        Authorization = paste("Bearer", supabase_service_role_key),
+        apikey = supabase_service_role_key,
+        `Content-Type` = "application/json"
+      )
+  }
+
+  sat26_fetch_from_api <- function(code) {
+    response <- sat26_api_request("encuesta_sat26_intake") |>
+      req_url_query(
+        select = "payload",
+        codigo_unico = paste0("eq.", code),
+        order = "submitted_at.desc",
+        limit = "1"
+      ) |>
+      req_error(is_error = function(response) FALSE) |>
+      req_perform()
+    if (resp_status(response) >= 300) {
+      stop(sprintf("La API de Supabase rechazó la consulta (HTTP %s).", resp_status(response)), call. = FALSE)
+    }
+    records <- resp_body_json(response, check_type = FALSE, simplifyVector = FALSE)
+    if (!length(records)) return(NULL)
+    records[[1]]$payload
+  }
+
+  sat26_submit_via_api <- function(payload) {
+    response <- sat26_api_request("encuesta_sat26_intake") |>
+      req_url_query(on_conflict = "codigo_unico") |>
+      req_headers(Prefer = "resolution=merge-duplicates,return=representation") |>
+      req_body_json(list(
+        codigo_unico = payload$code,
+        encuesta_codigo = "SAT26",
+        encuesta_nombre = "Encuesta SAT26",
+        formulario_version = "web-2026-08-18",
+        payload = payload,
+        actualizado_en = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS%z")
+      ), auto_unbox = TRUE, null = "null", na = "null") |>
+      req_error(is_error = function(response) FALSE) |>
+      req_perform()
+    if (resp_status(response) >= 300) {
+      stop(sprintf("La API de Supabase rechazó el guardado (HTTP %s).", resp_status(response)), call. = FALSE)
+    }
+    resp_body_json(response, check_type = FALSE, simplifyVector = FALSE)
   }
 
   sat26_ensure_unique_code <- function(reset = FALSE) {
@@ -12060,14 +12147,10 @@ server <- function(input, output, session) {
         sat26_generate_server_code(),
         error = function(error) {
           error_detail <- conditionMessage(error)
-          message <- if (!nzchar(db_url)) {
-            "SUPABASE_DB_URL no esta disponible en el servidor. Agregue la variable de entorno y reinicie/redeploy la app."
-          } else {
-            paste(
-              "SUPABASE_DB_URL si esta definido, pero la conexion a Supabase fallo.",
-              "Revise host, usuario, password, puerto y que use el Session pooler."
-            )
-          }
+          message <- paste(
+            "No se pudo generar el código único desde Supabase.",
+            "Revise SUPABASE_DB_URL o la configuración privada de la API del servidor."
+          )
           warning(paste(message, error_detail), call. = FALSE)
           sat26_resume_status(message)
           showNotification(message, type = "error", duration = NULL)
@@ -12091,21 +12174,26 @@ server <- function(input, output, session) {
       return()
     }
     remote_payload <- tryCatch({
-      connection <- connect_to_supabase()
-      on.exit(DBI::dbDisconnect(connection), add = TRUE)
-      record <- dbGetQuery(
-        connection,
-        "
-          select payload::text as payload
-          from public.encuesta_sat26_intake
-          where codigo_unico = $1
-          order by submitted_at desc
-          limit 1
-        ",
-        params = list(resume_code)
-      )
-      if (!nrow(record)) return(NULL)
-      payload <- jsonlite::fromJSON(record$payload[[1]], simplifyVector = FALSE)
+      payload <- tryCatch({
+        connection <- connect_to_supabase()
+        on.exit(DBI::dbDisconnect(connection), add = TRUE)
+        record <- dbGetQuery(
+          connection,
+          "
+            select payload::text as payload
+            from public.encuesta_sat26_intake
+            where codigo_unico = $1
+            order by submitted_at desc
+            limit 1
+          ",
+          params = list(resume_code)
+        )
+        if (!nrow(record)) return(NULL)
+        jsonlite::fromJSON(record$payload[[1]], simplifyVector = FALSE)
+      }, error = function(error) {
+        sat26_fetch_from_api(resume_code)
+      })
+      if (is.null(payload)) return(NULL)
       payload$code <- resume_code
       payload$found <- TRUE
       payload
@@ -12540,38 +12628,42 @@ server <- function(input, output, session) {
       stop("No se encontró el código único de encuesta.")
     }
 
-    payload_json <- jsonlite::toJSON(payload, auto_unbox = TRUE, null = "null", na = "null")
-    connection <- connect_to_supabase()
-    on.exit(DBI::dbDisconnect(connection), add = TRUE)
-    dbGetQuery(
-      connection,
-      "
-        insert into public.encuesta_sat26_intake (
-          codigo_unico,
-          encuesta_codigo,
-          encuesta_nombre,
-          formulario_version,
-          payload,
-          actualizado_en
-        )
-        values (
-          $1,
-          'SAT26',
-          'Encuesta SAT26',
-          'web-local-2026-08-15',
-          $2::jsonb,
-          now()
-        )
-        on conflict (codigo_unico) do update
-        set
-          payload = excluded.payload,
-          submitted_at = now(),
-          formulario_version = excluded.formulario_version,
-          actualizado_en = now()
-        returning intake_id::integer, codigo_unico, submitted_at
-      ",
-      params = list(code, as.character(payload_json))
-    )
+    tryCatch({
+      payload_json <- jsonlite::toJSON(payload, auto_unbox = TRUE, null = "null", na = "null")
+      connection <- connect_to_supabase()
+      on.exit(DBI::dbDisconnect(connection), add = TRUE)
+      dbGetQuery(
+        connection,
+        "
+          insert into public.encuesta_sat26_intake (
+            codigo_unico,
+            encuesta_codigo,
+            encuesta_nombre,
+            formulario_version,
+            payload,
+            actualizado_en
+          )
+          values (
+            $1,
+            'SAT26',
+            'Encuesta SAT26',
+            'web-2026-08-18',
+            $2::jsonb,
+            now()
+          )
+          on conflict (codigo_unico) do update
+          set
+            payload = excluded.payload,
+            submitted_at = now(),
+            formulario_version = excluded.formulario_version,
+            actualizado_en = now()
+          returning intake_id::integer, codigo_unico, submitted_at
+        ",
+        params = list(code, as.character(payload_json))
+      )
+    }, error = function(error) {
+      sat26_submit_via_api(payload)
+    })
   }
 
   observeEvent(input$sat26_generated_code, {
