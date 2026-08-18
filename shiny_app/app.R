@@ -12135,7 +12135,11 @@ server <- function(input, output, session) {
     if (resp_status(response) >= 300) {
       stop(sprintf("La API de Supabase rechazó el guardado (HTTP %s).", resp_status(response)), call. = FALSE)
     }
-    resp_body_json(response, check_type = FALSE, simplifyVector = FALSE)
+    records <- resp_body_json(response, check_type = FALSE, simplifyVector = FALSE)
+    if (!length(records)) {
+      stop("La API de Supabase guardó la encuesta, pero no devolvió la confirmación.", call. = FALSE)
+    }
+    records[[1]]
   }
 
   sat26_ensure_unique_code <- function(reset = FALSE) {
@@ -13092,7 +13096,7 @@ server <- function(input, output, session) {
       })
       showModal(modalDialog(
         title = NULL,
-        easyClose = TRUE,
+        easyClose = FALSE,
         size = "m",
         div(
           class = "sat26-questionnaire-panel",
@@ -13106,7 +13110,7 @@ server <- function(input, output, session) {
           p("Estamos comprometidos con la protección de la información y no proporcionaremos información a nivel de país sin autorización."),
           p(class = "sat26-draft-code", paste("Código único guardado:", saved_record$codigo_unico[[1]]))
         ),
-        footer = modalButton("Cerrar")
+        footer = actionButton("sat26_finish_exit", "Volver al inicio", class = "btn-primary")
       ))
     }, error = function(error) {
       showModal(modalDialog(
@@ -13120,6 +13124,23 @@ server <- function(input, output, session) {
         footer = modalButton("Cerrar")
       ))
     })
+  })
+
+  observeEvent(input$sat26_finish_exit, {
+    removeModal()
+    logged_in(FALSE)
+    public_page("login")
+    user_profile$access_token <- ""
+    user_profile$refresh_token <- ""
+    active_area(NULL)
+    active_module(NULL)
+    active_capture_subdivision(NULL)
+    active_request_subdivision(NULL)
+    active_request_data_subdivision(NULL)
+    active_dataset(NULL)
+    sat26_unique_code("")
+    sat26_resume_status(NULL)
+    submission_status("No se ha enviado ningún registro en esta sesión.")
   })
 
   observeEvent(input$sat26_plan_integrado_estado, {
