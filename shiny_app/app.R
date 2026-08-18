@@ -62,7 +62,18 @@ value_or_default <- function(value, default) {
 }
 
 `%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0 || is.na(x[[1]]) || !nzchar(as.character(x[[1]]))) {
+  if (is.null(x) || length(x) == 0) {
+    return(y)
+  }
+
+  first_value <- x[[1]]
+  if (is.null(first_value) || length(first_value) == 0) {
+    return(y)
+  }
+  if (length(first_value) == 1 && is.atomic(first_value) && is.na(first_value)) {
+    return(y)
+  }
+  if (length(first_value) == 1 && is.character(first_value) && !nzchar(first_value)) {
     return(y)
   }
 
@@ -2884,7 +2895,7 @@ ui <- fluidPage(
         }
       });
 
-      Shiny.addCustomMessageHandler('sat26RequestNextCode', function() {
+      Shiny.addCustomMessageHandler('sat26RequestNextCode', function(message) {
         try {
           var nextNumber = parseInt(window.localStorage.getItem('sat26-next-number') || '1', 10);
           if (!Number.isFinite(nextNumber) || nextNumber < 1) nextNumber = 1;
