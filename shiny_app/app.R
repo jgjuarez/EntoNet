@@ -16222,22 +16222,47 @@ server <- function(input, output, session) {
         return(div(
           class = "module-panel",
           h3("Encuestas"),
-          p("Descargue los resultados disponibles desde Supabase. Cada fila corresponde a un código único de encuesta."),
+          p("Descargue los resultados de las encuestas disponibles de acuerdo con su perfil. Cada fila corresponde a un código único de encuesta."),
           div(
-            class = "capture-subdivision-list",
-            div(
-              class = "capture-subdivision-panel",
-              h4("Encuesta de satisfacción 2026"),
-              p("Archivo analítico CSV con las respuestas y una columna binaria 1/0 para cada opción de selección múltiple."),
-              div(
-                class = "submit-row",
-                downloadButton("download_sat26_survey_csv", "Descargar CSV", class = "btn-primary")
+            class = "selector-box",
+            fluidRow(
+              column(
+                4,
+                selectInput(
+                  "request_download_survey",
+                  "Conjunto de datos",
+                  choices = c("Encuesta de satisfacción 2026" = "sat26")
+                )
+              ),
+              column(
+                4,
+                selectInput(
+                  "request_download_survey_country",
+                  "País",
+                  choices = c("Todos" = "all")
+                )
+              ),
+              column(
+                4,
+                selectInput(
+                  "request_download_survey_institution",
+                  "Institución",
+                  choices = c("Todas" = "all")
+                )
               )
+            ),
+            div(
+              class = "submit-row",
+              downloadButton("download_sat26_survey_csv", "Descargar CSV", class = "btn-primary")
             )
           ),
           div(
             class = "alert alert-info",
-            "La descarga se genera en el momento desde la vista protegida public.encuesta_sat26_export."
+            tags$strong("Perfil activo: "),
+            value_or_default(user_profile$position, "Rol no configurado"),
+            " · ",
+            tags$strong("Alcance: "),
+            "todos los países e instituciones"
           )
         ))
       }
