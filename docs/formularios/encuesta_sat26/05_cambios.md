@@ -27,3 +27,6 @@
 - Se amplió el diccionario con `option_value` y `option_label`.
 - Se agregó `encuesta_sat26_opciones_multiples.csv` para documentar las 227 columnas binarias derivadas.
 - El campo técnico heredado `plan_caracteristicas`, que ya no tiene control visible, se excluyó de la exportación plana; permanecen las variables vigentes para planes de *Aedes*, *Anopheles* e integrado.
+- Se agregó la opción administrativa `Solicitudes > Encuestas`, visible únicamente para la cuenta personal administradora autorizada.
+- La tarjeta `Encuesta de satisfacción 2026` permite descargar en CSV la vista protegida `public.encuesta_sat26_export` directamente desde Supabase.
+- La descarga mantiene una fila por `codigo_unico`, las 530 columnas analíticas y las selecciones múltiples separadas en columnas binarias `1/0`.

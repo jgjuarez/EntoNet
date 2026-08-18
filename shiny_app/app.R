@@ -112,7 +112,7 @@ display_country <- function(country, language) {
 
 storage_project_url <- function() {
   configured_url <- sub("/+$", "", supabase_url)
-  if (nzchar(configured_url) && !grepl("PROJECT_REF", configured_url, fixed = TRUE)) {
+  if (nzchar(configured_url) && !grepl("project_ref", tolower(configured_url), fixed = TRUE)) {
     return(configured_url)
   }
 
@@ -163,6 +163,82 @@ download_storage_object <- function(bucket, object_path, destination_file) {
       )
     )
   }
+}
+
+sat26_export_template <- function() {
+  template_relative_path <- file.path(
+    "docs",
+    "formularios",
+    "encuesta_sat26",
+    "encuesta_sat26_captura_template.csv"
+  )
+  template_candidates <- c(
+    template_relative_path,
+    file.path("..", template_relative_path)
+  )
+  template_path <- template_candidates[file.exists(template_candidates)][1]
+  if (is.na(template_path) || !nzchar(template_path)) {
+    stop("No se encontró la plantilla de columnas para la encuesta SAT26.")
+  }
+  read.csv(
+    template_path,
+    nrows = 0,
+    check.names = FALSE,
+    stringsAsFactors = FALSE,
+    fileEncoding = "UTF-8"
+  )
+}
+
+fetch_sat26_export_from_api <- function(page_size = 1000L) {
+  project_url <- storage_project_url()
+  if (!nzchar(project_url)) {
+    stop("SUPABASE_URL no está configurado y no se pudo derivar desde SUPABASE_DB_URL.")
+  }
+  if (!nzchar(supabase_service_role_key)) {
+    stop("SUPABASE_SERVICE_ROLE_KEY no está configurado en el servidor.")
+  }
+
+  template <- sat26_export_template()
+  expected_columns <- names(template)
+  pages <- list()
+  offset <- 0L
+
+  repeat {
+    response <- request(paste0(project_url, "/rest/v1/encuesta_sat26_export")) |>
+      req_headers(
+        Authorization = paste("Bearer", supabase_service_role_key),
+        apikey = supabase_service_role_key,
+        Accept = "application/json"
+      ) |>
+      req_url_query(
+        select = "*",
+        order = "codigo_unico.asc",
+        offset = offset,
+        limit = as.integer(page_size)
+      ) |>
+      req_retry(max_tries = 3) |>
+      req_error(is_error = function(response) FALSE) |>
+      req_perform()
+
+    if (resp_status(response) >= 300) {
+      stop(sprintf("Supabase no pudo generar la exportación SAT26. HTTP %s.", resp_status(response)))
+    }
+
+    page <- resp_body_json(response, check_type = FALSE, simplifyVector = TRUE)
+    if (length(page) == 0) break
+    if (!is.data.frame(page)) page <- as.data.frame(page, stringsAsFactors = FALSE)
+    pages[[length(pages) + 1L]] <- page
+    if (nrow(page) < page_size) break
+    offset <- offset + as.integer(page_size)
+  }
+
+  if (!length(pages)) return(template)
+  result <- do.call(rbind, pages)
+  missing_columns <- setdiff(expected_columns, names(result))
+  if (length(missing_columns)) {
+    stop(paste("La vista SAT26 no devolvió las columnas esperadas:", paste(missing_columns, collapse = ", ")))
+  }
+  result[, expected_columns, drop = FALSE]
 }
 
 country_choices <- c(
@@ -13470,6 +13546,11 @@ server <- function(input, output, session) {
     select_request_subdivision("reactivos")
   })
 
+  observeEvent(input$show_request_encuestas, {
+    if (!request_is_global_admin()) return()
+    select_request_subdivision("encuestas")
+  })
+
   observeEvent(input$show_request_reactivos_larvicidas, {
     active_request_reactivos_category("larvicidas")
     active_request_reactivos_product(1L)
@@ -14418,6 +14499,9 @@ server <- function(input, output, session) {
             actionButton("show_request_data_insectario", "Insectario", class = request_data_subdivision_class("insectario")),
             actionButton("show_request_data_laboratorio", "Laboratorio", class = request_data_subdivision_class("laboratorio"))
           ),
+          if (request_is_global_admin()) {
+            actionButton("show_request_encuestas", "Encuestas", class = request_subdivision_class("encuestas"))
+          },
           actionButton("show_request_reactivos", "Reactivos", class = request_subdivision_class("reactivos")),
           actionButton("show_request_equipo", "Equipo", class = request_subdivision_class("equipo")),
           actionButton("show_request_apoyo_tecnico", "Apoyo Técnico", class = request_subdivision_class("apoyo_tecnico"))
@@ -15759,6 +15843,7 @@ server <- function(input, output, session) {
       data_subdivision <- active_request_data_subdivision()
       request_labels <- c(
         datos = "Datos",
+        encuestas = "Encuestas",
         reactivos = "Reactivos",
         equipo = "Equipo",
         apoyo_tecnico = "Apoyo Técnico"
@@ -16022,6 +16107,36 @@ server <- function(input, output, session) {
       }
       if (identical(subdivision, "reactivos")) {
         return(render_request_reactivos_panel())
+      }
+      if (identical(subdivision, "encuestas")) {
+        if (!request_is_global_admin()) {
+          return(div(
+            class = "module-panel",
+            h3("Encuestas"),
+            div(class = "alert alert-warning", "Su perfil no tiene permiso para descargar resultados de encuestas.")
+          ))
+        }
+        return(div(
+          class = "module-panel",
+          h3("Encuestas"),
+          p("Descargue los resultados disponibles desde Supabase. Cada fila corresponde a un código único de encuesta."),
+          div(
+            class = "capture-subdivision-list",
+            div(
+              class = "capture-subdivision-panel",
+              h4("Encuesta de satisfacción 2026"),
+              p("Archivo analítico CSV con las respuestas y una columna binaria 1/0 para cada opción de selección múltiple."),
+              div(
+                class = "submit-row",
+                downloadButton("download_sat26_survey_csv", "Descargar CSV", class = "btn-primary")
+              )
+            )
+          ),
+          div(
+            class = "alert alert-info",
+            "La descarga se genera en el momento desde la vista protegida public.encuesta_sat26_export."
+          )
+        ))
       }
       if (identical(subdivision, "datos")) {
         allowed_subdivisions <- request_allowed_data_subdivisions()
@@ -18184,6 +18299,20 @@ server <- function(input, output, session) {
 
       write.csv(data, file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
     }
+  )
+
+  output$download_sat26_survey_csv <- downloadHandler(
+    filename = function() {
+      paste0("encuesta_satisfaccion_2026_", format(Sys.Date(), "%Y%m%d"), ".csv")
+    },
+    content = function(file) {
+      if (!isTRUE(logged_in()) || !request_is_global_admin()) {
+        stop("Su perfil no tiene permiso para descargar resultados de encuestas.")
+      }
+      data <- fetch_sat26_export_from_api()
+      write.csv(data, file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
+    },
+    contentType = "text/csv"
   )
 
   observeEvent(input$submit, {
