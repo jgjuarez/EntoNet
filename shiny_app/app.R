@@ -13836,6 +13836,11 @@ server <- function(input, output, session) {
             "Sinergistas"
           )
         )
+        true_value <- function(values) tolower(trimws(as.character(values))) %in% c("true", "t", "1", "si", "sí", "yes")
+        records$sinergista_tipo <- NA_character_
+        records$sinergista_tipo[true_value(records$sinergista_def)] <- "DEF"
+        records$sinergista_tipo[true_value(records$sinergista_pbo)] <- "PBO"
+        records$sinergista_tipo[true_value(records$sinergista_dm)] <- "DM"
         records$codigo_municipio_mapa <- mapply(
           normalizar_codigo_municipio_mapa,
           query$country,
@@ -13999,6 +14004,17 @@ server <- function(input, output, session) {
               "No aplica" = "not_applicable"
             )
           )
+        ),
+        column(
+          4,
+          conditionalPanel(
+            condition = "input.f7_viz_type == 'Sinergistas'",
+            selectInput(
+              "f7_viz_synergist",
+              "Mecanismo de resistencia",
+              choices = filter_choices(records$sinergista_tipo)
+            )
+          )
         )
       )
     )
@@ -14063,6 +14079,10 @@ server <- function(input, output, session) {
       if (!is.null(selected) && length(selected) && !identical(selected, "all")) {
         records <- records[!is.na(records[[field]]) & records[[field]] == selected, , drop = FALSE]
       }
+    }
+    synergist <- input$f7_viz_synergist
+    if (!is.null(synergist) && length(synergist) && !identical(synergist, "all") && identical(input$f7_viz_type, "Sinergistas")) {
+      records <- records[!is.na(records$sinergista_tipo) & records$sinergista_tipo == synergist, , drop = FALSE]
     }
     diagnostic_result <- input$f7_viz_diagnostic_result
     if (!is.null(diagnostic_result) && length(diagnostic_result) && !identical(diagnostic_result, "all")) {
@@ -14393,6 +14413,7 @@ server <- function(input, output, session) {
       Departamento = ifelse(is.na(records$departamento), "", records$departamento),
       Municipio = ifelse(is.na(records$municipio), "Sin ubicación aproximada", records$municipio),
       `Tipo de bioensayo` = records$tipo_bioensayo,
+      Mecanismo = ifelse(is.na(records$sinergista_tipo), "No aplica", records$sinergista_tipo),
       Insecticida = records$insecticida,
       `Resultado diagnóstico` = ifelse(
         is.na(records$resultado_diagnostico),
