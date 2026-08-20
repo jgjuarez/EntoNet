@@ -1466,8 +1466,7 @@ public_header <- function(active_tab = NULL, show_login_button = FALSE, language
       actionButton("landing_governance", tr(language, "Gobernanza Regional", "Regional Governance"), class = tab_class("governance")),
       actionButton("landing_collaborators", tr(language, "Colaboradores", "Collaborators"), class = tab_class("collaborators")),
       actionButton("landing_network_map", tr(language, "Mapa de la Red", "Network Map"), class = tab_class("network_map")),
-      actionButton("landing_network_impact", tr(language, "Impacto de la Red", "Network Impact"), class = tab_class("network_impact")),
-      actionButton("landing_sat26", tr(language, "Encuesta SAT26", "SAT26 Survey"), class = tab_class("sat26"))
+      actionButton("landing_network_impact", tr(language, "Impacto de la Red", "Network Impact"), class = tab_class("network_impact"))
     )
   )
 }
