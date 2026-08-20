@@ -13760,7 +13760,7 @@ server <- function(input, output, session) {
         "formulario_7_bioensayo_intake",
         select = paste(
           "intake_id,codigo_bioensayo,fecha_realizacion_bioensayo,nombre_poblacion,",
-          "bioensayo_intensidad,bioensayo_diagnostica_1x,sinergista_def,sinergista_pbo,",
+          "bioensayo_intensidad,bioensayo_diagnostica_1x,dosis_intensidad,sinergista_def,sinergista_pbo,",
           "sinergista_dm,resultado_diagnostico,insecticida,codigo_departamento,",
           "codigo_municipio,review_status,creado_en,actualizado_en",
           sep = ""
@@ -13967,6 +13967,17 @@ server <- function(input, output, session) {
               choices = filter_choices(records$sinergista_tipo)
             )
           )
+        ),
+        column(
+          4,
+          conditionalPanel(
+            condition = "input.f7_viz_type == 'Intensidad Exploratorio' && (input.f7_viz_diagnostic_result == 'Sospecha de Resistencia' || input.f7_viz_diagnostic_result == 'Resistente')",
+            selectInput(
+              "f7_viz_intensity_dose",
+              "Concentración de intensidad",
+              choices = filter_choices(records$dosis_intensidad)
+            )
+          )
         )
       )
     )
@@ -14036,6 +14047,12 @@ server <- function(input, output, session) {
     if (!is.null(synergist) && length(synergist) && !identical(synergist, "all") && identical(input$f7_viz_type, "Sinergistas")) {
       records <- records[!is.na(records$sinergista_tipo) & records$sinergista_tipo == synergist, , drop = FALSE]
     }
+    intensity_dose <- input$f7_viz_intensity_dose
+    intensity_dose_enabled <- identical(input$f7_viz_type, "Intensidad Exploratorio") &&
+      input$f7_viz_diagnostic_result %in% c("Sospecha de Resistencia", "Resistente")
+    if (!is.null(intensity_dose) && length(intensity_dose) && !identical(intensity_dose, "all") && intensity_dose_enabled) {
+      records <- records[!is.na(records$dosis_intensidad) & records$dosis_intensidad == intensity_dose, , drop = FALSE]
+    }
     diagnostic_result <- input$f7_viz_diagnostic_result
     if (!is.null(diagnostic_result) && length(diagnostic_result) && !identical(diagnostic_result, "all")) {
       if (identical(diagnostic_result, "not_applicable")) {
@@ -14094,9 +14111,11 @@ server <- function(input, output, session) {
     points
   })
 
-  f7_visualization_insecticide_counts <- reactive({
+  f7_visualization_diagnostic_counts <- reactive({
     records <- f7_visualization_filtered()
     insecticide_levels <- c("DDT", "Permetrina", "Deltametrina", "Bendiocarb", "Malatión", "Alfa-cipermetrina", "Lambda-cialotrina", "Temefos")
+    synergist_levels <- c("DEF", "PBO", "DM")
+    intensity_dose_levels <- c("1X", "2X", "5X", "10X")
     result_levels <- c("Resistencia", "Sospecha Resistencia", "Susceptible")
     insecticide_codes <- toupper(trimws(as.character(records$insecticida)))
     insecticide <- ifelse(
@@ -14137,14 +14156,23 @@ server <- function(input, output, session) {
         ifelse(records$resultado_diagnostico %in% c("Suceptible", "Susceptible"), "Susceptible", NA_character_)
       )
     )
+    category <- insecticide
+    category_levels <- insecticide_levels
+    if (identical(input$f7_viz_type, "Sinergistas")) {
+      category <- records$sinergista_tipo
+      category_levels <- synergist_levels
+    } else if (identical(input$f7_viz_type, "Intensidad Exploratorio")) {
+      category <- records$dosis_intensidad
+      category_levels <- intensity_dose_levels
+    }
     as.matrix(table(
       factor(diagnostic_result, levels = result_levels),
-      factor(insecticide, levels = insecticide_levels)
+      factor(category, levels = category_levels)
     ))
   })
 
-  f7_visualization_active_insecticide_counts <- reactive({
-    counts <- f7_visualization_insecticide_counts()
+  f7_visualization_active_diagnostic_counts <- reactive({
+    counts <- f7_visualization_diagnostic_counts()
     if (!length(counts) || !ncol(counts)) return(counts[, 0, drop = FALSE])
     counts[, colSums(counts) > 0, drop = FALSE]
   })
@@ -14252,7 +14280,7 @@ server <- function(input, output, session) {
   })
 
   output$f7_visualization_diagnostic_bar_chart <- renderPlot({
-    counts <- f7_visualization_active_insecticide_counts()
+    counts <- f7_visualization_active_diagnostic_counts()
     if (!ncol(counts)) {
       plot.new()
       text(0.5, 0.55, "Sin resultados diagnósticos para graficar", cex = 0.95, font = 2, col = "#526070")
@@ -14318,10 +14346,17 @@ server <- function(input, output, session) {
   }, bg = "transparent", res = 110)
 
   output$f7_visualization_diagnostic_summary_table <- renderTable({
-    counts <- f7_visualization_active_insecticide_counts()
+    counts <- f7_visualization_active_diagnostic_counts()
     if (!ncol(counts)) return(data.frame(Mensaje = "Sin resultados diagnósticos para resumir."))
+    category_label <- if (identical(input$f7_viz_type, "Sinergistas")) {
+      "Mecanismo"
+    } else if (identical(input$f7_viz_type, "Intensidad Exploratorio")) {
+      "Concentración intensidad"
+    } else {
+      "Insecticida"
+    }
     data.frame(
-      Insecticida = colnames(counts),
+      setNames(list(colnames(counts)), category_label),
       Resistencia = as.integer(counts["Resistencia", ]),
       `Sospecha Resistencia` = as.integer(counts["Sospecha Resistencia", ]),
       Susceptible = as.integer(counts["Susceptible", ]),
@@ -14366,6 +14401,7 @@ server <- function(input, output, session) {
       Municipio = ifelse(is.na(records$municipio), "Sin ubicación aproximada", records$municipio),
       `Tipo de bioensayo` = records$tipo_bioensayo,
       Mecanismo = ifelse(is.na(records$sinergista_tipo), "No aplica", records$sinergista_tipo),
+      `Concentración intensidad` = ifelse(is.na(records$dosis_intensidad), "No aplica", records$dosis_intensidad),
       Insecticida = records$insecticida,
       `Resultado diagnóstico` = ifelse(
         is.na(records$resultado_diagnostico),
