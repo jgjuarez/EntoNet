@@ -7502,6 +7502,45 @@ server <- function(input, output, session) {
     list(header = header, details = details, data = f1_review_data_from_record(header, details))
   }
 
+  load_review_records_private <- function(table, select, start_date, end_date, status, submitter_field = NULL, exclude_submitter = NA_character_, random_sample = FALSE, max_records = 50L) {
+    records <- supabase_private_select(
+      table,
+      select = select,
+      order = "creado_en.desc,intake_id.desc",
+      page_size = 1000L
+    )
+    if (!nrow(records)) return(records)
+
+    records$fecha_registro_filter <- as.Date(records$fecha_registro)
+    records <- records[
+      !is.na(records$fecha_registro_filter) &
+        records$fecha_registro_filter >= start_date &
+        records$fecha_registro_filter <= end_date,
+      , drop = FALSE
+    ]
+    if (!nrow(records)) return(records[, setdiff(names(records), "fecha_registro_filter"), drop = FALSE])
+
+    if (!identical(status, "all") && "review_status" %in% names(records)) {
+      records <- records[!is.na(records$review_status) & records$review_status == status, , drop = FALSE]
+    }
+    if (!nrow(records)) return(records[, setdiff(names(records), "fecha_registro_filter"), drop = FALSE])
+
+    if (!is.na(exclude_submitter) && nzchar(exclude_submitter) && !is.null(submitter_field) && submitter_field %in% names(records)) {
+      submitter <- tolower(trimws(as.character(records[[submitter_field]])))
+      records <- records[submitter != tolower(trimws(exclude_submitter)), , drop = FALSE]
+    }
+    if (!nrow(records)) return(records[, setdiff(names(records), "fecha_registro_filter"), drop = FALSE])
+
+    limit <- if (random_sample) max(1L, ceiling(nrow(records) * 0.10)) else min(nrow(records), as.integer(max_records))
+    if (random_sample) {
+      set.seed(as.integer(Sys.time()))
+      records <- records[sample(seq_len(nrow(records)), size = limit), , drop = FALSE]
+    } else {
+      records <- head(records, limit)
+    }
+    records[, setdiff(names(records), "fecha_registro_filter"), drop = FALSE]
+  }
+
   f1_load_review_records <- function(random_sample = FALSE) {
     start_date <- as.Date(input$f1_review_start_date)
     end_date <- as.Date(input$f1_review_end_date)
@@ -7509,29 +7548,16 @@ server <- function(input, output, session) {
     status <- f5_text(input$f1_review_filter_status)
     if (!status %in% c("pending", "reviewed", "rejected", "all")) status <- "pending"
     exclude_submitter <- f7_clean_text(input$f1_review_exclude_submitter)[[1]]
-    where_clause <- "where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)"
-    params <- list(as.character(start_date), as.character(end_date), status)
-    if (!is.na(exclude_submitter)) {
-      where_clause <- paste0(where_clause, " and lower(coalesce(nullif(trim(creado_por), ''), 'Sin nombre')) <> lower($4)")
-      params <- c(params, list(exclude_submitter))
-    }
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    total <- dbGetQuery(
-      connection,
-      paste("select count(*)::integer as total from public.formulario_1_ovitrampa_intake", where_clause),
-      params = params
-    )$total[[1]]
-    if (total == 0) return(data.frame())
-    limit <- if (random_sample) max(1L, ceiling(as.integer(total) * 0.10)) else min(as.integer(total), 50L)
-    order_clause <- if (random_sample) "order by random()" else "order by creado_en desc nulls last, intake_id desc"
-    query <- paste(
-      "select intake_id, codigo_formulario, fecha_registro, pais, cuadrante, codigo_casa, ovitrampas_colocadas, ovitrampas_retiradas, creado_por, review_status, actualizado_en from public.formulario_1_ovitrampa_intake",
-      where_clause,
-      order_clause,
-      paste0("limit $", length(params) + 1L)
+    load_review_records_private(
+      "formulario_1_ovitrampa_intake",
+      select = "intake_id,codigo_formulario,fecha_registro,pais,cuadrante,codigo_casa,ovitrampas_colocadas,ovitrampas_retiradas,creado_por,review_status,actualizado_en,creado_en",
+      start_date = start_date,
+      end_date = end_date,
+      status = status,
+      submitter_field = "creado_por",
+      exclude_submitter = exclude_submitter,
+      random_sample = random_sample
     )
-    dbGetQuery(connection, query, params = c(params, list(as.integer(limit))))
   }
 
   f1_find_review_records_by_code <- function(codigo_formulario) {
@@ -9690,71 +9716,15 @@ server <- function(input, output, session) {
       status_filter <- "pending"
     }
     exclude_submitter <- f7_clean_text(input$f5_review_exclude_submitter)[[1]]
-    where_clause <- "
-      where fecha_registro between $1 and $2
-        and ($3 = 'all' or review_status = $3)
-    "
-    params <- list(as.character(start_date), as.character(end_date), status_filter)
-    if (!is.na(exclude_submitter)) {
-      where_clause <- paste0(where_clause, " and lower(coalesce(nullif(trim(creado_por), ''), 'Sin nombre')) <> lower($4)")
-      params <- c(params, list(exclude_submitter))
-    }
-
-    connection <- NULL
-    on.exit({
-      if (!is.null(connection)) {
-        dbDisconnect(connection)
-      }
-    }, add = TRUE)
-
-    connection <- connect_to_supabase()
-    count_query <- paste(
-      "
-      select count(*)::integer as total
-      from public.formulario_5_alimentacion_conteo_intake
-      ",
-      where_clause
-    )
-    total <- dbGetQuery(
-      connection,
-      count_query,
-      params = params
-    )$total[[1]]
-
-    if (total == 0) {
-      return(data.frame())
-    }
-
-    limit <- if (random_sample) {
-      max(1L, ceiling(total * 0.10))
-    } else {
-      min(total, 50L)
-    }
-
-    order_clause <- if (random_sample) "order by random()" else "order by creado_en desc nulls last, intake_id desc"
-    query <- paste(
-      "
-        select
-          intake_id,
-          review_status,
-          fecha_registro,
-          pais,
-          cepa_poblacion,
-          especie,
-          fuente_formulario,
-          creado_por,
-          actualizado_en
-        from public.formulario_5_alimentacion_conteo_intake
-      ",
-      where_clause,
-      order_clause,
-      paste0("limit $", length(params) + 1L)
-    )
-
-    dbGetQuery(
-      connection,
-      query,
-      params = c(params, list(as.integer(limit)))
+    load_review_records_private(
+      "formulario_5_alimentacion_conteo_intake",
+      select = "intake_id,review_status,fecha_registro,pais,cepa_poblacion,especie,fuente_formulario,creado_por,actualizado_en,creado_en",
+      start_date = start_date,
+      end_date = end_date,
+      status = status_filter,
+      submitter_field = "creado_por",
+      exclude_submitter = exclude_submitter,
+      random_sample = random_sample
     )
   }
 
@@ -10844,32 +10814,15 @@ server <- function(input, output, session) {
     status <- f5_text(input$f7_review_filter_status)
     if (!status %in% c("pending", "reviewed", "rejected", "all")) status <- "pending"
     exclude_submitter <- if (random_sample) f7_clean_text(input$f7_review_exclude_submitter)[[1]] else NA_character_
-    where_clause <- "where fecha_registro between $1 and $2 and ($3 = 'all' or review_status = $3)"
-    params <- list(as.character(start_date), as.character(end_date), status)
-    if (!is.na(exclude_submitter)) {
-      where_clause <- paste0(where_clause, " and lower(coalesce(nullif(trim(nombre_quien_ingreso), ''), 'Sin nombre')) <> lower($4)")
-      params <- c(params, list(exclude_submitter))
-    }
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    total <- dbGetQuery(
-      connection,
-      paste("select count(*)::integer as total from public.formulario_7_bioensayo_intake", where_clause),
-      params = params
-    )$total[[1]]
-    if (total == 0) return(data.frame())
-    limit <- if (random_sample) max(1L, ceiling(as.integer(total) * 0.10)) else min(as.integer(total), 50L)
-    order_clause <- if (random_sample) "order by random()" else "order by creado_en desc nulls last, intake_id desc"
-    query <- paste(
-      "select intake_id, codigo_bioensayo, fecha_registro, pais, nombre_poblacion, nombre_quien_ingreso, review_status, creado_en, actualizado_en from public.formulario_7_bioensayo_intake",
-      where_clause,
-      order_clause,
-      paste0("limit $", length(params) + 1L)
-    )
-    dbGetQuery(
-      connection,
-      query,
-      params = c(params, list(as.integer(limit)))
+    load_review_records_private(
+      "formulario_7_bioensayo_intake",
+      select = "intake_id,codigo_bioensayo,fecha_registro,pais,nombre_poblacion,nombre_quien_ingreso,review_status,creado_en,actualizado_en",
+      start_date = start_date,
+      end_date = end_date,
+      status = status,
+      submitter_field = "nombre_quien_ingreso",
+      exclude_submitter = exclude_submitter,
+      random_sample = random_sample
     )
   }
 
