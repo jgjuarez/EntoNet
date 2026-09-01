@@ -646,9 +646,18 @@ formulario_7_municipio_catalogo <- local({
 ubicacion_departamento_catalogo <- formulario_7_departamento_catalogo
 ubicacion_municipio_catalogo <- formulario_7_municipio_catalogo
 
+normalize_ascii_upper <- function(value) {
+  value <- as.character(value)
+  value[is.na(value)] <- ""
+  value <- trimws(enc2utf8(value))
+  value <- iconv(value, from = "", to = "ASCII//TRANSLIT", sub = "")
+  value[is.na(value)] <- ""
+  toupper(value)
+}
+
 ubicacion_normalizar_pais <- function(country) {
   country <- trimws(as.character(value_or_default(country, "")))
-  country_upper <- toupper(chartr("ÁÉÍÓÚÜÑ", "AEIOUUN", country))
+  country_upper <- normalize_ascii_upper(country)
   if (country_upper %in% c("EL SALVADOR", "SALVADOR", "SV")) return("El Salvador")
   if (country_upper %in% c("GUATEMALA", "GT")) return("Guatemala")
   country
@@ -710,8 +719,7 @@ ubicacion_normalizar_texto <- function(value) {
   if (is.null(value)) return("")
   value <- as.character(value)
   value[is.na(value)] <- ""
-  value <- toupper(trimws(value))
-  chartr("ÁÉÍÓÚÜÑ", "AEIOUUN", value)
+  normalize_ascii_upper(value)
 }
 
 extraer_puntos_geojson <- function(coordinates) {
@@ -4338,6 +4346,28 @@ ui <- fluidPage(
         padding: 18px 20px 22px;
         white-space: normal;
       }
+      .services-subdivision-list {
+        gap: 14px;
+        grid-template-columns: minmax(0, 720px);
+        justify-content: flex-start;
+        margin: 18px 0 0;
+        max-width: 720px;
+      }
+      .services-subdivision-list .capture-subdivision-panel {
+        gap: 0;
+        justify-content: center;
+        min-height: 0;
+      }
+      .services-subdivision-list .capture-subdivision-panel-body {
+        gap: 6px;
+        padding: 16px 18px;
+      }
+      .services-subdivision-list .capture-subdivision-panel h4 {
+        font-size: 18px;
+      }
+      .services-subdivision-list .capture-subdivision-panel p {
+        font-size: 14px;
+      }
       .reactivos-intent-copy {
         margin: 0 auto 18px;
         max-width: 1120px;
@@ -4638,6 +4668,255 @@ ui <- fluidPage(
         font-size: 16px;
         font-weight: 800;
         margin: 0 0 12px;
+      }
+      .reactivos-category-board {
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        border-radius: 8px;
+        box-shadow: 0 10px 28px rgba(16, 34, 61, 0.08);
+        margin: 18px auto 0;
+        max-width: 1120px;
+        overflow: hidden;
+        width: 100%;
+      }
+      .reactivos-category-header {
+        align-items: center;
+        background: #0b5f85;
+        color: #ffffff;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 20px;
+      }
+      .reactivos-category-header h4 {
+        color: #ffffff;
+        font-size: 19px;
+        font-weight: 800;
+        margin: 0;
+      }
+      .reactivos-category-header span {
+        color: rgba(255, 255, 255, 0.82);
+        display: block;
+        font-size: 13px;
+        margin-top: 3px;
+      }
+      .reactivos-category-body {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 1fr);
+        padding: 20px;
+      }
+      .reactivos-category-section {
+        background: #f8fbfd;
+        border: 1px solid #dbe7ee;
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .reactivos-category-section h5 {
+        color: #082243;
+        font-size: 16px;
+        font-weight: 800;
+        margin: 0 0 12px;
+      }
+      .reactivos-category-section .form-group {
+        margin-bottom: 0;
+      }
+      .reactivos-category-section label {
+        color: #082243;
+        font-weight: 700;
+      }
+      .reactivos-product-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        width: 100%;
+      }
+      .reactivos-product-group {
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        border-radius: 8px;
+        box-shadow: 0 10px 28px rgba(16, 34, 61, 0.08);
+        overflow: hidden;
+        width: 100%;
+      }
+      .reactivos-product-group-header {
+        align-items: center;
+        background: #eef5fb;
+        border-bottom: 1px solid #d8e3e6;
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        padding: 18px 20px;
+      }
+      .reactivos-product-group-header h5 {
+        color: #082243;
+        font-size: 17px;
+        font-weight: 800;
+        margin: 0;
+      }
+      .reactivos-product-group-header p {
+        color: #4e6680;
+        font-size: 13px;
+        margin: 4px 0 0;
+      }
+      .reactivos-product-group-chevron {
+        color: #0b5f85;
+        flex: 0 0 auto;
+        font-size: 20px;
+        font-weight: 800;
+      }
+      .reactivos-product-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        padding: 20px;
+      }
+      .reactivos-product-option {
+        align-items: center;
+        background: #ffffff;
+        border: 1px solid #b8d2de;
+        border-radius: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        min-height: 92px;
+        padding: 18px 20px;
+        text-align: left;
+        width: 100%;
+      }
+      .reactivos-product-option:hover,
+      .reactivos-product-option:focus {
+        background: #f8fbfd;
+        border-color: #0b5f85;
+        box-shadow: 0 8px 18px rgba(11, 95, 133, 0.12);
+        outline: none;
+      }
+      .reactivos-product-option-thumb {
+        background: #ffffff;
+        border-radius: 6px;
+        flex: 0 0 auto;
+        height: 58px;
+        object-fit: contain;
+        width: 76px;
+      }
+      .reactivos-product-option-copy {
+        color: #082243;
+        flex: 1 1 auto;
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.3;
+        min-width: 140px;
+        overflow-wrap: anywhere;
+        white-space: normal;
+        word-break: normal;
+      }
+      .reactivos-product-option-status {
+        border-radius: 999px;
+        flex: 0 0 auto;
+        font-size: 12px;
+        font-weight: 800;
+        padding: 6px 12px;
+        white-space: nowrap;
+      }
+      .reactivos-product-option-status-available {
+        background: #dff5e9;
+        color: #126b50;
+      }
+      .reactivos-product-option-status-unavailable {
+        background: #fdecef;
+        color: #ba2044;
+      }
+      .reactivos-product-modal {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .reactivos-product-modal-header {
+        align-items: flex-start;
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+      }
+      .reactivos-product-modal-kicker {
+        color: #1769aa;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .reactivos-product-modal-header h3 {
+        color: #082243;
+        font-size: 24px;
+        font-weight: 800;
+        margin: 6px 0 0;
+      }
+      .reactivos-product-modal-close {
+        background: #fbe5ef;
+        border: none;
+        border-radius: 8px;
+        color: #a4204d;
+        font-size: 16px;
+        font-weight: 800;
+        padding: 12px 18px;
+      }
+      .reactivos-product-modal-divider {
+        border-top: 1px solid #dbe7ee;
+      }
+      .reactivos-product-modal-body {
+        display: grid;
+        gap: 22px;
+        grid-template-columns: minmax(240px, 0.88fr) minmax(320px, 1fr);
+      }
+      .reactivos-product-modal-figure {
+        align-items: center;
+        background: #eef5fb;
+        border: 1px solid #d6e4ec;
+        border-radius: 10px;
+        display: flex;
+        justify-content: center;
+        min-height: 360px;
+        padding: 24px;
+      }
+      .reactivos-product-modal-figure img {
+        max-height: 280px;
+        max-width: 100%;
+        object-fit: contain;
+      }
+      .reactivos-product-modal-panel h4 {
+        color: #082243;
+        font-size: 18px;
+        font-weight: 800;
+        margin: 0 0 12px;
+      }
+      .reactivos-product-modal-panel p {
+        color: #4e6680;
+        font-size: 14px;
+        line-height: 1.5;
+        margin: 0 0 18px;
+      }
+      .reactivos-product-modal-form {
+        background: #eef5fb;
+        border: 1px solid #d6e4ec;
+        border-radius: 10px;
+        padding: 18px;
+      }
+      .reactivos-product-modal-form .form-group {
+        margin-bottom: 14px;
+      }
+      .reactivos-product-modal-note {
+        color: #4e6680;
+        font-size: 13px;
+        margin: 8px 0 16px;
+      }
+      .reactivos-product-modal-add {
+        background: #0b5f85;
+        border: none;
+        border-radius: 8px;
+        color: #ffffff;
+        font-size: 16px;
+        font-weight: 800;
+        padding: 14px 18px;
+        width: 100%;
       }
       .reactivos-request-grid {
         display: grid;
@@ -5517,6 +5796,9 @@ ui <- fluidPage(
           grid-template-columns: 1fr;
         }
         .reactivos-detail-bubble-body,
+        .reactivos-category-body,
+        .reactivos-product-grid,
+        .reactivos-product-modal-body,
         .reactivos-product-spec-grid,
         .reactivos-request-body,
         .reactivos-request-grid {
@@ -5524,6 +5806,28 @@ ui <- fluidPage(
         }
         .reactivos-form-placeholders {
           grid-template-columns: 1fr;
+        }
+        .reactivos-product-option {
+          align-items: flex-start;
+        }
+        .reactivos-product-option-status {
+          margin-left: 90px;
+        }
+      }
+      @media (max-width: 520px) {
+        .reactivos-product-grid {
+          grid-template-columns: minmax(0, 1fr);
+          padding: 14px;
+        }
+        .reactivos-product-option {
+          padding: 14px;
+        }
+        .reactivos-product-option-copy {
+          flex-basis: calc(100% - 92px);
+          min-width: 0;
+        }
+        .reactivos-product-option-status {
+          margin-left: 0;
         }
       }
       .option-card,
@@ -6142,6 +6446,70 @@ server <- function(input, output, session) {
       )
     )
   )
+  build_request_bioensayo_product <- function(
+    id,
+    name,
+    status = "Disponible",
+    image = "reactivos-producto-entonet.png",
+    description = NULL,
+    concentrations = c("1X"),
+    note = "1 bioensayo = 4 botellas (4mL)"
+  ) {
+    list(
+      id = id,
+      name = name,
+      status = status,
+      image = image,
+      description = description %||% paste(name, "disponible para configurar la solicitud de bioensayo."),
+      concentrations = concentrations,
+      note = note
+    )
+  }
+  common_request_bioensayo_insecticides <- list(
+    build_request_bioensayo_product("bendiocarb", "Bendiocarb", description = "Insecticida de referencia disponible para solicitud de cotización."),
+    build_request_bioensayo_product("ddt", "DDT", status = "No disponible", description = "Producto histórico de referencia. Su disponibilidad actual está suspendida."),
+    build_request_bioensayo_product("malation", "Malation", description = "Insecticida para ensayos comparativos en protocolos estandarizados."),
+    build_request_bioensayo_product("permetrina", "Permetrina", description = "Insecticida de uso frecuente para ensayos de susceptibilidad."),
+    build_request_bioensayo_product("fenitrotion", "Fenitrotion", description = "Opción disponible para bioensayos y validaciones controladas."),
+    build_request_bioensayo_product("temefos", "Temefos", description = "Insecticida de referencia para configuraciones específicas del bioensayo."),
+    build_request_bioensayo_product("pirimifos_metil", "Pirimifos metil", description = "Producto disponible para pruebas diagnósticas bajo coordinación de laboratorio."),
+    build_request_bioensayo_product("clotianidina", "Clotianidina", description = "Insecticida disponible para pruebas de respuesta biológica."),
+    build_request_bioensayo_product("flupyradifurone", "Flupyradifurone", description = "Producto disponible para solicitudes de bioensayo bajo protocolo."),
+    build_request_bioensayo_product("transfluthrin", "Transfluthrin", description = "Insecticida disponible para ensayos comparativos y validación."),
+    build_request_bioensayo_product("metofluthrin", "Metofluthrin", description = "Producto disponible para configuraciones controladas del ensayo."),
+    build_request_bioensayo_product("prallethrin", "Prallethrin", description = "Insecticida disponible para la preparación de corridas controladas."),
+    build_request_bioensayo_product("chloropyrifos_methyl", "Chloropyrifos-methyl", status = "No disponible", description = "Producto temporalmente fuera de disponibilidad para nuevas solicitudes."),
+    build_request_bioensayo_product("pyriproxyfen", "Pyriproxyfen", description = "Insecticida disponible para solicitudes de comparación o seguimiento."),
+    build_request_bioensayo_product("clorfenapyr", "Clorfenapyr", description = "Producto disponible para bioensayos y evaluación comparativa.")
+  )
+  common_request_bioensayo_synergists <- list(
+    build_request_bioensayo_product("def", "S,S,S-tributil-fosforotritioato (Tribufos, DEF)", description = "Sinergista disponible para explorar mecanismos metabólicos asociados a resistencia."),
+    build_request_bioensayo_product("dm", "Diethyl maleate (DM)", description = "Sinergista disponible para configuraciones específicas de evaluación."),
+    build_request_bioensayo_product("pbo", "Butóxido de piperonilo (PBO)", description = "Sinergista disponible para ensayos de apoyo y análisis complementario.")
+  )
+  request_bioensayo_products <- list(
+    insecticidas = list(
+      Anopheles = common_request_bioensayo_insecticides,
+      Aedes = common_request_bioensayo_insecticides
+    ),
+    sinergistas = common_request_bioensayo_synergists
+  )
+  all_request_bioensayo_products <- c(
+    common_request_bioensayo_insecticides,
+    common_request_bioensayo_synergists
+  )
+  get_request_bioensayo_products <- function(species, group) {
+    if (identical(group, "sinergistas")) {
+      return(request_bioensayo_products$sinergistas)
+    }
+    species_key <- if (species %in% names(request_bioensayo_products$insecticidas)) species else "Anopheles"
+    request_bioensayo_products$insecticidas[[species_key]]
+  }
+  get_request_bioensayo_product <- function(product_id, species, group) {
+    products <- get_request_bioensayo_products(species, group)
+    matches <- Filter(function(product) identical(product$id, product_id), products)
+    if (!length(matches)) NULL else matches[[1]]
+  }
   f5_capture_steps <- c("metadatos", "datos_generales", "alimentacion", "conteo_huevecillos", "observaciones")
   f5_capture_step_labels <- c(
     metadatos = "Metadatos",
@@ -7141,8 +7509,7 @@ server <- function(input, output, session) {
   }
 
   f7_print_country_acronym <- function(country) {
-    country <- toupper(trimws(value_or_default(country, "")))
-    country <- chartr("ÁÉÍÓÚÜÑ", "AEIOUUN", country)
+    country <- normalize_ascii_upper(value_or_default(country, ""))
     if (country %in% c("GUATEMALA", "GT")) return("GT")
     if (country %in% c("EL SALVADOR", "SALVADOR", "SV")) return("SV")
     NA_character_
@@ -7188,8 +7555,7 @@ server <- function(input, output, session) {
   }
 
   f7_insecticide_code <- function(value) {
-    cleaned <- toupper(trimws(value_or_default(value, "")))
-    cleaned <- chartr("ÁÉÍÓÚÜÑ", "AEIOUUN", cleaned)
+    cleaned <- normalize_ascii_upper(value_or_default(value, ""))
     if (cleaned %in% c("DEL", "DELTAMETRINA")) return("DEL")
     if (cleaned %in% c("PER", "PERMETRINA")) return("PER")
     if (cleaned %in% c("MAL", "MALATION", "MALATHION")) return("MAL")
@@ -8718,8 +9084,7 @@ server <- function(input, output, session) {
   }
 
   f1_country_acronym <- function(country) {
-    country <- toupper(trimws(value_or_default(country, "")))
-    country <- chartr("ÁÉÍÓÚÜÑ", "AEIOUUN", country)
+    country <- normalize_ascii_upper(value_or_default(country, ""))
     if (country %in% c("GUATEMALA", "GT")) return("GT")
     if (country %in% c("EL SALVADOR", "SALVADOR", "SV")) return("SV")
     NA_character_
@@ -14102,6 +14467,76 @@ server <- function(input, output, session) {
     select_request_subdivision("datos")
   })
 
+  show_request_bioensayo_product_modal <- function(product, species, group_label) {
+    if (is.null(product)) return(invisible(NULL))
+    modal_id <- product$id
+    showModal(modalDialog(
+      size = "l",
+      easyClose = TRUE,
+      footer = NULL,
+      div(
+        class = "reactivos-product-modal",
+        div(
+          class = "reactivos-product-modal-header",
+          div(
+            div(class = "reactivos-product-modal-kicker", "Ficha de producto"),
+            h3(product$name)
+          ),
+          actionButton(
+            "request_bioensayo_modal_close",
+            tr(public_language(), "Cerrar", "Close"),
+            class = "reactivos-product-modal-close"
+          )
+        ),
+        div(class = "reactivos-product-modal-divider"),
+        div(
+          class = "reactivos-product-modal-body",
+          div(
+            class = "reactivos-product-modal-figure",
+            img(src = product$image, alt = product$name)
+          ),
+          div(
+            class = "reactivos-product-modal-panel",
+            h4(tr(public_language(), "Descripción del producto", "Product description")),
+            p(product$description),
+            div(
+              class = "reactivos-product-modal-form",
+              selectInput(
+                paste0("request_bioensayo_concentration_", modal_id),
+                tr(public_language(), "Concentración", "Concentration"),
+                choices = product$concentrations,
+                selected = product$concentrations[[1]]
+              ),
+              numericInput(
+                paste0("request_bioensayo_quantity_", modal_id),
+                tr(public_language(), "Cantidad de bioensayos a realizar", "Number of bioassays to perform"),
+                value = 0,
+                min = 0,
+                step = 1
+              ),
+              div(class = "reactivos-product-modal-note", product$note),
+              actionButton(
+                paste0("request_bioensayo_add_", modal_id),
+                tr(public_language(), "Agregar", "Add"),
+                class = "reactivos-product-modal-add"
+              )
+            ),
+            tags$p(
+              style = "margin-top:14px;font-size:13px;color:#708395;",
+              paste(
+                tr(public_language(), "Grupo:", "Group:"),
+                group_label,
+                "|",
+                tr(public_language(), "Especie:", "Species:"),
+                species
+              )
+            )
+          )
+        )
+      )
+    ))
+  }
+
   observeEvent(input$show_request_reactivos, {
     active_area("data")
     active_module("request")
@@ -14168,6 +14603,51 @@ server <- function(input, output, session) {
   observeEvent(input$show_request_reactivos_product_3, {
     active_request_reactivos_product(3L)
   })
+
+  observeEvent(input$request_bioensayo_modal_close, {
+    removeModal()
+  })
+
+  invisible(lapply(common_request_bioensayo_insecticides, function(product) {
+    observeEvent(input[[paste0("open_request_bioensayo_product_", product$id)]], {
+      show_request_bioensayo_product_modal(
+        product = get_request_bioensayo_product(product$id, active_request_bioensayo_species(), "insecticidas"),
+        species = value_or_default(active_request_bioensayo_species(), "Anopheles"),
+        group_label = tr(public_language(), "Insecticidas", "Insecticides")
+      )
+    }, ignoreInit = TRUE)
+  }))
+
+  invisible(lapply(common_request_bioensayo_synergists, function(product) {
+    observeEvent(input[[paste0("open_request_bioensayo_product_", product$id)]], {
+      show_request_bioensayo_product_modal(
+        product = get_request_bioensayo_product(product$id, active_request_bioensayo_species(), "sinergistas"),
+        species = value_or_default(active_request_bioensayo_species(), "Anopheles"),
+        group_label = tr(public_language(), "Sinergistas", "Synergists")
+      )
+    }, ignoreInit = TRUE)
+  }))
+
+  invisible(lapply(all_request_bioensayo_products, function(product) {
+    observeEvent(input[[paste0("request_bioensayo_add_", product$id)]], {
+      quantity <- input[[paste0("request_bioensayo_quantity_", product$id)]] %||% 0
+      if (isTRUE(quantity <= 0)) {
+        showNotification(
+          tr(public_language(), "Ingrese al menos un bioensayo para agregar la solicitud.", "Enter at least one bioassay before adding the request."),
+          type = "warning"
+        )
+      } else {
+        showNotification(
+          paste(
+            tr(public_language(), "Solicitud agregada para", "Request added for"),
+            product$name
+          ),
+          type = "message"
+        )
+        removeModal()
+      }
+    }, ignoreInit = TRUE)
+  }))
 
   observeEvent(input$show_request_equipo, {
     select_request_subdivision("equipo")
@@ -16507,7 +16987,7 @@ server <- function(input, output, session) {
               "Select the type of service request you want to prepare. The available options organize laboratory workflows and reference materials."
             )),
             div(
-              class = "capture-subdivision-list",
+              class = "capture-subdivision-list services-subdivision-list",
               actionButton(
                 "show_request_servicios_resistencia",
                 tagList(
@@ -16544,6 +17024,7 @@ server <- function(input, output, session) {
             ),
             div(
               class = "alert alert-info",
+              style = "margin-top:14px;max-width:720px;",
               tr(language, "Use las opciones anteriores para abrir el flujo correspondiente.", "Use the options above to open the corresponding workflow.")
             )
           )
@@ -16575,13 +17056,39 @@ server <- function(input, output, session) {
           product_index <- 1L
         }
         selected_product <- category_data$items[product_index, ]
-        accent_o <- intToUtf8(0x00F3)
-        insecticide_choices <- setNames(
-          c("DDT", "Permetrina", "Deltametrina", "Bendiocarb", paste0("Malati", accent_o, "n"), "Alfa-cipermetrina", "Lambda-cialotrina", "Temefos"),
-          c("DDT", "Permetrina", "Deltametrina", "Bendiocarb", paste0("Malati", accent_o, "n"), "Alfa-cipermetrina", "Lambda-cialotrina", "Temefos")
-        )
-        synergist_choices <- c("DEF" = "DEF", "PBO" = "PBO", "DM" = "DM")
         bioensayo_species <- active_request_bioensayo_species()
+        render_bioensayo_product_group <- function(title, subtitle, products) {
+          div(
+            class = "reactivos-product-group",
+            div(
+              class = "reactivos-product-group-header",
+              div(
+                h5(title),
+                p(subtitle)
+              ),
+              span(class = "reactivos-product-group-chevron", HTML("&#710;"))
+            ),
+            div(
+              class = "reactivos-product-grid",
+              lapply(products, function(product) {
+                status_class <- if (identical(product$status, "Disponible")) {
+                  "reactivos-product-option-status reactivos-product-option-status-available"
+                } else {
+                  "reactivos-product-option-status reactivos-product-option-status-unavailable"
+                }
+                actionButton(
+                  paste0("open_request_bioensayo_product_", product$id),
+                  tagList(
+                    img(src = product$image, class = "reactivos-product-option-thumb", alt = product$name),
+                    div(class = "reactivos-product-option-copy", product$name),
+                    span(class = status_class, product$status)
+                  ),
+                  class = "reactivos-product-option"
+                )
+              })
+            )
+          )
+        }
 
         if (identical(category_key, "bioensayos") && is.null(bioensayo_species)) {
           return(div(
@@ -16763,7 +17270,37 @@ server <- function(input, output, session) {
               )
             )
           ),
-          div(
+          if (identical(category_key, "bioensayos")) div(
+            class = "reactivos-category-board",
+            div(
+              class = "reactivos-category-header",
+              div(
+                h4(tr(language, "Categoria", "Category")),
+                span(tr(language, "Seleccione los grupos y sub-opciones aplicables al bioensayo.", "Select the groups and sub-options applicable to the bioassay."))
+              ),
+              div(class = "reactivos-request-status", bioensayo_species)
+            ),
+            div(
+              class = "reactivos-category-body",
+              div(
+                class = "reactivos-product-groups",
+                render_bioensayo_product_group(
+                  title = tr(language, "Sinergistas", "Synergists"),
+                  subtitle = tr(language, "Seleccione un nombre para consultar y configurar el producto.", "Select a name to review and configure the product."),
+                  products = request_bioensayo_products$sinergistas
+                ),
+                render_bioensayo_product_group(
+                  title = tr(language, "Insecticidas", "Insecticides"),
+                  subtitle = paste(
+                    tr(language, "Seleccione un nombre para consultar y configurar el producto.", "Select a name to review and configure the product."),
+                    paste0("(", tr(language, "según", "by"), " ", bioensayo_species, ")")
+                  ),
+                  products = get_request_bioensayo_products(bioensayo_species, "insecticidas")
+                )
+              )
+            )
+          ),
+          if (!identical(category_key, "bioensayos")) div(
             class = "reactivos-detail-bubble",
             div(
               class = "reactivos-detail-bubble-header",
@@ -16842,7 +17379,9 @@ server <- function(input, output, session) {
               )
             )
           ),
-          div(class = "selector-box", h4(tr(language, "Lista inicial de servicios", "Initial service list")), tableOutput("request_reactivos_preview_table"))
+          if (!identical(category_key, "bioensayos")) {
+            div(class = "selector-box", h4(tr(language, "Lista inicial de servicios", "Initial service list")), tableOutput("request_reactivos_preview_table"))
+          }
         )
       }
       if (is.null(subdivision)) {
