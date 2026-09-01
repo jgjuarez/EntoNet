@@ -1,0 +1,51 @@
+campo,seccion,tipo_dato,obligatorio,valores_permitidos,descripcion
+formulario_codigo,Metadatos,texto,si,F6,Codigo del formulario.
+formulario_nombre,Metadatos,texto,si,Crianza y conteo de adultos,Nombre oficial del formulario.
+fecha_registro,Metadatos,fecha,si,yyyy-mm-dd,Fecha en que se digitaliza o registra la fila.
+pais,Metadatos,lista,si,El Salvador|Guatemala,Pais donde se genera el registro.
+departamento,Metadatos,texto,no,,Departamento o provincia.
+municipio,Metadatos,texto,no,,Municipio o distrito.
+ciclo,Metadatos,texto,si,Ciclo 3,Ciclo REI del formulario.
+ronda,Metadatos,texto,no,,Ronda de trabajo o colecta.
+codigo_formulario,Metadatos,texto,si,,Codigo unico impreso o asignado al formulario fisico; sigue el patron del Formulario 1 y se pre-popula con el prefijo del formulario.
+cuadrante,Ubicacion y codigo,texto,si,,Codigo de cuadrante; para registros nuevos usar REI + anio + pais + codigo municipio + C### cuando aplique.
+codigo_casa,Ubicacion y codigo,texto,si,,Codigo de casa o sitio asociado al material de crianza.
+codigo_sustrato,Ubicacion y codigo,texto,no,,Codigo del sustrato o papel de huevos usado para iniciar la crianza.
+especie,Datos de crianza,lista,si,Ae. aegypti|Ae. albopictus,Especie de la muestra o material criado.
+origen_material,Datos de crianza,lista,no,campo|colonia|otro,Origen del material biologico.
+generacion_filial_huevos,Datos de crianza,texto,no,,Generacion filial declarada para los huevos o material de entrada.
+fecha_colocacion_huevos,Datos de crianza,fecha,no,yyyy-mm-dd,Fecha de colocacion o preparacion de huevos para eclosion.
+fecha_eclosion_huevos,Datos de crianza,fecha,no,yyyy-mm-dd,Fecha de eclosion de huevos o inicio de larvas.
+numero_charola_crianza,Crianza larvaria,entero,si,>=0,Numero de charola o recipiente de crianza larvaria.
+responsable_siembra_larvas,Crianza larvaria,texto,si,,Persona responsable de la siembra o inicio larvario.
+fecha_siembra_larvas,Crianza larvaria,fecha,si,yyyy-mm-dd,Fecha de siembra o traslado de larvas a charola.
+numero_larvas_sembradas,Crianza larvaria,entero,no,>=0,Numero de larvas sembradas o estimadas en la charola.
+densidad_larvas_por_charola,Crianza larvaria,decimal,no,>=0,Densidad o carga larvaria por charola si se registra.
+alimento_larvario,Crianza larvaria,texto,no,,Alimento o regimen usado durante la crianza larvaria.
+tipo_agua,Crianza larvaria,texto,no,,Tipo de agua o medio usado para crianza.
+temperatura_crianza_c,Crianza larvaria,decimal,no,0-50,Temperatura promedio o puntual de crianza en grados Celsius.
+humedad_relativa_crianza_pct,Crianza larvaria,decimal,no,0-100,Humedad relativa promedio o puntual de crianza.
+fecha_emergencia_inicio,Emergencia de adultos,fecha,no,yyyy-mm-dd,Fecha en que inicia la emergencia de adultos.
+fecha_emergencia_fin,Emergencia de adultos,fecha,no,yyyy-mm-dd,Fecha en que finaliza la emergencia o corte de conteo.
+generacion_filial_adultos,Emergencia de adultos,texto,si,,Generacion filial de los adultos obtenidos.
+edad_adultos_dias,Emergencia de adultos,entero,no,>=0,Edad de adultos en dias al momento del conteo o separacion.
+jaula_codigo,Emergencia de adultos,texto,si,,Codigo de jaula donde se alojan los adultos.
+fecha_ingreso_jaula,Emergencia de adultos,fecha,si,yyyy-mm-dd,Fecha de ingreso de adultos a la jaula.
+responsable_conteo_adultos,Conteo de adultos,texto,si,,Persona responsable del conteo de adultos.
+fecha_conteo_adultos,Conteo de adultos,fecha,si,yyyy-mm-dd,Fecha en que se realiza el conteo de adultos.
+numero_hembras_vivas,Conteo de adultos,entero,si,>=0,Numero de hembras vivas contadas.
+numero_machos_vivos,Conteo de adultos,entero,si,>=0,Numero de machos vivos contados.
+numero_hembras_muertas,Conteo de adultos,entero,no,>=0,Numero de hembras muertas registradas.
+numero_machos_muertos,Conteo de adultos,entero,no,>=0,Numero de machos muertos registrados.
+total_adultos_vivos,Conteo de adultos,entero,no,>=0,Suma de hembras vivas y machos vivos.
+total_adultos_muertos,Conteo de adultos,entero,no,>=0,Suma de hembras muertas y machos muertos.
+total_adultos,Conteo de adultos,entero,no,>=0,Suma de adultos vivos y muertos.
+adultos_destino_bioensayo,Destino de adultos,entero,no,>=0,Numero de adultos destinados a bioensayo.
+adultos_destino_colonia,Destino de adultos,entero,no,>=0,Numero de adultos retenidos para colonia o mantenimiento.
+adultos_destino_descartados,Destino de adultos,entero,no,>=0,Numero de adultos descartados o no utilizados.
+observaciones_crianza,Observaciones,texto,no,,Observaciones sobre condiciones o incidencias de crianza.
+observaciones_conteo,Observaciones,texto,no,,Observaciones sobre el conteo o separacion de adultos.
+fuente_formulario,Metadatos,texto,no,,Imagen o archivo fuente usado para crear o auditar el registro.
+creado_por,Metadatos,texto,no,,Usuario o persona que creo el registro digital.
+creado_en,Metadatos,fecha_hora,no,yyyy-mm-dd hh:mm,Fecha y hora de creacion del registro digital.
+actualizado_en,Metadatos,fecha_hora,no,yyyy-mm-dd hh:mm,Fecha y hora de ultima actualizacion del registro digital.

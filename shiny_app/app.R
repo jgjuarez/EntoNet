@@ -2581,6 +2581,45 @@ formulario_7_print_form <- function() {
   )
 }
 
+formulario_6_print_form <- function() {
+  tagList(
+    div(
+      class = "alert alert-info",
+      "Genere el machote de Formulario 6 con el código territorial del Formulario 1 y los campos de crianza/conteo listos para imprimir."
+    ),
+    wellPanel(
+      h4("Código de formulario y ubicación"),
+      fluidRow(
+        column(
+          6,
+          selectInput("f6_print_pais", "País *", choices = c("Seleccione" = "", "El Salvador" = "El Salvador", "Guatemala" = "Guatemala"), selected = ""),
+          selectInput("f6_print_departamento", "Departamento", choices = c("Seleccione país" = "")),
+          uiOutput("f6_print_municipio_ui"),
+          numericInput("f6_print_ciclo", "Ciclo *", value = NA, min = 1, step = 1),
+          numericInput("f6_print_ronda", "Ronda *", value = NA, min = 1, step = 1)
+        ),
+        column(
+          6,
+          numericInput("f6_print_codigo_cuadrante_numero", "# cuadrante inicial", value = 1, min = 1, step = 1),
+          textInput("f6_print_codigo_cuadrante_base", "Código de cuadrante inicial", placeholder = "REI25GT0503C001"),
+          numericInput("f6_print_registros_por_formulario", "Número de registros de crianza", value = 10, min = 1, max = 30, step = 1),
+          textInput("f6_print_codigo_casa_base", "Código inicial de casa", placeholder = "HS001"),
+          textInput("f6_print_codigo_sustrato_base", "Código inicial sustrato", placeholder = "SV001"),
+          textInput("f6_print_version_formulario", "Versión del formulario", value = "1")
+        )
+      ),
+      tags$small("El código usa el patrón de Formulario 1: REI + año + país + código municipio + C###."),
+      uiOutput("f6_print_codigo_formulario_preview"),
+      uiOutput("f6_print_codigo_cuadrante_preview"),
+      uiOutput("f6_print_status")
+    ),
+    div(
+      class = "submit-row",
+      downloadButton("download_formulario_6_printable", "Descargar formulario imprimible", class = "btn-primary")
+    )
+  )
+}
+
 formulario_5_review_form <- function() {
   tagList(
     div(
@@ -4538,6 +4577,140 @@ ui <- fluidPage(
         font-size: 13px;
         line-height: 1.45;
       }
+      .reactivos-request-board {
+        background: #ffffff;
+        border: 1px solid #d8e3e6;
+        border-radius: 8px;
+        box-shadow: 0 10px 28px rgba(16, 34, 61, 0.08);
+        margin: 22px auto 0;
+        max-width: 1120px;
+        overflow: hidden;
+        width: 100%;
+      }
+      .reactivos-request-header {
+        align-items: center;
+        background: #0b5f85;
+        color: #ffffff;
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        padding: 16px 20px;
+      }
+      .reactivos-request-header h4 {
+        color: #ffffff;
+        font-size: 19px;
+        font-weight: 800;
+        margin: 0;
+      }
+      .reactivos-request-header span {
+        color: rgba(255, 255, 255, 0.82);
+        display: block;
+        font-size: 13px;
+        margin-top: 3px;
+      }
+      .reactivos-request-status {
+        background: #dff5e9;
+        border-radius: 999px;
+        color: #126b50;
+        flex: 0 0 auto;
+        font-size: 12px;
+        font-weight: 800;
+        padding: 7px 12px;
+        text-transform: uppercase;
+      }
+      .reactivos-request-body {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 0.72fr);
+        padding: 20px;
+      }
+      .reactivos-request-body-single {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .reactivos-request-section {
+        background: #f8fbfd;
+        border: 1px solid #dbe7ee;
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .reactivos-request-section h5 {
+        color: #082243;
+        font-size: 16px;
+        font-weight: 800;
+        margin: 0 0 12px;
+      }
+      .reactivos-request-grid {
+        display: grid;
+        gap: 12px 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .reactivos-request-grid .form-group {
+        margin-bottom: 0;
+      }
+      .reactivos-product-options .form-group {
+        margin-bottom: 12px;
+      }
+      .reactivos-product-options label {
+        color: #082243;
+        font-weight: 700;
+      }
+      .reactivos-request-summary {
+        display: grid;
+        gap: 12px;
+      }
+      .reactivos-request-total {
+        background: #fff8e8;
+        border: 1px solid #f0d49d;
+        border-radius: 8px;
+        padding: 14px;
+      }
+      .reactivos-request-total strong {
+        color: #6f4a00;
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+      .reactivos-request-total span {
+        color: #10223d;
+        font-size: 24px;
+        font-weight: 800;
+      }
+      .reactivos-request-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 14px;
+      }
+      .reactivos-request-table-wrap {
+        border-top: 1px solid #d8e3e6;
+        overflow-x: auto;
+      }
+      .reactivos-request-table {
+        border-collapse: collapse;
+        font-size: 12px;
+        min-width: 980px;
+        width: 100%;
+      }
+      .reactivos-request-table th {
+        background: #4d43e6;
+        border-right: 1px solid rgba(255, 255, 255, 0.35);
+        color: #ffffff;
+        font-weight: 800;
+        padding: 10px 12px;
+        text-align: left;
+        white-space: nowrap;
+      }
+      .reactivos-request-table td {
+        border: 1px solid #e2e8ef;
+        color: #526070;
+        height: 34px;
+        padding: 8px 12px;
+      }
+      .reactivos-request-table td:first-child {
+        color: #10223d;
+        font-weight: 700;
+      }
       .request-flow-panel {
         background: #ffffff;
         border: 1px solid #d8e3e6;
@@ -5344,7 +5517,9 @@ ui <- fluidPage(
           grid-template-columns: 1fr;
         }
         .reactivos-detail-bubble-body,
-        .reactivos-product-spec-grid {
+        .reactivos-product-spec-grid,
+        .reactivos-request-body,
+        .reactivos-request-grid {
           grid-template-columns: 1fr;
         }
         .reactivos-form-placeholders {
@@ -5902,64 +6077,65 @@ server <- function(input, output, session) {
   sat26_unique_code <- reactiveVal("")
   sat26_next_code_number <- reactiveVal(1L)
   sat26_resume_status <- reactiveVal(NULL)
-  active_request_reactivos_category <- reactiveVal("larvicidas")
+  active_request_reactivos_category <- reactiveVal(NULL)
+  active_request_bioensayo_species <- reactiveVal(NULL)
   active_request_reactivos_product <- reactiveVal(1L)
   request_reactivos_catalog <- list(
-    larvicidas = list(
-      title_es = "Larvicidas",
-      title_en = "Larvicides",
-      subtitle_es = "Productos para intervenir criaderos y etapas inmaduras.",
-      subtitle_en = "Products to target breeding sites and immature stages.",
+    resistencia = list(
+      title_es = "Resistencia a Insecticida",
+      title_en = "Insecticide Resistance",
+      subtitle_es = "Pruebas para documentar susceptibilidad y respuesta a insecticidas.",
+      subtitle_en = "Tests to document susceptibility and response to insecticides.",
       items = data.frame(
-        name = c("Temefos 1 L", "Bti granulado 1 kg", "Larvex Pro 500"),
-        price = c("$10.50 USD", "$14.50 USD", "$12.25 USD"),
-        status = c("En stock", "En stock", "En stock"),
-        concentration = c("1% SG", "Bacillus thuringiensis israelensis", "0.5% granulado"),
-        expiration = c("2027-12", "2028-03", "2027-09"),
+        name = c("Ensayo OMS con papeles impregnados", "Ensayo CDC botella", "Diagnostico con sinergistas"),
+        price = c("Por cotizar", "Por cotizar", "Por cotizar"),
+        status = c("Disponible", "Disponible", "Disponible"),
+        concentration = c("Dosis diagnostica", "Dosis diagnostica", "PBO / DEF / DM"),
+        expiration = c("Segun lote", "Segun lote", "Segun lote"),
         technical_description = c(
-          "Larvicida organofosforado de uso focal para criaderos controlados.",
-          "Larvicida biológico granulado para criaderos y depósitos temporales.",
-          "Formulación granulada de referencia para control de etapas inmaduras."
+          "Evaluacion estandar para estimar mortalidad y clasificar la respuesta de poblaciones vectoriales.",
+          "Bioensayo rapido para medir susceptibilidad en adultos usando botellas tratadas.",
+          "Prueba complementaria para explorar mecanismos metabolicos asociados a resistencia."
         ),
         image = c("reactivos-larvicidas.png", "reactivos-larvicidas.png", "reactivos-larvicidas.png"),
         stringsAsFactors = FALSE
       )
     ),
-    adulticidas = list(
-      title_es = "Adulticidas",
-      title_en = "Adulticides",
-      subtitle_es = "Control focalizado para insectos adultos.",
-      subtitle_en = "Focused control for adult mosquitoes.",
+    bioensayos = list(
+      title_es = "BioEnsayos",
+      title_en = "Bioassays",
+      subtitle_es = "Servicios para evaluar respuesta biologica bajo condiciones controladas.",
+      subtitle_en = "Services to evaluate biological response under controlled conditions.",
       items = data.frame(
-        name = c("AdultiMax 450", "PyroControl ULV", "CipraNeo 1 L"),
-        price = c("$18.90 USD", "$22.40 USD", "$16.75 USD"),
-        status = c("En stock", "En stock", "En stock"),
-        concentration = c("450 g/L", "ULV 10%", "100 g/L"),
-        expiration = c("2027-10", "2028-01", "2027-11"),
+        name = c("Bioensayo larval", "Bioensayo adulto", "Curva dosis-respuesta"),
+        price = c("Por cotizar", "Por cotizar", "Por cotizar"),
+        status = c("Disponible", "Disponible", "Disponible"),
+        concentration = c("Larvas L3-L4", "Adultos 2-5 dias", "Multiples concentraciones"),
+        expiration = c("Segun protocolo", "Segun protocolo", "Segun protocolo"),
         technical_description = c(
-          "Adulticida de aplicación focal para reducción rápida de población adulta.",
-          "Concentrado para nebulización espacial en operaciones de respuesta.",
-          "Formulación líquida para aplicaciones dirigidas contra mosquitos adultos."
+          "Evaluacion controlada de respuesta larval para productos o formulaciones seleccionadas.",
+          "Evaluacion de mortalidad en adultos expuestos a insecticidas o sinergistas.",
+          "Estimacion de respuesta por concentracion para comparar sensibilidad entre muestras."
         ),
         image = c("reactivos-adulticidas.png", "reactivos-adulticidas.png", "reactivos-adulticidas.png"),
         stringsAsFactors = FALSE
       )
     ),
-    residuales = list(
-      title_es = "Residuales",
-      title_en = "Residuals",
-      subtitle_es = "Formulaciones para aplicaciones dirigidas de efecto prolongado.",
-      subtitle_en = "Formulations for targeted long-lasting applications.",
+    cepas = list(
+      title_es = "Cepas de Referencia",
+      title_en = "Reference Strains",
+      subtitle_es = "Solicitud y coordinacion de cepas para comparacion experimental.",
+      subtitle_en = "Request and coordination of strains for experimental comparison.",
       items = data.frame(
-        name = c("ResiShield 2 L", "LongGuard 1 kg", "MuroPlus 5 L"),
-        price = c("$25.00 USD", "$27.50 USD", "$31.20 USD"),
-        status = c("En stock", "En stock", "En stock"),
-        concentration = c("250 g/L", "10% WP", "50 g/L"),
-        expiration = c("2028-02", "2027-08", "2028-05"),
+        name = c("Cepa susceptible", "Cepa resistente", "Material biologico de control"),
+        price = c("Por coordinar", "Por coordinar", "Por coordinar"),
+        status = c("Bajo solicitud", "Bajo solicitud", "Bajo solicitud"),
+        concentration = c("Referencia laboratorio", "Referencia laboratorio", "Control experimental"),
+        expiration = c("Segun disponibilidad", "Segun disponibilidad", "Segun disponibilidad"),
         technical_description = c(
-          "Formulación residual para superficies internas y externas seleccionadas.",
-          "Polvo humectable de efecto prolongado para superficies tratadas.",
-          "Concentrado residual para aplicaciones controladas en paredes y refugios."
+          "Cepa mantenida como referencia susceptible para comparar resultados de ensayos.",
+          "Cepa con perfil de resistencia documentado para controles y comparaciones.",
+          "Material de apoyo para estandarizar corridas experimentales entre laboratorios."
         ),
         image = c("reactivos-residuales.png", "reactivos-residuales.png", "reactivos-residuales.png"),
         stringsAsFactors = FALSE
@@ -6899,6 +7075,20 @@ server <- function(input, output, session) {
       size = "l",
       easyClose = TRUE,
       formulario_1_print_form(),
+      footer = modalButton("Cerrar")
+    ))
+  }
+
+  show_formulario_6_print_modal <- function() {
+    showModal(modalDialog(
+      title = div(
+        class = "modal-title-row",
+        span("Imprimir Formulario 6"),
+        actionButton("close_formulario_6_print", HTML("&times;"), class = "modal-close-button")
+      ),
+      size = "l",
+      easyClose = TRUE,
+      formulario_6_print_form(),
       footer = modalButton("Cerrar")
     ))
   }
@@ -8086,6 +8276,191 @@ server <- function(input, output, session) {
         pais, departamento, municipio, codigo_formulario, version_formulario,
         codigo_encuestadores, ciclo, ronda, codigo_cuadrante_base, casas_por_cuadrante,
         codigo_casa_base, codigo_sustrato_base, quadrants, include_watermark
+      )
+    )
+    if (include_watermark) {
+      dir.create(file.path(root, "xl", "worksheets", "_rels"), recursive = TRUE, showWarnings = FALSE)
+      f1_write_file(file.path(root, "xl", "worksheets", "_rels", "sheet1.xml.rels"), paste0(
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/entonet-watermark.png"/>',
+        '</Relationships>'
+      ))
+    }
+
+    old_wd <- getwd()
+    on.exit(setwd(old_wd), add = TRUE)
+    setwd(root)
+    files <- list.files(".", recursive = TRUE, all.files = TRUE, no.. = TRUE)
+    if (file.exists(file)) unlink(file)
+    utils::zip(zipfile = file, files = files, flags = "-q")
+  }
+
+  f6_printable_sheet_xml <- function(
+    pais, departamento, municipio, codigo_formulario, version_formulario,
+    ciclo, ronda, codigo_cuadrante_base, codigo_casa_base, codigo_sustrato_base,
+    registros = 10L, include_watermark = FALSE
+  ) {
+    rows <- character()
+    merges <- c(
+      "A1:N1", "A2:N2", "A3:B3", "C3:G3", "H3:I3", "J3:K3", "L3:N3",
+      "A4:B4", "C4:G4", "H4:I4", "J4:N4",
+      "A5:B5", "C5:G5", "H5:I5", "J5:N5",
+      "A6:B6", "C6:G6", "H6:I6", "J6:N6",
+      "A8:N8", "A9:B9", "C9:G9", "H9:I9", "J9:N9",
+      "A10:B10", "C10:G10", "H10:I10", "J10:N10",
+      "A12:N12", "A13:B13", "C13:D13", "E13:F13", "G13:H13", "I13:J13", "K13:L13", "M13:N13",
+      "A14:B14", "C14:D14", "E14:F14", "G14:H14", "I14:J14", "K14:L14", "M14:N14",
+      "A16:N16", "A17:B17", "C17:D17", "E17:F17", "G17:H17", "I17:J17", "K17:L17", "M17:N17",
+      "A18:B18", "C18:D18", "E18:F18", "G18:H18", "I18:J18", "K18:L18", "M18:N18",
+      "A19:N19", "A20:B20", "C20:D20", "E20:F20", "G20:H20", "I20:J20", "K20:L20", "M20:N20",
+      "A21:B21", "C21:D21", "E21:F21", "G21:H21", "I21:J21", "K21:L21", "M21:N21",
+      "A22:N22", "A23:N23"
+    )
+
+    add_row <- function(row, values, styles = rep(0L, length(values)), height = NULL) {
+      cells <- lapply(seq_along(values), function(col) f1_excel_cell(row, col, values[[col]], styles[[col]]))
+      rows <<- c(rows, f1_excel_row(row, cells, height))
+    }
+
+    add_row(1, c("FORMULARIO 6. CRIANZA Y CONTEO DE ADULTOS", rep("", 13)), c(14L, rep(14L, 13)), 22)
+    add_row(2, c("1. INFORMACION GENERAL", rep("", 13)), c(15L, rep(15L, 13)), 18)
+    add_row(3, c("Pais", "", pais, "", "", "", "", "Ciclo", ciclo, "Ronda", ronda, "Codigo", codigo_formulario, ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 17L, 16L, 17L, 16L, 17L, 17L), 20)
+    add_row(4, c("Departamento", "", departamento, "", "", "", "", "Version", version_formulario, "Barras", f1_code39_value(codigo_formulario), "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 17L, 16L, 18L, 18L, 18L, 18L), 23)
+    add_row(5, c("Municipio", "", municipio, "", "", "", "", "Fecha registro", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 17L, 17L, 17L, 17L, 17L, 17L), 20)
+    add_row(6, c("Cuadrante inicial", "", codigo_cuadrante_base, "", "", "", "", "Casa inicial", codigo_casa_base, "Sustrato inicial", codigo_sustrato_base, "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 17L, 16L, 17L, 17L, 17L, 17L), 20)
+
+    add_row(8, c("2. UBICACION Y MATERIAL DE ORIGEN", rep("", 13)), c(15L, rep(15L, 13)), 18)
+    add_row(9, c("Especie", "", "Ae. aegypti__", "", "", "", "", "Ae. albopictus__", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(10, c("Origen material", "", "Campo__", "", "", "", "", "Colonia__", "", "Otro:", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 16L, 17L, 17L, 17L, 17L), 21)
+
+    add_row(12, c("3. CRIANZA LARVARIA", rep("", 13)), c(15L, rep(15L, 13)), 18)
+    add_row(13, c("Fecha colocacion huevos", "", "", "", "Fecha eclosion", "", "", "", "Generacion huevos", "", "", "", "Charola", ""), c(16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 17L), 21)
+    add_row(14, c("Responsable siembra", "", "", "", "Fecha siembra larvas", "", "", "", "# larvas sembradas", "", "", "", "Densidad", ""), c(16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 17L), 21)
+
+    add_row(16, c("4. EMERGENCIA Y JAULA", rep("", 13)), c(15L, rep(15L, 13)), 18)
+    add_row(17, c("Fecha emergencia inicio", "", "", "", "Fecha emergencia fin", "", "", "", "Generacion adultos", "", "", "", "Edad dias", ""), c(16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 17L), 21)
+    add_row(18, c("Codigo jaula", "", "", "", "Fecha ingreso jaula", "", "", "", "Alimento larvario", "", "Tipo agua", "", "Temp/HR", ""), c(16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 17L, 16L, 17L, 16L, 17L), 21)
+
+    add_row(19, c("5. CONTEO DE ADULTOS", rep("", 13)), c(15L, rep(15L, 13)), 18)
+    add_row(20, c("Responsable conteo", "", "", "", "Fecha conteo", "", "", "", "Hembras vivas", "", "Machos vivos", "", "Total vivos", ""), c(16L, 16L, 17L, 17L, 16L, 16L, 17L, 17L, 16L, 16L, 16L, 16L, 16L, 17L), 21)
+    add_row(21, c("Hembras muertas", "", "Machos muertos", "", "Total muertos", "", "Total adultos", "", "Bioensayo", "", "Colonia", "", "Descartados", ""), c(16L, 17L, 16L, 17L, 16L, 17L, 16L, 17L, 16L, 17L, 16L, 17L, 16L, 17L), 21)
+
+    add_row(22, c("6. DETALLE RAPIDO POR REGISTRO", rep("", 13)), c(15L, rep(15L, 13)), 18)
+    add_row(23, c("No.", "Cuadrante", "Casa", "Sustrato", "Charola", "Jaula", "Fecha conteo", "H vivas", "M vivos", "H muertas", "M muertos", "Total", "Destino", "Observaciones"), rep(16L, 14), 26)
+    for (index in seq_len(as.integer(registros))) {
+      row <- 23L + index
+      house_code <- f1_increment_code(codigo_casa_base, index - 1L)
+      if (is.na(house_code) || !nzchar(house_code)) house_code <- ""
+      sustrato_code <- f1_increment_code(codigo_sustrato_base, index - 1L)
+      if (is.na(sustrato_code) || !nzchar(sustrato_code)) sustrato_code <- ""
+      add_row(row, c(as.character(index), codigo_cuadrante_base, house_code, sustrato_code, rep("", 10)), rep(17L, 14), 23)
+    }
+
+    comment_row <- 25L + as.integer(registros)
+    merges <- c(merges, paste0("A", comment_row, ":N", comment_row), paste0("A", comment_row + 1L, ":N", comment_row + 1L))
+    add_row(comment_row, c("COMENTARIOS", rep("", 13)), c(15L, rep(15L, 13)), 18)
+    add_row(comment_row + 1L, c("", rep("", 13)), rep(17L, 14), 34)
+
+    merge_xml <- paste0(
+      '<mergeCells count="', length(merges), '">',
+      paste0(sprintf('<mergeCell ref="%s"/>', merges), collapse = ""),
+      "</mergeCells>"
+    )
+
+    paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>',
+      '<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>',
+      '<sheetFormatPr defaultRowHeight="18"/>',
+      '<cols>',
+      '<col min="1" max="1" width="5" customWidth="1"/>',
+      '<col min="2" max="2" width="14" customWidth="1"/>',
+      '<col min="3" max="4" width="10" customWidth="1"/>',
+      '<col min="5" max="13" width="9" customWidth="1"/>',
+      '<col min="14" max="14" width="14" customWidth="1"/>',
+      '</cols>',
+      '<sheetData>', paste0(rows, collapse = ""), '</sheetData>',
+      merge_xml,
+      '<pageMargins left="0.25" right="0.25" top="0.25" bottom="0.25" header="0.1" footer="0.1"/>',
+      '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1"/>',
+      if (include_watermark) '<picture r:id="rId1"/>' else '',
+      '</worksheet>'
+    )
+  }
+
+  f6_create_printable_xlsx <- function(
+    file, pais, departamento, municipio, codigo_formulario, version_formulario,
+    ciclo, ronda, codigo_cuadrante_base, codigo_casa_base, codigo_sustrato_base,
+    registros = 10L
+  ) {
+    registros <- max(1L, min(as.integer(registros), 30L))
+    last_print_row <- 26L + registros
+    root <- tempfile("f6_print_xlsx_")
+    dir.create(root, recursive = TRUE)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    logo_path <- f1_entonet_logo_path()
+    watermark_path <- file.path(root, "xl", "media", "entonet-watermark.png")
+    include_watermark <- f1_create_watermark_logo(logo_path, watermark_path)
+
+    f1_write_file(file.path(root, "[Content_Types].xml"), paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+      '<Default Extension="xml" ContentType="application/xml"/>',
+      if (include_watermark) '<Default Extension="png" ContentType="image/png"/>' else '',
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>',
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>',
+      '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>',
+      '</Types>'
+    ))
+    f1_write_file(file.path(root, "_rels", ".rels"), paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>',
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>',
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>',
+      '</Relationships>'
+    ))
+    f1_write_file(file.path(root, "docProps", "app.xml"), paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">',
+      '<Application>EntoNet</Application></Properties>'
+    ))
+    f1_write_file(file.path(root, "docProps", "core.xml"), paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+      '<dc:title>Formulario 6 imprimible</dc:title><dc:creator>EntoNet</dc:creator>',
+      '<dcterms:created xsi:type="dcterms:W3CDTF">', format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"), '</dcterms:created>',
+      '</cp:coreProperties>'
+    ))
+    f1_write_file(file.path(root, "xl", "workbook.xml"), paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+      '<sheets><sheet name="Formulario 6" sheetId="1" r:id="rId1"/></sheets>',
+      '<definedNames>',
+      '<definedName name="_xlnm.Print_Titles" localSheetId="0">\'Formulario 6\'!$1:$6</definedName>',
+      '<definedName name="_xlnm.Print_Area" localSheetId="0">\'Formulario 6\'!$A$1:$N$', last_print_row, '</definedName>',
+      '</definedNames>',
+      '</workbook>'
+    ))
+    f1_write_file(file.path(root, "xl", "_rels", "workbook.xml.rels"), paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>',
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
+      '</Relationships>'
+    ))
+    f1_write_file(file.path(root, "xl", "styles.xml"), f7_printable_styles_xml())
+    f1_write_file(
+      file.path(root, "xl", "worksheets", "sheet1.xml"),
+      f6_printable_sheet_xml(
+        pais, departamento, municipio, codigo_formulario, version_formulario,
+        ciclo, ronda, codigo_cuadrante_base, codigo_casa_base, codigo_sustrato_base,
+        registros, include_watermark
       )
     )
     if (include_watermark) {
@@ -11168,6 +11543,71 @@ server <- function(input, output, session) {
     div(class = "summary-box", strong("Código de formulario generado: "), tags$code(code))
   })
 
+  observeEvent(input$f6_print_pais, {
+    updateSelectInput(session, "f6_print_departamento", choices = ubicacion_departamento_choices(input$f6_print_pais), selected = "")
+  }, ignoreInit = FALSE)
+
+  output$f6_print_municipio_ui <- renderUI({
+    country <- value_or_default(input$f6_print_pais, "")
+    department_code <- value_or_default(input$f6_print_departamento, "")
+    choices <- ubicacion_municipio_choices(country, department_code, include_manual = TRUE)
+    tagList(
+      selectInput("f6_print_municipio", "Municipio", choices = choices),
+      conditionalPanel(
+        "input.f6_print_municipio == '__manual__'",
+        textInput("f6_print_municipio_manual", "Código nacional de municipio", placeholder = "Ej. 0201")
+      )
+    )
+  })
+
+  f6_print_recommended_quadrant_code <- reactive({
+    municipality_code <- ubicacion_codigo_manual_o_seleccion(input$f6_print_municipio, input$f6_print_municipio_manual)
+    f1_new_quadrant_code(
+      country = input$f6_print_pais,
+      municipality_code = municipality_code,
+      year = Sys.Date(),
+      quadrant_number = input$f6_print_codigo_cuadrante_numero
+    )
+  })
+
+  observeEvent(
+    list(input$f6_print_pais, input$f6_print_municipio, input$f6_print_municipio_manual, input$f6_print_codigo_cuadrante_numero),
+    {
+      code <- f6_print_recommended_quadrant_code()
+      if (!is.na(code) && nzchar(code)) {
+        updateTextInput(session, "f6_print_codigo_cuadrante_base", value = code)
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  output$f6_print_codigo_cuadrante_preview <- renderUI({
+    code <- f6_print_recommended_quadrant_code()
+    if (is.na(code) || !nzchar(code)) {
+      return(div(class = "alert alert-info", "Seleccione país y municipio para generar el código de cuadrante de impresión."))
+    }
+    div(class = "summary-box", strong("Código de cuadrante generado: "), tags$code(code))
+  })
+
+  f6_print_recommended_form_code <- reactive({
+    municipality_code <- ubicacion_codigo_manual_o_seleccion(input$f6_print_municipio, input$f6_print_municipio_manual)
+    f1_new_form_code(
+      country = input$f6_print_pais,
+      municipality_code = municipality_code,
+      year = Sys.Date(),
+      ronda = input$f6_print_ronda,
+      ciclo = input$f6_print_ciclo
+    )
+  })
+
+  output$f6_print_codigo_formulario_preview <- renderUI({
+    code <- f6_print_recommended_form_code()
+    if (is.na(code) || !nzchar(code)) {
+      return(div(class = "alert alert-info", "Complete país, municipio, ronda y ciclo para generar el código de formulario."))
+    }
+    div(class = "summary-box", strong("Código de formulario generado: "), tags$code(code))
+  })
+
   output$f1_placement_status <- renderUI({
     status <- f1_placement_status()
     if (identical(status$type, "idle")) return(NULL)
@@ -13595,6 +14035,7 @@ server <- function(input, output, session) {
       dataset,
       formulario_1_colocacion_retiro_ovitrampa = "campo",
       formulario_5_alimentacion_conteo = "insectario",
+      formulario_6_crianza_conteo_adultos = "insectario",
       formulario_7_bioensayo_botella_cdc = "insectario",
       NULL
     ))
@@ -13620,6 +14061,10 @@ server <- function(input, output, session) {
 
   observeEvent(input$select_formulario_5_capture, {
     select_capture_dataset("formulario_5_alimentacion_conteo")
+  })
+
+  observeEvent(input$select_formulario_6_capture, {
+    select_capture_dataset("formulario_6_crianza_conteo_adultos")
   })
 
   observeEvent(input$select_formulario_7_capture, {
@@ -13658,7 +14103,23 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_request_reactivos, {
-    select_request_subdivision("reactivos")
+    active_area("data")
+    active_module("request")
+    active_capture_subdivision(NULL)
+    active_request_subdivision("reactivos")
+    active_request_data_subdivision(NULL)
+    active_dataset(NULL)
+    active_request_reactivos_category(NULL)
+    active_request_bioensayo_species(NULL)
+  })
+
+  observeEvent(input$show_request_servicios_index, {
+    active_area("data")
+    active_module("request")
+    active_request_subdivision("reactivos")
+    active_request_reactivos_category(NULL)
+    active_request_bioensayo_species(NULL)
+    active_request_reactivos_product(1L)
   })
 
   observeEvent(input$show_request_encuestas, {
@@ -13666,18 +14127,33 @@ server <- function(input, output, session) {
     select_request_subdivision("encuestas")
   })
 
-  observeEvent(input$show_request_reactivos_larvicidas, {
-    active_request_reactivos_category("larvicidas")
+  observeEvent(input$show_request_servicios_resistencia, {
+    active_request_reactivos_category("resistencia")
+    active_request_bioensayo_species(NULL)
     active_request_reactivos_product(1L)
   })
 
-  observeEvent(input$show_request_reactivos_adulticidas, {
-    active_request_reactivos_category("adulticidas")
+  observeEvent(input$show_request_servicios_bioensayos, {
+    active_request_reactivos_category("bioensayos")
+    active_request_bioensayo_species(NULL)
     active_request_reactivos_product(1L)
   })
 
-  observeEvent(input$show_request_reactivos_residuales, {
-    active_request_reactivos_category("residuales")
+  observeEvent(input$show_request_servicios_cepas, {
+    active_request_reactivos_category("cepas")
+    active_request_bioensayo_species(NULL)
+    active_request_reactivos_product(1L)
+  })
+
+  observeEvent(input$show_request_bioensayo_anopheles, {
+    active_request_reactivos_category("bioensayos")
+    active_request_bioensayo_species("Anopheles")
+    active_request_reactivos_product(1L)
+  })
+
+  observeEvent(input$show_request_bioensayo_aedes, {
+    active_request_reactivos_category("bioensayos")
+    active_request_bioensayo_species("Aedes")
     active_request_reactivos_product(1L)
   })
 
@@ -14396,7 +14872,7 @@ server <- function(input, output, session) {
     data.frame(
       `Código bioensayo` = records$codigo_bioensayo,
       Fecha = display_date(records$fecha_realizacion_bioensayo),
-      Población = records$nombre_poblacion,
+      Poblacion = records$nombre_poblacion,
       Departamento = ifelse(is.na(records$departamento), "", records$departamento),
       Municipio = ifelse(is.na(records$municipio), "Sin ubicación aproximada", records$municipio),
       `Tipo de bioensayo` = records$tipo_bioensayo,
@@ -14668,7 +15144,7 @@ server <- function(input, output, session) {
           if (request_is_global_admin()) {
             actionButton("show_request_encuestas", "Encuestas", class = request_subdivision_class("encuestas"))
           },
-          actionButton("show_request_reactivos", "Reactivos", class = request_subdivision_class("reactivos")),
+          actionButton("show_request_reactivos", "Servicios", class = request_subdivision_class("reactivos")),
           actionButton("show_request_equipo", "Equipo", class = request_subdivision_class("equipo")),
           actionButton("show_request_apoyo_tecnico", "Apoyo Técnico", class = request_subdivision_class("apoyo_tecnico"))
         )
@@ -16010,29 +16486,87 @@ server <- function(input, output, session) {
       request_labels <- c(
         datos = "Datos",
         encuestas = "Encuestas",
-        reactivos = "Reactivos",
+        reactivos = "Servicios",
         equipo = "Equipo",
         apoyo_tecnico = "Apoyo Técnico"
       )
       render_request_reactivos_panel <- function() {
         language <- public_language()
         category_key <- active_request_reactivos_category()
+        if (!is.null(category_key) && !category_key %in% names(request_reactivos_catalog)) {
+          category_key <- NULL
+          active_request_reactivos_category(NULL)
+        }
+        service_selector_panel <- function() {
+          div(
+            class = "module-panel",
+            h3(tr(language, "Servicios", "Services")),
+            p(tr(
+              language,
+              "Seleccione el tipo de solicitud de servicios que desea preparar. Las opciones disponibles organizan los flujos de laboratorio y materiales de referencia.",
+              "Select the type of service request you want to prepare. The available options organize laboratory workflows and reference materials."
+            )),
+            div(
+              class = "capture-subdivision-list",
+              actionButton(
+                "show_request_servicios_resistencia",
+                tagList(
+                  div(
+                    class = "capture-subdivision-panel-body",
+                    h4(tr(language, "Resistencia a Insecticida", "Insecticide Resistance")),
+                    p(tr(language, "Servicios de laboratorio para ensayos de susceptibilidad y resistencia.", "Laboratory services for susceptibility and resistance assays."))
+                  )
+                ),
+                class = "capture-subdivision-panel capture-subdivision-panel-action"
+              ),
+              actionButton(
+                "show_request_servicios_bioensayos",
+                tagList(
+                  div(
+                    class = "capture-subdivision-panel-body",
+                    h4(tr(language, "BioEnsayos", "Bioassays")),
+                    p(tr(language, "Pruebas biologicas bajo condiciones controladas.", "Biological tests under controlled conditions."))
+                  )
+                ),
+                class = "capture-subdivision-panel capture-subdivision-panel-action"
+              ),
+              actionButton(
+                "show_request_servicios_cepas",
+                tagList(
+                  div(
+                    class = "capture-subdivision-panel-body",
+                    h4(tr(language, "Cepas de Referencia", "Reference Strains")),
+                    p(tr(language, "Coordinacion de cepas y material biologico para controles comparables.", "Coordination of strains and biological material for comparable controls."))
+                  )
+                ),
+                class = "capture-subdivision-panel capture-subdivision-panel-action"
+              )
+            ),
+            div(
+              class = "alert alert-info",
+              tr(language, "Use las opciones anteriores para abrir el flujo correspondiente.", "Use the options above to open the corresponding workflow.")
+            )
+          )
+        }
+        if (is.null(category_key)) {
+          return(service_selector_panel())
+        }
         category_data <- request_reactivos_catalog[[category_key]]
         category_definitions <- list(
-          larvicidas = tr(
+          resistencia = tr(
             language,
-            "La OMS/WHOPES describe los larvicidas como productos químicos o biológicos aplicados en hábitats acuáticos para destruir las fases inmaduras del mosquito antes de que emerjan como adultos.",
-            "WHO/WHOPES describes larvicides as chemical or biological products applied in aquatic habitats to destroy immature mosquito stages before they emerge as adults."
+            "Servicio para documentar y coordinar la evaluacion de susceptibilidad o resistencia de poblaciones vectoriales.",
+            "Service to document and coordinate susceptibility or resistance evaluation of vector populations."
           ),
-          adulticidas = tr(
+          bioensayos = tr(
             language,
-            "Los adulticidas se emplean para reducir poblaciones de mosquitos adultos mediante aplicaciones dirigidas en espacios interiores o exteriores.",
-            "Adulticides are used to reduce adult mosquito populations through targeted applications in indoor or outdoor spaces."
+            "Servicio para evaluar respuesta biologica en larvas o adultos bajo condiciones controladas y con protocolos armonizados.",
+            "Service to evaluate biological response in larvae or adults under controlled conditions and harmonized protocols."
           ),
-          residuales = tr(
+          cepas = tr(
             language,
-            "Los residuales corresponden a formulaciones de efecto prolongado que permanecen activas sobre superficies tratadas para el control sostenido de vectores.",
-            "Residuals are long-lasting formulations that remain active on treated surfaces for sustained vector control."
+            "Servicio para coordinar cepas o material biologico de referencia que permita comparar resultados entre laboratorios.",
+            "Service to coordinate reference strains or biological material for comparing results across laboratories."
           )
         )
         selected_definition <- category_definitions[[category_key]]
@@ -16041,6 +16575,119 @@ server <- function(input, output, session) {
           product_index <- 1L
         }
         selected_product <- category_data$items[product_index, ]
+        accent_o <- intToUtf8(0x00F3)
+        insecticide_choices <- setNames(
+          c("DDT", "Permetrina", "Deltametrina", "Bendiocarb", paste0("Malati", accent_o, "n"), "Alfa-cipermetrina", "Lambda-cialotrina", "Temefos"),
+          c("DDT", "Permetrina", "Deltametrina", "Bendiocarb", paste0("Malati", accent_o, "n"), "Alfa-cipermetrina", "Lambda-cialotrina", "Temefos")
+        )
+        synergist_choices <- c("DEF" = "DEF", "PBO" = "PBO", "DM" = "DM")
+        bioensayo_species <- active_request_bioensayo_species()
+
+        if (identical(category_key, "bioensayos") && is.null(bioensayo_species)) {
+          return(div(
+            class = "module-panel",
+            h3(tr(language, "BioEnsayos", "Bioassays")),
+            p(tr(
+              language,
+              "Seleccione la especie antes de preparar la solicitud. Las dosis diagnosticas y opciones de insecticidas dependen de esta seleccion.",
+              "Select the species before preparing the request. Diagnostic doses and insecticide options depend on this selection."
+            )),
+            div(
+              class = "capture-subdivision-list",
+              actionButton(
+                "show_request_bioensayo_anopheles",
+                tagList(
+                  div(
+                    class = "capture-subdivision-panel-body",
+                    h4("Anopheles"),
+                    p(tr(language, "Bioensayos para poblaciones de Anopheles.", "Bioassays for Anopheles populations."))
+                  )
+                ),
+                class = "capture-subdivision-panel capture-subdivision-panel-action"
+              ),
+              actionButton(
+                "show_request_bioensayo_aedes",
+                tagList(
+                  div(
+                    class = "capture-subdivision-panel-body",
+                    h4("Aedes"),
+                    p(tr(language, "Bioensayos para poblaciones de Aedes.", "Bioassays for Aedes populations."))
+                  )
+                ),
+                class = "capture-subdivision-panel capture-subdivision-panel-action"
+              )
+            ),
+            div(
+              class = "alert alert-info",
+              tr(language, "Despues de seleccionar la especie se abrira el formulario de solicitud.", "After selecting the species, the request form will open.")
+            )
+          ))
+        }
+
+        if (identical(category_key, "cepas")) {
+          return(div(
+            class = "module-panel",
+            h3(category_data[[if (identical(language, "es")) "title_es" else "title_en"]]),
+            p(category_data[[if (identical(language, "es")) "subtitle_es" else "subtitle_en"]]),
+            div(
+              class = "reactivos-detail-bubble",
+              div(
+                class = "reactivos-detail-bubble-header",
+                div(
+                  tags$div(style = "color:#1769aa;font-size:12px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;", tr(language, "Servicio", "Service")),
+                  h4(category_data[[if (identical(language, "es")) "title_es" else "title_en"]]),
+                  tags$p(selected_definition)
+                ),
+                actionButton("show_request_servicios_index", tr(language, "Volver a Servicios", "Back to Services"), class = "btn-default")
+              ),
+              div(
+                class = "reactivos-detail-bubble-body",
+                div(
+                  class = "reactivos-detail-products",
+                  lapply(seq_len(nrow(category_data$items)), function(i) {
+                    item <- category_data$items[i, ]
+                    actionButton(
+                      paste0("show_request_reactivos_product_", i),
+                      tagList(
+                        div(
+                          style = "flex:1 1 auto;",
+                          div(class = "reactivos-detail-product-name", item$name),
+                          div(class = "reactivos-detail-product-price", item$price),
+                          div(class = "reactivos-detail-product-status", item$status)
+                        )
+                      ),
+                      class = paste(
+                        "reactivos-detail-product",
+                        if (identical(as.integer(product_index), as.integer(i))) "reactivos-detail-product-active" else ""
+                      )
+                    )
+                  })
+                ),
+                div(
+                  class = "reactivos-product-card",
+                  h5(selected_product$name),
+                  p(selected_product$technical_description),
+                  div(
+                    class = "reactivos-product-spec-grid",
+                    div(class = "reactivos-product-spec", span(tr(language, "Tipo", "Type")), strong(selected_product$concentration)),
+                    div(class = "reactivos-product-spec", span(tr(language, "Disponibilidad", "Availability")), strong(selected_product$status)),
+                    div(class = "reactivos-product-spec", span(tr(language, "Coordinacion", "Coordination")), strong(selected_product$expiration)),
+                    div(class = "reactivos-product-spec", span(tr(language, "Costo", "Cost")), strong(selected_product$price))
+                  ),
+                  div(
+                    class = "reactivos-form-placeholder",
+                    strong(tr(language, "Formulario en preparación", "Form in preparation")),
+                    span(tr(
+                      language,
+                      "Este apartado queda reservado para conectar el flujo especifico de solicitud.",
+                      "This section is reserved for connecting the specific request workflow."
+                    ))
+                  )
+                )
+              )
+            )
+          ))
+        }
 
         div(
           class = "module-panel",
@@ -16053,129 +16700,66 @@ server <- function(input, output, session) {
             div(
               class = "reactivos-hero-copy",
               div(class = "reactivos-hero-kicker", tr(language, "UNIDAD DE MALARIA Y BIOLOGIA DE VECTORES", "MALARIA AND VECTOR BIOLOGY UNIT")),
-              h3(tr(language, "Reactivos de Laboratorio", "Laboratory Reagents")),
-              p(tr(language, "Distribución eficiente y segura para fortalecer la vigilancia entomológica en la región.", "Efficient and safe distribution to strengthen entomological surveillance in the region.")),
+              h3(if (identical(category_key, "resistencia")) tr(language, "Servicios de Laboratorio", "Laboratory Services") else paste(tr(language, "BioEnsayos", "Bioassays"), bioensayo_species, sep = " - ")),
+              p(if (identical(category_key, "resistencia")) {
+                tr(language, "Servicios de laboratorio para fortalecer la evaluación de resistencia a insecticidas en la región.", "Laboratory services to strengthen insecticide resistance evaluation in the region.")
+              } else {
+                tr(language, "Solicitud organizada de bioensayos para fortalecer la vigilancia entomológica en la región.", "Organized request of bioassays to strengthen entomological surveillance in the region.")
+              }),
               div(
                 class = "reactivos-hero-benefits",
                 div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "▣"), div(strong(tr(language, "Inventario", "Inventory")), tags$br(), tr(language, "Seguimiento de insumos disponibles.", "Tracking of available supplies."))),
                 div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "⇄"), div(strong(tr(language, "Distribución", "Distribution")), tags$br(), tr(language, "Preparación para entrega y reposición.", "Preparation for delivery and replenishment."))),
-                div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "✓"), div(strong(tr(language, "Calidad", "Quality")), tags$br(), tr(language, "Reactivos certificados y verificados.", "Certified and verified reagents."))),
+                div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "✓"), div(strong(tr(language, "Calidad", "Quality")), tags$br(), tr(language, "Servicios y reactivos verificados.", "Verified services and reagents."))),
                 div(class = "reactivos-hero-benefit", span(class = "reactivos-hero-benefit-icon", "▤"), div(strong(tr(language, "Trazabilidad", "Traceability")), tags$br(), tr(language, "Control en cada etapa del proceso.", "Control at every stage of the process.")))
               ),
               tags$div(
                 class = "reactivos-hero-notes",
-                tags$div(class = "reactivos-hero-note", strong(tr(language, "Larvicidas", "Larvicides")), tags$div(tr(language, "Productos para intervenir criaderos y etapas inmaduras.", "Products to target breeding sites and immature stages."))),
-                tags$div(class = "reactivos-hero-note", strong(tr(language, "Adulticidas", "Adulticides")), tags$div(tr(language, "Control focalizado para insectos adultos.", "Focused control for adult mosquitoes."))),
-                tags$div(class = "reactivos-hero-note", strong(tr(language, "Residuales", "Residuals")), tags$div(tr(language, "Aplicaciones dirigidas de efecto prolongado.", "Targeted long-lasting applications.")))
+                tags$div(class = "reactivos-hero-note", strong(tr(language, "Resistencia a Insecticida", "Insecticide Resistance")), tags$div(tr(language, "Evaluación de susceptibilidad y respuesta a insecticidas.", "Susceptibility and insecticide response evaluation."))),
+                tags$div(class = "reactivos-hero-note", strong(tr(language, "BioEnsayos", "Bioassays")), tags$div(tr(language, "Pruebas biológicas bajo protocolos armonizados.", "Biological tests under harmonized protocols."))),
+                tags$div(class = "reactivos-hero-note", strong(tr(language, "Cepas de Referencia", "Reference Strains")), tags$div(tr(language, "Material biológico para controles y comparación.", "Biological material for controls and comparison.")))
               )
             )
           ),
           div(
             class = "reactivos-intent-copy",
-            h4(tr(language, "Envío y compra de reactivos", "Reagent shipment and procurement")),
+            h4(if (identical(category_key, "resistencia")) tr(language, "Solicitud de servicios de laboratorio", "Laboratory service request") else tr(language, "Solicitud de bioensayo", "Bioassay request")),
             p(tr(
               language,
-              "EntoNet busca facilitar el acceso a materiales clave para armonizar procedimientos y resultados en la evaluación de resistencia a insecticidas entre los miembros del consorcio en Centroamérica y República Dominicana.",
-              "EntoNet aims to facilitate access to key materials that support harmonized procedures and comparable results for insecticide resistance evaluation among consortium members in Central America and the Dominican Republic."
+              if (identical(category_key, "resistencia")) "EntoNet busca facilitar la coordinacion de servicios de laboratorio para armonizar procedimientos y resultados entre los miembros del consorcio en Centroamérica y República Dominicana." else "EntoNet busca facilitar la preparacion de solicitudes de bioensayo para armonizar procedimientos y resultados entre los miembros del consorcio en Centroamérica y República Dominicana.",
+              if (identical(category_key, "resistencia")) "EntoNet aims to facilitate coordination of laboratory services to support harmonized procedures and comparable results among consortium members in Central America and the Dominican Republic." else "EntoNet aims to facilitate bioassay request preparation to support harmonized procedures and comparable results among consortium members in Central America and the Dominican Republic."
             ))
           ),
-          div(
-            class = "reactivos-order-procedure",
-            h4(tr(language, "Procedimiento para solicitar reactivos", "Procedure to request reagents")),
-            p(tr(
-              language,
-              "Este flujo sirve como machote inicial para validar solicitudes, autorizar envíos y ordenar los pasos administrativos asociados a la compra o distribución de insecticidas dentro de EntoNet.",
-              "This workflow is an initial template to validate requests, authorize shipments, and organize the administrative steps related to insecticide procurement or distribution within EntoNet."
-            )),
+          if (identical(category_key, "bioensayos")) div(
+            class = "reactivos-request-board",
             div(
-              class = "reactivos-order-steps",
+              class = "reactivos-request-header",
               div(
-                class = "reactivos-order-step",
-                strong(tr(language, "1. Formulario de autorización", "1. Authorization form")),
-                span(tr(
-                  language,
-                  "La solicitud inicia con el Formulario de Autorización para Compra de Insecticidas. EntoNet utilizará esta información para validar la institución solicitante, el tipo de reactivo requerido y la autorización para el envío.",
-                  "The request begins with the Insecticide Purchase Authorization Form. EntoNet will use this information to validate the requesting institution, the reagent type requested, and shipment authorization."
+                h4(tr(language, "Solicitud de bioensayo", "Bioassay request")),
+                span(paste(
+                  tr(language, "Especie seleccionada:", "Selected species:"),
+                  bioensayo_species
                 ))
               ),
-              div(
-                class = "reactivos-order-step",
-                strong(tr(language, "2. Ruta para Ministerios de Salud", "2. Ministry of Health route")),
-                span(tr(
-                  language,
-                  "Cuando la solicitud provenga de un Ministerio de Salud y existan fondos CDC disponibles, los costos del producto y envío serán cubiertos hasta la aduana del país solicitante. A partir de ese punto, la institución solicitante deberá cubrir transporte local, liberación, manejo u otros costos nacionales aplicables.",
-                  "When the request comes from a Ministry of Health and CDC funds are available, product and shipping costs will be covered up to customs in the requesting country. From that point forward, the requesting institution must cover local transport, clearance, handling, or other applicable national costs."
-                ))
-              ),
-              div(
-                class = "reactivos-order-step",
-                strong(tr(language, "3. Ruta para universidades e institutos de investigación", "3. University and research institute route")),
-                span(tr(
-                  language,
-                  "Las instituciones que no sean Ministerios de Salud deberán completar un formulario adicional de cotización y compra para documentar el pago del producto, envío y costos asociados.",
-                  "Institutions that are not Ministries of Health must complete an additional quotation and purchase form to document payment for the product, shipment, and associated costs."
-                ))
-              )
+              div(class = "reactivos-request-status", bioensayo_species)
             ),
             div(
-              class = "reactivos-form-placeholders",
+              class = "reactivos-request-body reactivos-request-body-single",
               div(
-                class = "reactivos-form-placeholder",
-                strong(tr(language, "Formulario de Autorización", "Authorization Form")),
-                span(tr(language, "Espacio reservado para conectar el formulario de validación y autorización de envío.", "Reserved space to connect the validation and shipment authorization form."))
-              ),
-              div(
-                class = "reactivos-form-placeholder",
-                strong(tr(language, "Formulario de Cotización y Compra", "Quotation and Purchase Form")),
-                span(tr(language, "Espacio reservado para instituciones que deberán cubrir costos de producto, envío o gestión local.", "Reserved space for institutions that must cover product, shipment, or local management costs."))
-              )
-            )
-          ),
-          div(
-            class = "capture-subdivision-list",
-            actionButton(
-              "show_request_reactivos_larvicidas",
-              tagList(
-                div(class = "capture-subdivision-panel-image", img(src = "reactivos-larvicidas.png", alt = tr(language, "Larvicidas", "Larvicides"))),
+                class = "reactivos-request-summary",
                 div(
-                  class = "capture-subdivision-panel-body",
-                  h4(tr(language, "Larvicidas", "Larvicides")),
-                  p(tr(language, "Productos para intervenir criaderos y etapas inmaduras.", "Products to target breeding sites and immature stages."))
+                  class = "reactivos-request-section",
+                  h5(tr(language, "Datos del solicitante", "Requester information")),
+                  div(
+                    class = "reactivos-request-grid",
+                    textInput("request_reactivos_nombre", tr(language, "Nombre completo", "Full name")),
+                    textInput("request_reactivos_institucion", tr(language, "Institución", "Institution"), value = value_or_default(user_profile$institution, "")),
+                    textInput("request_reactivos_telefono", tr(language, "Teléfono", "Phone")),
+                    textInput("request_reactivos_correo", tr(language, "Correo electrónico", "Email")),
+                    selectInput("request_reactivos_pais", tr(language, "País", "Country"), choices = country_choices, selected = value_or_default(user_profile$country, "Guatemala")),
+                    textInput("request_reactivos_direccion", tr(language, "Dirección de envío", "Shipping address"))
+                  )
                 )
-              ),
-              class = paste(
-                "capture-subdivision-panel capture-subdivision-panel-action",
-                if (identical(category_key, "larvicidas")) "capture-subdivision-panel-active" else ""
-              )
-            ),
-            actionButton(
-              "show_request_reactivos_adulticidas",
-              tagList(
-                div(class = "capture-subdivision-panel-image", img(src = "reactivos-adulticidas.png", alt = tr(language, "Adulticidas", "Adulticides"))),
-                div(
-                  class = "capture-subdivision-panel-body",
-                  h4(tr(language, "Adulticidas", "Adulticides")),
-                  p(tr(language, "Control focalizado para insectos adultos.", "Focused control for adult mosquitoes."))
-                )
-              ),
-              class = paste(
-                "capture-subdivision-panel capture-subdivision-panel-action",
-                if (identical(category_key, "adulticidas")) "capture-subdivision-panel-active" else ""
-              )
-            ),
-            actionButton(
-              "show_request_reactivos_residuales",
-              tagList(
-                div(class = "capture-subdivision-panel-image", img(src = "reactivos-residuales.png", alt = tr(language, "Residuales", "Residuals"))),
-                div(
-                  class = "capture-subdivision-panel-body",
-                  h4(tr(language, "Residuales", "Residuals")),
-                  p(tr(language, "Formulaciones para aplicaciones dirigidas de efecto prolongado.", "Targeted long-lasting applications."))
-                )
-              ),
-              class = paste(
-                "capture-subdivision-panel capture-subdivision-panel-action",
-                if (identical(category_key, "residuales")) "capture-subdivision-panel-active" else ""
               )
             )
           ),
@@ -16185,10 +16769,10 @@ server <- function(input, output, session) {
               class = "reactivos-detail-bubble-header",
               div(
                 tags$div(style = "color:#1769aa;font-size:12px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;", tr(language, "Definición técnica", "Technical definition")),
-                h4(if (identical(category_key, "larvicidas")) tr(language, "Larvicidas", "Larvicides") else if (identical(category_key, "adulticidas")) tr(language, "Adulticidas", "Adulticides") else tr(language, "Residuales", "Residuals")),
+                h4(category_data[[if (identical(language, "es")) "title_es" else "title_en"]]),
                 tags$p(selected_definition)
               ),
-              div(style = "flex:0 0 auto;color:#0d7a82;font-size:13px;font-weight:700;", tr(language, "Seleccione un producto", "Select a product"))
+              div(style = "flex:0 0 auto;color:#0d7a82;font-size:13px;font-weight:700;", tr(language, "Seleccione una opción", "Select an option"))
             ),
             div(
               class = "reactivos-detail-bubble-body",
@@ -16199,7 +16783,6 @@ server <- function(input, output, session) {
                   actionButton(
                     paste0("show_request_reactivos_product_", i),
                     tagList(
-                      div(class = "reactivos-detail-product-image", img(src = item$image, alt = item$name)),
                       div(
                         style = "flex:1 1 auto;",
                         div(class = "reactivos-detail-product-name", item$name),
@@ -16243,23 +16826,23 @@ server <- function(input, output, session) {
                 ),
                 div(
                   class = "reactivos-form-placeholder",
-                  strong(tr(language, "Solicitud del producto", "Product request")),
+                  strong(tr(language, "Solicitud del servicio", "Service request")),
                   span(tr(
                     language,
-                    "Espacio reservado para activar la solicitud de este reactivo y vincularla con el formulario de autorización o compra.",
-                    "Reserved space to activate the request for this reagent and connect it to the authorization or purchase form."
+                    "Espacio reservado para activar la solicitud de este servicio y vincularla con el formulario de autorización o compra.",
+                    "Reserved space to activate the request for this service and connect it to the authorization or purchase form."
                   )),
                   tags$button(
                     type = "button",
                     class = "btn btn-primary",
                     style = "margin-top:12px;",
-                    tr(language, "Solicitar producto", "Request product")
+                    tr(language, "Solicitar servicio", "Request service")
                   )
                 )
               )
             )
           ),
-          div(class = "selector-box", h4(tr(language, "Lista inicial de reactivos", "Initial reagent list")), tableOutput("request_reactivos_preview_table"))
+          div(class = "selector-box", h4(tr(language, "Lista inicial de servicios", "Initial service list")), tableOutput("request_reactivos_preview_table"))
         )
       }
       if (is.null(subdivision)) {
@@ -16449,12 +17032,12 @@ server <- function(input, output, session) {
 
   output$request_reactivos_preview_table <- renderTable({
     category_key <- active_request_reactivos_category()
-    if (identical(category_key, "larvicidas")) {
-      data.frame(Reactivo = c("Temefos 1 L", "Bti granulado 1 kg", "Larvex Pro 500"), Presentación = c("Ejemplo", "Ejemplo", "Ejemplo"), Cantidad = c("1", "2", "1"), `Uso previsto` = c("Larvicida", "Larvicida", "Larvicida"), check.names = FALSE, stringsAsFactors = FALSE)
-    } else if (identical(category_key, "adulticidas")) {
-      data.frame(Reactivo = c("AdultiMax 450", "PyroControl ULV", "CipraNeo 1 L"), Presentación = c("Ejemplo", "Ejemplo", "Ejemplo"), Cantidad = c("1", "1", "2"), `Uso previsto` = c("Adulticida", "Adulticida", "Adulticida"), check.names = FALSE, stringsAsFactors = FALSE)
+    if (identical(category_key, "resistencia")) {
+      data.frame(Servicio = c("Ensayo OMS con papeles impregnados", "Ensayo CDC botella", "Diagnostico con sinergistas"), Presentacion = c("Servicio", "Servicio", "Servicio"), Cantidad = c("1", "1", "1"), `Uso previsto` = c("Resistencia", "Resistencia", "Sinergistas"), check.names = FALSE, stringsAsFactors = FALSE)
+    } else if (identical(category_key, "bioensayos")) {
+      data.frame(Servicio = c("Bioensayo larval", "Bioensayo adulto", "Curva dosis-respuesta"), Presentacion = c("Servicio", "Servicio", "Servicio"), Cantidad = c("1", "1", "1"), `Uso previsto` = c("Larvas", "Adultos", "Comparacion"), check.names = FALSE, stringsAsFactors = FALSE)
     } else {
-      data.frame(Reactivo = c("ResiShield 2 L", "LongGuard 1 kg", "MuroPlus 5 L"), Presentación = c("Ejemplo", "Ejemplo", "Ejemplo"), Cantidad = c("1", "1", "1"), `Uso previsto` = c("Residual", "Residual", "Residual"), check.names = FALSE, stringsAsFactors = FALSE)
+      data.frame(Servicio = c("Cepa susceptible", "Cepa resistente", "Material biologico de control"), Presentacion = c("Material", "Material", "Material"), Cantidad = c("1", "1", "1"), `Uso previsto` = c("Referencia", "Referencia", "Control"), check.names = FALSE, stringsAsFactors = FALSE)
     }
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "lccc")
 
@@ -16511,6 +17094,10 @@ server <- function(input, output, session) {
 
     if (identical(dataset, "formulario_5_alimentacion_conteo")) {
       return(h3(class = "capture-dataset-title", "Formulario 5: Alimentación conteo"))
+    }
+
+    if (identical(dataset, "formulario_6_crianza_conteo_adultos")) {
+      return(h3(class = "capture-dataset-title", "Formulario 6: Crianza y conteo de adultos"))
     }
 
     if (identical(dataset, "formulario_1_colocacion_retiro_ovitrampa")) {
@@ -16571,6 +17158,14 @@ server <- function(input, output, session) {
               span("Ingrese a las opciones de subida masiva, ingreso individual, revisión e impresión del Formulario 7.")
             ),
             class = "capture-form-choice capture-form-choice-secondary"
+          ),
+          actionButton(
+            "select_formulario_6_capture",
+            tagList(
+              strong("Formulario 6: Crianza y conteo de adultos"),
+              span("Genere el machote imprimible para crianza y conteo de adultos usando el código territorial del Formulario 1.")
+            ),
+            class = "capture-form-choice capture-form-choice-secondary"
           )
         ))
       }
@@ -16627,6 +17222,17 @@ server <- function(input, output, session) {
           capture_action_row("Subida de datos masiva", "Cargue varios registros de Formulario 5 desde un archivo CSV usando el machote oficial.", "open_formulario_5_bulk_upload", "Abrir subida masiva"),
           capture_action_row("Ingreso individual de datos", "Ingrese un registro a la vez mediante el formulario guiado de Formulario 5.", "open_formulario_5_entry", "Abrir ingreso individual"),
           capture_action_row("Revisar formulario", "Consulte los registros capturados, confirme la revisión o habilite sus valores para editarlos.", "open_formulario_5_review", "Abrir revisión")
+        ),
+        h4("Estado del envío"),
+        verbatimTextOutput("submission_status")
+      ))
+    }
+
+    if (identical(dataset, "formulario_6_crianza_conteo_adultos")) {
+      return(tagList(
+        div(
+          class = "capture-action-list",
+          capture_action_row("Imprimir formulario", "Genere el machote de Formulario 6 con código de formulario, cuadrante, casa y sustrato prellenados.", "open_formulario_6_print", "Abrir impresión")
         ),
         h4("Estado del envío"),
         verbatimTextOutput("submission_status")

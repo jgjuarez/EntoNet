@@ -56,3 +56,21 @@ Notas de captura:
 - Los sufijos `vivos` e `incapacitados` corresponden a las abreviaturas V e I del formulario.
 - Los resultados están ordenados por botella: hora de inicio, lecturas de 0, 15, 30 y 45 minutos, y lectura KDR a las 24 horas; después inicia el bloque de la siguiente botella.
 - La plantilla conserva una fila por bioensayo para facilitar la captura inicial; para la base final se recomienda normalizar las lecturas repetidas en una tabla relacionada por bioensayo, botella, tiempo y estado.
+
+## Formulario 6
+
+Archivos:
+
+- `formulario_6_crianza_conteo_adultos.csv`: plantilla plana para captura inicial. La unidad de registro es un evento de crianza y conteo de adultos asociado al codigo territorial usado en el Formulario 1.
+- `diccionario_formulario_6.csv`: definicion de campos para metadatos, ubicacion/codigo, trazabilidad de crianza, crianza larvaria, emergencia, jaula, conteo por sexo/estado, destino de adultos y auditoria.
+- `listas_validacion_formulario_6.csv`: catalogos iniciales para pais, especie, origen de material y codigo de formulario.
+
+Notas de captura:
+
+- Usar fechas en formato `yyyy-mm-dd`.
+- `codigo_formulario`, `cuadrante`, `codigo_casa` y `codigo_sustrato` siguen el patron del Formulario 1; F6 no usa poblacion como identificador principal.
+- `codigo_sustrato` permite enlazar con el material de huevos registrado en el Formulario 5 cuando aplique.
+- `total_adultos_vivos` debe corresponder a `numero_hembras_vivas + numero_machos_vivos`.
+- `total_adultos_muertos` debe corresponder a `numero_hembras_muertas + numero_machos_muertos`.
+- `total_adultos` debe corresponder a `total_adultos_vivos + total_adultos_muertos`.
+- La suma de adultos destinados a bioensayo, colonia y descarte no debe superar `total_adultos_vivos`.

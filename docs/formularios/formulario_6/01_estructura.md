@@ -1,0 +1,44 @@
+# Formulario 6
+
+## Estructura
+
+- Secciones:
+  - Metadatos
+  - Ubicacion y codigo
+  - Datos de crianza
+  - Crianza larvaria
+  - Emergencia de adultos
+  - Conteo de adultos
+  - Destino de adultos
+  - Observaciones
+- Campos clave:
+  - `formulario_codigo`, `formulario_nombre`, `fecha_registro`
+  - `pais`, `departamento`, `municipio`, `ciclo`, `ronda`, `codigo_formulario`
+  - `cuadrante`, `codigo_casa`, `codigo_sustrato`
+  - `especie`, `origen_material`
+  - `numero_charola_crianza`, `responsable_siembra_larvas`, `fecha_siembra_larvas`
+  - `fecha_emergencia_inicio`, `fecha_emergencia_fin`, `generacion_filial_adultos`
+  - `jaula_codigo`, `fecha_ingreso_jaula`, `responsable_conteo_adultos`, `fecha_conteo_adultos`
+  - `numero_hembras_vivas`, `numero_machos_vivos`, `numero_hembras_muertas`, `numero_machos_muertos`
+  - `total_adultos_vivos`, `total_adultos_muertos`, `total_adultos`
+  - `adultos_destino_bioensayo`, `adultos_destino_colonia`, `adultos_destino_descartados`
+- Validaciones:
+  - `formulario_codigo` solo admite `F6`
+  - `codigo_formulario` sigue el patron del Formulario 1 y se pre-popula con el prefijo del formulario
+  - especie solo admite `Ae. aegypti` o `Ae. albopictus`
+  - todos los conteos deben ser enteros iguales o mayores que cero
+  - `fecha_colocacion_huevos <= fecha_eclosion_huevos` cuando ambas existan
+  - `fecha_siembra_larvas <= fecha_emergencia_inicio <= fecha_emergencia_fin` cuando las fechas existan
+  - `fecha_ingreso_jaula <= fecha_conteo_adultos`
+  - `total_adultos_vivos` se genera como `numero_hembras_vivas + numero_machos_vivos`
+  - `total_adultos_muertos` se genera como `numero_hembras_muertas + numero_machos_muertos`
+  - `total_adultos` se genera como `total_adultos_vivos + total_adultos_muertos`
+  - la suma de destinos no debe superar `total_adultos_vivos`
+- Relaciones:
+  - `codigo_formulario`, `cuadrante`, `codigo_casa` y `codigo_sustrato` siguen el patron del Formulario 1.
+  - `codigo_sustrato` permite enlazar con conteos de huevecillos del Formulario 5 cuando aplique.
+  - la tabla plana inicial es `formulario_6_crianza_conteo_adultos`.
+- Observaciones:
+  - el formulario mantiene una fila por evento de crianza/conteo para facilitar captura masiva.
+  - no se incluye campo de poblacion; la trazabilidad principal se resuelve con el codigo tipo Formulario 1.
+  - en una version intake conviene separar conteos y destinos si un mismo lote se divide en varios usos.

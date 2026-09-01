@@ -18,6 +18,10 @@
 - Formulario 7:
   - machote Excel con ubicacion, codigo de bioensayo y version
   - vista previa del codigo de bioensayo
+- Formulario 6:
+  - machote Excel con codigo de formulario, cuadrante, casa y sustrato
+  - usa el codigo territorial del Formulario 1 porque no depende de poblacion
+  - incluye secciones imprimibles de crianza larvaria, emergencia, conteo de adultos y destino
 
 ## Regla reutilizable
 

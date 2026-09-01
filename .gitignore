@@ -6,6 +6,7 @@
 rsconnect/
 renv/library/
 renv/staging/
+.r-lib/
 
 # Secrets and local config
 .env

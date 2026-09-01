@@ -1,0 +1,10 @@
+lista,valor,descripcion
+pais,El Salvador,Pais permitido para captura.
+pais,Guatemala,Pais permitido para captura.
+especie,Ae. aegypti,Especie Aedes aegypti.
+especie,Ae. albopictus,Especie Aedes albopictus.
+origen_material,campo,Material recolectado en campo.
+origen_material,colonia,Material proveniente de colonia de laboratorio.
+origen_material,otro,Otro origen documentado en observaciones.
+formulario_codigo,F6,Formulario de crianza y conteo de adultos.
+codigo_formulario,F6,Prefijo inicial para completar el codigo del formulario fisico.
