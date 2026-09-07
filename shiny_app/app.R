@@ -331,9 +331,28 @@ supabase_private_rpc <- function(function_name, body) {
   if (resp_status(response) >= 300) {
     response_body <- resp_body_json(response, check_type = FALSE)
     message <- response_body$message %||% sprintf("HTTP %s", resp_status(response))
+    if (grepl("formulario_1_retiro_cero_estado_chk", message, fixed = TRUE)) {
+      stop("El registro tiene 0 ovitrampas retiradas, pero los estados de retiro no suman las colocadas. Edite y corrija esos datos antes de confirmar.")
+    }
     stop(paste0("Supabase rechazó la operación: ", message))
   }
   resp_body_json(response, check_type = FALSE, simplifyVector = TRUE)
+}
+
+supabase_review_rpc <- function(function_name, intake_id, body = list()) {
+  updated <- supabase_private_rpc(
+    function_name, c(list(p_intake_id = as.integer(intake_id)), body)
+  )
+  if (length(updated) != 1L || !identical(as.character(updated[[1]]), as.character(intake_id))) {
+    stop("La API no confirmó la actualización del registro seleccionado.")
+  }
+  invisible(updated)
+}
+
+normalize_f7_diagnostic_result <- function(value) {
+  value <- trimws(as.character(value))
+  value[!is.na(value) & tolower(value) %in% c("suceptible", "susceptible")] <- "Susceptible"
+  value
 }
 
 country_choices <- c(
@@ -1066,7 +1085,7 @@ formulario_7_csv_columns <- c(
   "formulario_codigo", "formulario_nombre", "fecha_registro", "codigo_bioensayo",
   "pais", "id_institucion", "codigo_departamento", "codigo_municipio",
   "nombre_poblacion", "nombre_quien_ingreso", "bioensayo_diagnostica_1x",
-  "bioensayo_intensidad", "dosis_intensidad_ug_ml", "sinergista_def",
+  "bioensayo_intensidad", "dosis_intensidad", "dosis_intensidad_ug_ml", "sinergista_def",
   "sinergista_pbo", "sinergista_dm", "dosis_sinergista_ug_ml",
   "resultado_diagnostico", "fecha_realizacion_bioensayo", "insecticida",
   "solvente_utilizado", "solvente_otro", "lote_insecticida",
@@ -1121,9 +1140,9 @@ formulario_7_csv_to_internal <- function(csv_data) {
   data$codigo_control_calidad[is.na(data$codigo_control_calidad) | !nzchar(trimws(data$codigo_control_calidad))] <- "NO APLICA"
   data$fuente_formulario[is.na(data$fuente_formulario) | !nzchar(trimws(data$fuente_formulario))] <- "Formulario 7_Bioensayo .docx"
   data$sinergista_tipo <- NA_character_
-  data$sinergista_tipo[tolower(trimws(value_or_default(data$sinergista_def, ""))) %in% c("true", "1", "si", "sí", "yes")] <- "DEF"
-  data$sinergista_tipo[tolower(trimws(value_or_default(data$sinergista_pbo, ""))) %in% c("true", "1", "si", "sí", "yes")] <- "PBO"
-  data$sinergista_tipo[tolower(trimws(value_or_default(data$sinergista_dm, ""))) %in% c("true", "1", "si", "sí", "yes")] <- "DM"
+  data$sinergista_tipo[tolower(trimws(as.character(data$sinergista_def))) %in% c("true", "1", "si", "sí", "yes")] <- "DEF"
+  data$sinergista_tipo[tolower(trimws(as.character(data$sinergista_pbo))) %in% c("true", "1", "si", "sí", "yes")] <- "PBO"
+  data$sinergista_tipo[tolower(trimws(as.character(data$sinergista_dm))) %in% c("true", "1", "si", "sí", "yes")] <- "DM"
   data[formulario_7_intake_columns]
 }
 
@@ -1268,41 +1287,6 @@ supabase_auth_send_password_recovery <- function(email) {
   body
 }
 
-fetch_usuario_perfil_from_database <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
-  connection <- connect_to_supabase()
-  on.exit(dbDisconnect(connection), add = TRUE)
-
-  if (!is.null(auth_user_id) && nzchar(auth_user_id)) {
-    profile <- dbGetQuery(
-      connection,
-      "select usuario, user_id::text, email, id_institucion, rol, pais, nombre, activo
-       from public.usuario_perfil
-       where user_id = $1::uuid
-       limit 1",
-      params = list(auth_user_id)
-    )
-    if (nrow(profile) > 0) return(profile[1, , drop = FALSE])
-  }
-
-  candidates <- unique(tolower(trimws(c(
-    login_identifier,
-    auth_email,
-    sub("@.*$", "", value_or_default(auth_email, ""))
-  ))))
-  candidates <- candidates[nzchar(candidates)]
-  if (length(candidates) == 0) {
-    return(data.frame())
-  }
-
-  placeholders <- paste0("$", seq_along(candidates), collapse = ", ")
-  query <- paste0(
-    "select usuario, user_id::text, email, id_institucion, rol, pais, nombre, activo
-     from public.usuario_perfil
-     where lower(usuario) in (", placeholders, ") or lower(email) in (", placeholders, ")
-     limit 1"
-  )
-  dbGetQuery(connection, query, params = as.list(candidates))
-}
 
 fetch_usuario_perfil_from_api <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
   project_url <- storage_project_url()
@@ -1385,26 +1369,7 @@ fetch_usuario_perfil_from_api <- function(login_identifier = NULL, auth_user_id 
 }
 
 fetch_usuario_perfil <- function(login_identifier = NULL, auth_user_id = NULL, auth_email = NULL) {
-  api_error <- NULL
-  profile <- tryCatch(
-    fetch_usuario_perfil_from_api(login_identifier, auth_user_id, auth_email),
-    error = function(error) {
-      api_error <<- conditionMessage(error)
-      NULL
-    }
-  )
-  if (!is.null(profile)) return(profile)
-
-  tryCatch(
-    fetch_usuario_perfil_from_database(login_identifier, auth_user_id, auth_email),
-    error = function(error) {
-      stop(paste(
-        "No se pudo consultar el perfil autorizado.",
-        paste0("API: ", value_or_default(api_error, "no disponible")),
-        "La conexión PostgreSQL de respaldo tampoco está disponible."
-      ))
-    }
-  )
+  fetch_usuario_perfil_from_api(login_identifier, auth_user_id, auth_email)
 }
 
 login_identifier_to_email <- function(login_identifier) {
@@ -2397,7 +2362,7 @@ formulario_7_capture_form <- function() {
               radioButtons(
                 "f7_resultado_diagnostico",
                 "Resultado de la prueba diagnóstica *",
-                choices = c("Suceptible", "Sospecha de Resistencia", "Resistente"),
+                choices = c("Susceptible", "Sospecha de Resistencia", "Resistente"),
                 selected = character(0)
               )
             ),
@@ -8041,18 +8006,12 @@ server <- function(input, output, session) {
   }
 
   f1_fetch_review_record <- function(intake_id) {
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    header <- dbGetQuery(
-      connection,
-      "select * from public.formulario_1_ovitrampa_intake where intake_id = $1",
-      params = list(as.integer(intake_id))
-    )
-    if (nrow(header) == 0) return(NULL)
-    details <- dbGetQuery(
-      connection,
-      "select detalle_id, codigo_sustrato from public.formulario_1_ovitrampa_detalle_intake where intake_id = $1 order by codigo_sustrato",
-      params = list(as.integer(intake_id))
+    filters <- list(intake_id = paste0("eq.", as.integer(intake_id)))
+    header <- supabase_private_select("formulario_1_ovitrampa_intake", filters = filters)
+    if (!nrow(header)) return(NULL)
+    details <- supabase_private_select(
+      "formulario_1_ovitrampa_detalle_intake", select = "detalle_id,codigo_sustrato",
+      filters = filters, order = "codigo_sustrato.asc"
     )
     list(header = header, details = details, data = f1_review_data_from_record(header, details))
   }
@@ -8120,13 +8079,15 @@ server <- function(input, output, session) {
     if (!nzchar(code)) stop("Ingrese un código de formulario válido.")
     status <- f5_text(input$f1_review_filter_status)
     if (!status %in% c("pending", "reviewed", "rejected", "all")) status <- "pending"
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    dbGetQuery(
-      connection,
-      "select intake_id, codigo_formulario, fecha_registro, pais, cuadrante, codigo_casa, ovitrampas_colocadas, ovitrampas_retiradas, review_status, actualizado_en from public.formulario_1_ovitrampa_intake where upper(codigo_formulario) = $1 and ($2 = 'all' or review_status = $2) order by cuadrante, codigo_casa, intake_id",
-      params = list(code, status)
+    records <- supabase_private_select(
+      "formulario_1_ovitrampa_intake",
+      select = "intake_id,codigo_formulario,fecha_registro,pais,cuadrante,codigo_casa,ovitrampas_colocadas,ovitrampas_retiradas,review_status,actualizado_en",
+      order = "cuadrante.asc,codigo_casa.asc,intake_id.asc"
     )
+    if (!nrow(records)) return(records)
+    matches <- !is.na(records$codigo_formulario) & toupper(trimws(records$codigo_formulario)) == code
+    if (status != "all") matches <- matches & !is.na(records$review_status) & records$review_status == status
+    records[matches, , drop = FALSE]
   }
 
   f1_review_input_id <- function(field) paste0("f1_review_value_", field)
@@ -8152,64 +8113,27 @@ server <- function(input, output, session) {
 
   f1_update_review_record <- function(intake_id, data) {
     tables <- formulario_1_tables(data[1, , drop = FALSE])
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    dbWithTransaction(connection, {
-      columns <- names(tables$header)
-      assignments <- paste0(as.character(dbQuoteIdentifier(connection, columns)), " = $", seq_along(columns))
-      query <- paste0(
-        "update public.formulario_1_ovitrampa_intake set ", paste(assignments, collapse = ", "),
-        ", review_status = 'pending', review_notes = null, reviewed_by = null, reviewed_at = null, actualizado_en = now() where intake_id = $",
-        length(columns) + 1L
-      )
-      params <- c(unname(as.list(tables$header[1, columns, drop = TRUE])), list(as.integer(intake_id)))
-      updated <- dbExecute(connection, query, params = params)
-      if (updated != 1L) stop("No se actualizó el registro seleccionado.")
-      dbExecute(connection, "delete from public.formulario_1_ovitrampa_detalle_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      detail_rows <- do.call(rbind, lapply(seq_len(nrow(data)), function(row_index) formulario_1_tables(data[row_index, , drop = FALSE])$detail))
-      detail_rows$intake_id <- as.integer(intake_id)
-      detail_rows <- detail_rows[c("intake_id", "codigo_sustrato")]
-      dbAppendTable(connection, Id(schema = "public", table = "formulario_1_ovitrampa_detalle_intake"), detail_rows)
-    })
+    details <- do.call(rbind, lapply(seq_len(nrow(data)), function(i) formulario_1_tables(data[i, , drop = FALSE])$detail))
+    supabase_review_rpc(
+      "entonet_update_formulario_1", intake_id,
+      list(p_header = supabase_record_from_row(tables$header),
+           p_details = supabase_records_from_data_frame(details))
+    )
   }
 
   f1_delete_review_record <- function(intake_id, reason, deleted_by) {
     reason <- f7_clean_text(reason)[[1]]
-    deleted_by <- f7_clean_text(deleted_by)[[1]]
     if (is.na(reason)) stop("El comentario de eliminación es obligatorio.")
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    dbWithTransaction(connection, {
-      selected_header <- dbGetQuery(
-        connection,
-        "select intake_id, codigo_formulario, cuadrante, codigo_casa, review_status from public.formulario_1_ovitrampa_intake where intake_id = $1 for update",
-        params = list(as.integer(intake_id))
-      )
-      if (nrow(selected_header) != 1) stop("No se encontró el registro seleccionado para eliminar.")
-      audit_exists <- dbGetQuery(
-        connection,
-        "select to_regclass('public.formulario_1_ovitrampa_eliminacion_audit') is not null as exists"
-      )$exists[[1]]
-      if (isTRUE(audit_exists)) {
-        dbExecute(
-          connection,
-          "insert into public.formulario_1_ovitrampa_eliminacion_audit (intake_id, codigo_formulario, cuadrante, codigo_casa, review_status, eliminado_por, motivo_eliminacion) values ($1, $2, $3, $4, $5, nullif($6, ''), $7)",
-          params = list(
-            as.integer(selected_header$intake_id[[1]]),
-            as.character(selected_header$codigo_formulario[[1]]),
-            as.character(selected_header$cuadrante[[1]]),
-            as.character(selected_header$codigo_casa[[1]]),
-            as.character(selected_header$review_status[[1]]),
-            value_or_default(deleted_by, ""),
-            reason
-          )
-        )
-      }
-      dbExecute(connection, "delete from public.formulario_1_ovitrampa_detalle_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      deleted <- dbExecute(connection, "delete from public.formulario_1_ovitrampa_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      if (deleted != 1L) stop("No se eliminó el registro seleccionado.")
-      selected_header
-    })
+    removed <- supabase_private_rpc(
+      "entonet_delete_formulario_1",
+      list(p_intake_id = as.integer(intake_id), p_reason = reason,
+           p_deleted_by = value_or_default(deleted_by, ""))
+    )
+    if (!is.data.frame(removed) || nrow(removed) != 1L ||
+        as.character(removed$intake_id[[1]]) != as.character(intake_id)) {
+      stop("No se confirmó la eliminación del registro seleccionado.")
+    }
+    removed
   }
 
   f1_xml_escape <- function(value) {
@@ -9616,40 +9540,17 @@ server <- function(input, output, session) {
 
   f5_delete_review_record <- function(intake_id, reason, deleted_by) {
     reason <- f7_clean_text(reason)[[1]]
-    deleted_by <- f7_clean_text(deleted_by)[[1]]
     if (is.na(reason)) stop("El comentario de eliminación es obligatorio.")
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    dbWithTransaction(connection, {
-      selected_record <- dbGetQuery(
-        connection,
-        "select intake_id, formulario_codigo, cepa_poblacion, especie, review_status from public.formulario_5_alimentacion_conteo_intake where intake_id = $1 for update",
-        params = list(as.integer(intake_id))
-      )
-      if (nrow(selected_record) != 1) stop("No se encontró el registro seleccionado para eliminar.")
-      audit_exists <- dbGetQuery(
-        connection,
-        "select to_regclass('public.formulario_5_alimentacion_eliminacion_audit') is not null as exists"
-      )$exists[[1]]
-      if (isTRUE(audit_exists)) {
-        dbExecute(
-          connection,
-          "insert into public.formulario_5_alimentacion_eliminacion_audit (intake_id, formulario_codigo, cepa_poblacion, especie, review_status, eliminado_por, motivo_eliminacion) values ($1, $2, $3, $4, $5, nullif($6, ''), $7)",
-          params = list(
-            as.integer(selected_record$intake_id[[1]]),
-            as.character(selected_record$formulario_codigo[[1]]),
-            as.character(selected_record$cepa_poblacion[[1]]),
-            as.character(selected_record$especie[[1]]),
-            as.character(selected_record$review_status[[1]]),
-            value_or_default(deleted_by, ""),
-            reason
-          )
-        )
-      }
-      deleted <- dbExecute(connection, "delete from public.formulario_5_alimentacion_conteo_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      if (deleted != 1L) stop("No se eliminó el registro seleccionado.")
-      selected_record
-    })
+    removed <- supabase_private_rpc(
+      "entonet_delete_formulario_5",
+      list(p_intake_id = as.integer(intake_id), p_reason = reason,
+           p_deleted_by = value_or_default(deleted_by, ""))
+    )
+    if (!is.data.frame(removed) || nrow(removed) != 1L ||
+        as.character(removed$intake_id[[1]]) != as.character(intake_id)) {
+      stop("No se confirmó la eliminación del registro seleccionado.")
+    }
+    removed
   }
 
   f5_review_discrepancies <- function(original, redigit) {
@@ -9685,22 +9586,9 @@ server <- function(input, output, session) {
   }
 
   f5_fetch_review_record <- function(intake_id) {
-    connection <- NULL
-    on.exit({
-      if (!is.null(connection)) {
-        dbDisconnect(connection)
-      }
-    }, add = TRUE)
-
-    connection <- connect_to_supabase()
-    dbGetQuery(
-      connection,
-      "
-        select *
-        from public.formulario_5_alimentacion_conteo_intake
-        where intake_id = $1
-      ",
-      params = list(as.integer(intake_id))
+    supabase_private_select(
+      "formulario_5_alimentacion_conteo_intake",
+      filters = list(intake_id = paste0("eq.", as.integer(intake_id)))
     )
   }
 
@@ -10994,37 +10882,15 @@ server <- function(input, output, session) {
 
     tryCatch({
       withProgress(message = "Actualizando revisión en Supabase", value = 0, {
-        incProgress(0.25, detail = "Abriendo conexión")
-        connection <- connect_to_supabase()
-        incProgress(0.5, detail = "Guardando revisión")
-        updated <- dbGetQuery(
-          connection,
-          "
-            update public.formulario_5_alimentacion_conteo_intake
-            set
-              review_status = $1,
-              review_notes = $2,
-              reviewed_by = nullif($3, ''),
-              reviewed_at = $4::timestamptz,
-              actualizado_en = now()
-            where intake_id = $5
-            returning intake_id, review_status, actualizado_en
-          ",
-          params = list(
-            status,
-            notes,
-            f5_text(input$f5_reviewed_by),
-            as.character(f5_date(input$f5_reviewed_at)),
-            as.integer(record$intake_id[[1]])
-          )
+        incProgress(0.25, detail = "Preparando la revisión")
+        supabase_review_rpc(
+          "entonet_review_formulario_5", record$intake_id[[1]],
+          list(p_status = status, p_notes = if (is.na(notes)) "" else notes,
+               p_reviewed_by = f5_text(input$f5_reviewed_by),
+               p_reviewed_at = as.character(f5_date(input$f5_reviewed_at)))
         )
-        incProgress(0.25, detail = "Listo")
+        incProgress(0.75, detail = "Listo")
 
-        if (nrow(updated) == 0) {
-          stop("No se actualizó ningún registro.")
-        }
-
-        updated
       })
 
       refreshed <- f5_fetch_review_record(record$intake_id[[1]])
@@ -11048,10 +10914,6 @@ server <- function(input, output, session) {
         details = conditionMessage(error)
       ))
       showNotification("No se pudo guardar la revisión del Formulario 5.", type = "error", duration = 8)
-    }, finally = {
-      if (!is.null(connection)) {
-        dbDisconnect(connection)
-      }
     })
   })
 
@@ -11137,6 +10999,8 @@ server <- function(input, output, session) {
   validate_formulario_7 <- function(csv_data) {
     details <- character()
     expected_columns <- if (all(formulario_7_intake_columns %in% names(csv_data))) formulario_7_intake_columns else formulario_7_csv_columns
+    # Older CSV templates omit the intensity multiplier; validation still requires it when applicable.
+    if (!"dosis_intensidad" %in% names(csv_data)) expected_columns <- setdiff(expected_columns, "dosis_intensidad")
     missing_columns <- setdiff(expected_columns, names(csv_data))
     extra_columns <- setdiff(names(csv_data), expected_columns)
     if (length(missing_columns) > 0) details <- c(details, paste("Faltan columnas:", paste(missing_columns, collapse = ", ")))
@@ -11146,6 +11010,7 @@ server <- function(input, output, session) {
     data <- formulario_7_csv_to_internal(csv_data)
     if (nrow(data) == 0) return(list(data = NULL, details = "El archivo no contiene registros."))
     for (column in names(data)) data[[column]] <- f7_clean_text(data[[column]])
+    data$resultado_diagnostico <- normalize_f7_diagnostic_result(data$resultado_diagnostico)
     data$codigo_control_calidad[is.na(data$codigo_control_calidad)] <- "NO APLICA"
 
     required_text <- c(
@@ -11233,7 +11098,7 @@ server <- function(input, output, session) {
       origen_material = c("Silvestre", "Laboratorio"), pais = c("El Salvador", "Guatemala"),
       dosis_intensidad = c("1X", "2X", "5X", "10X"),
       sinergista_tipo = c("DEF", "PBO", "DM"),
-      resultado_diagnostico = c("Suceptible", "Sospecha de Resistencia", "Resistente")
+      resultado_diagnostico = c("Susceptible", "Sospecha de Resistencia", "Resistente")
     )
     for (column in names(allowed)) {
       bad <- which(!is.na(data[[column]]) & !(data[[column]] %in% allowed[[column]]))
@@ -11264,7 +11129,7 @@ server <- function(input, output, session) {
         current_dose <- data$dosis_intensidad[[row]]
         if (is.na(current_result)) details <- c(details, paste("Fila", row, ": indique el resultado de la prueba diagnóstica para Intensidad."))
         if (identical(data$bioensayo_intensidad[[row]], "Exploratorio")) {
-          if (identical(current_result, "Suceptible") && !is.na(current_dose)) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio Suceptible no debe llevar dosis_intensidad."))
+          if (identical(current_result, "Susceptible") && !is.na(current_dose)) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio Susceptible no debe llevar dosis_intensidad."))
           if (current_result %in% c("Sospecha de Resistencia", "Resistente") && is.na(current_dose)) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio con Resistente o Sospecha de Resistencia requiere dosis_intensidad 1X, 2X, 5X o 10X."))
         }
         if (identical(data$bioensayo_intensidad[[row]], "Completa") && is.na(data$dosis_intensidad[[row]])) details <- c(details, paste("Fila", row, ": Intensidad Completa requiere dosis_intensidad 1X, 2X, 5X o 10X."))
@@ -11612,40 +11477,17 @@ server <- function(input, output, session) {
 
   f7_delete_review_record <- function(intake_id, reason, deleted_by) {
     reason <- f7_clean_text(reason)[[1]]
-    deleted_by <- f7_clean_text(deleted_by)[[1]]
     if (is.na(reason)) stop("El comentario de eliminación es obligatorio.")
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    dbWithTransaction(connection, {
-      selected_header <- dbGetQuery(
-        connection,
-        "select intake_id, codigo_bioensayo, review_status from public.formulario_7_bioensayo_intake where intake_id = $1 for update",
-        params = list(as.integer(intake_id))
-      )
-      if (nrow(selected_header) != 1) stop("No se encontró el registro seleccionado para eliminar.")
-      audit_exists <- dbGetQuery(
-        connection,
-        "select to_regclass('public.formulario_7_bioensayo_eliminacion_audit') is not null as exists"
-      )$exists[[1]]
-      if (isTRUE(audit_exists)) {
-        dbExecute(
-          connection,
-          "insert into public.formulario_7_bioensayo_eliminacion_audit (intake_id, codigo_bioensayo, review_status, eliminado_por, motivo_eliminacion) values ($1, $2, $3, nullif($4, ''), $5)",
-          params = list(
-            as.integer(selected_header$intake_id[[1]]),
-            as.character(selected_header$codigo_bioensayo[[1]]),
-            as.character(selected_header$review_status[[1]]),
-            value_or_default(deleted_by, ""),
-            reason
-          )
-        )
-      }
-      dbExecute(connection, "delete from public.formulario_7_bioensayo_resultado_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      dbExecute(connection, "delete from public.formulario_7_bioensayo_comentario_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      deleted <- dbExecute(connection, "delete from public.formulario_7_bioensayo_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      if (deleted != 1L) stop("No se eliminó el registro seleccionado.")
-      selected_header
-    })
+    removed <- supabase_private_rpc(
+      "entonet_delete_formulario_7",
+      list(p_intake_id = as.integer(intake_id), p_reason = reason,
+           p_deleted_by = value_or_default(deleted_by, ""))
+    )
+    if (!is.data.frame(removed) || nrow(removed) != 1L ||
+        as.character(removed$intake_id[[1]]) != as.character(intake_id)) {
+      stop("No se confirmó la eliminación del registro seleccionado.")
+    }
+    removed
   }
 
   observeEvent(input$open_dataset, {
@@ -12273,7 +12115,7 @@ server <- function(input, output, session) {
         c("código de bioensayo", "país", "departamento", "municipio", "nombre de la población", "fecha de registro")
       )
       if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "intensidad", "sinergistas")) {
-        if (missing_value("resultado_diagnostico")) errors <- c(errors, "Seleccione el resultado: Suceptible, Sospecha de Resistencia o Resistente.")
+        if (missing_value("resultado_diagnostico")) errors <- c(errors, "Seleccione el resultado: Susceptible, Sospecha de Resistencia o Resistente.")
       }
       if (identical(input$f7_tipo_bioensayo, "intensidad")) {
         if (missing_value("bioensayo_intensidad")) errors <- c(errors, "Seleccione Intensidad Exploratorio o Completa.")
@@ -12544,7 +12386,7 @@ server <- function(input, output, session) {
         pais = c("El Salvador", "Guatemala"),
         bioensayo_intensidad = c("No aplica" = "", "Exploratorio" = "Exploratorio", "Completa" = "Completa"),
         dosis_intensidad = c("Vacío" = "", "1X" = "1X", "2X" = "2X", "5X" = "5X", "10X" = "10X"),
-        resultado_diagnostico = c("No aplica" = "", "Suceptible" = "Suceptible", "Sospecha de Resistencia" = "Sospecha de Resistencia", "Resistente" = "Resistente"),
+        resultado_diagnostico = c("No aplica" = "", "Susceptible" = "Susceptible", "Sospecha de Resistencia" = "Sospecha de Resistencia", "Resistente" = "Resistente"),
         solvente_utilizado = c("Etanol", "Otro"),
         origen_material = c("Silvestre", "Laboratorio"),
         NULL
@@ -13032,35 +12874,6 @@ server <- function(input, output, session) {
   })
 
   sat26_generate_server_code <- function() {
-    database_error <- NULL
-    if (nzchar(db_url)) {
-      database_code <- tryCatch({
-        connection <- connect_to_supabase()
-        on.exit(DBI::dbDisconnect(connection), add = TRUE)
-        result <- dbGetQuery(
-          connection,
-          "select nextval('public.encuesta_sat26_codigo_seq')::integer as next_code"
-        )
-        if (!nrow(result) || is.na(result$next_code[[1]])) {
-          stop("Supabase no devolvió un número de secuencia SAT26.")
-        }
-        sprintf("26SAT%02d", as.integer(result$next_code[[1]]))
-      }, error = function(error) {
-        database_error <<- conditionMessage(error)
-        ""
-      })
-      if (nzchar(database_code)) {
-        return(database_code)
-      }
-    }
-
-    if (!nzchar(storage_project_url()) || !nzchar(supabase_service_role_key)) {
-      stop(paste(
-        "No se pudo conectar por PostgreSQL y la ruta API de respaldo no está configurada.",
-        value_or_default(database_error, "SUPABASE_DB_URL no está disponible.")
-      ), call. = FALSE)
-    }
-
     response <- request(paste0(storage_project_url(), "/rest/v1/rpc/next_encuesta_sat26_code")) |>
       req_headers(
         Authorization = paste("Bearer", supabase_service_role_key),
@@ -13124,6 +12937,7 @@ server <- function(input, output, session) {
         encuesta_nombre = "Encuesta SAT26",
         formulario_version = "web-2026-08-18",
         payload = payload,
+        submitted_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS%z"),
         actualizado_en = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS%z")
       ), auto_unbox = TRUE, null = "null", na = "null") |>
       req_error(is_error = function(response) FALSE) |>
@@ -13149,7 +12963,7 @@ server <- function(input, output, session) {
           error_detail <- conditionMessage(error)
           message <- paste(
             "No se pudo generar el código único desde Supabase.",
-            "Revise SUPABASE_DB_URL o la configuración privada de la API del servidor."
+            "Revise la configuración privada de la API del servidor."
           )
           warning(paste(message, error_detail), call. = FALSE)
           sat26_resume_status(message)
@@ -13174,25 +12988,7 @@ server <- function(input, output, session) {
       return()
     }
     remote_payload <- tryCatch({
-      payload <- tryCatch({
-        connection <- connect_to_supabase()
-        on.exit(DBI::dbDisconnect(connection), add = TRUE)
-        record <- dbGetQuery(
-          connection,
-          "
-            select payload::text as payload
-            from public.encuesta_sat26_intake
-            where codigo_unico = $1
-            order by submitted_at desc
-            limit 1
-          ",
-          params = list(resume_code)
-        )
-        if (!nrow(record)) return(NULL)
-        jsonlite::fromJSON(record$payload[[1]], simplifyVector = FALSE)
-      }, error = function(error) {
-        sat26_fetch_from_api(resume_code)
-      })
+      payload <- sat26_fetch_from_api(resume_code)
       if (is.null(payload)) return(NULL)
       payload$code <- resume_code
       payload$found <- TRUE
@@ -13628,42 +13424,7 @@ server <- function(input, output, session) {
       stop("No se encontró el código único de encuesta.")
     }
 
-    tryCatch({
-      payload_json <- jsonlite::toJSON(payload, auto_unbox = TRUE, null = "null", na = "null")
-      connection <- connect_to_supabase()
-      on.exit(DBI::dbDisconnect(connection), add = TRUE)
-      dbGetQuery(
-        connection,
-        "
-          insert into public.encuesta_sat26_intake (
-            codigo_unico,
-            encuesta_codigo,
-            encuesta_nombre,
-            formulario_version,
-            payload,
-            actualizado_en
-          )
-          values (
-            $1,
-            'SAT26',
-            'Encuesta SAT26',
-            'web-2026-08-18',
-            $2::jsonb,
-            now()
-          )
-          on conflict (codigo_unico) do update
-          set
-            payload = excluded.payload,
-            submitted_at = now(),
-            formulario_version = excluded.formulario_version,
-            actualizado_en = now()
-          returning intake_id::integer, codigo_unico, submitted_at
-        ",
-        params = list(code, as.character(payload_json))
-      )
-    }, error = function(error) {
-      sat26_submit_via_api(payload)
-    })
+    sat26_submit_via_api(payload)
   }
 
   observeEvent(input$sat26_generated_code, {
@@ -14895,7 +14656,7 @@ server <- function(input, output, session) {
             "Resultado diagnóstico",
             choices = c(
               "Todos" = "all",
-              "Susceptible" = "Suceptible",
+              "Susceptible" = "Susceptible",
               "Sospecha Resistencia" = "Sospecha de Resistencia",
               "Resistencia" = "Resistente",
               "No aplica" = "not_applicable"
@@ -17773,7 +17534,7 @@ server <- function(input, output, session) {
           class = "formulario-1-capture-layout",
           div(
             class = "capture-action-list",
-            capture_action_row("Subida de datos masiva", "Cargue varios bioensayos desde el machote CSV oficial de 118 columnas visibles.", "open_formulario_7_bulk_upload", "Abrir subida masiva"),
+            capture_action_row("Subida de datos masiva", "Cargue varios bioensayos desde el machote CSV oficial actualizado, que incluye dosis_intensidad.", "open_formulario_7_bulk_upload", "Abrir subida masiva"),
             capture_action_row("Ingreso individual de datos", "Capture un bioensayo con las lecturas agrupadas por botella y tiempo.", "open_formulario_7_entry", "Abrir ingreso individual"),
             capture_action_row("Revisar formulario", "Abra registros de Formulario 7 para confirmar la revisión o activar y editar sus valores.", "open_formulario_7_review", "Abrir revisión"),
             capture_action_row("Imprimir formulario", "Genere el machote de Formulario 7 con Código Bioensayo y ubicación prellenados.", "open_formulario_7_print", "Abrir impresión")
@@ -18807,19 +18568,16 @@ server <- function(input, output, session) {
     selected <- f1_review_selected()
     if (is.null(selected)) return()
     intake_id <- as.integer(selected$header$intake_id[[1]])
-    connection <- NULL
     f1_review_status(list(type = "info", message = sprintf("Confirmando el registro %s...", intake_id), details = character()))
     tryCatch({
       withProgress(message = "Confirmando registro", value = 0, {
-        incProgress(0.20, detail = "Abriendo conexión con Supabase")
-        connection <- connect_to_supabase()
+        incProgress(0.20, detail = "Preparando la confirmación")
         incProgress(0.40, detail = "Guardando la revisión")
-        updated <- dbGetQuery(
-          connection,
-          "update public.formulario_1_ovitrampa_intake set review_status = 'reviewed', review_notes = nullif($1, ''), reviewed_by = nullif($2, ''), reviewed_at = now(), actualizado_en = now() where intake_id = $3 returning intake_id, review_status, reviewed_by, reviewed_at",
-          params = list(f5_text(input$f1_review_notes), f5_text(input$f1_reviewed_by), intake_id)
+        supabase_review_rpc(
+          "entonet_confirm_formulario_1", intake_id,
+          list(p_review_notes = f5_text(input$f1_review_notes),
+               p_reviewed_by = f5_text(input$f1_reviewed_by))
         )
-        if (nrow(updated) != 1) stop("No se actualizó el registro seleccionado.")
         incProgress(0.25, detail = "Actualizando el formulario")
         f1_select_review_record(intake_id)
         f1_review_records(f1_load_review_records())
@@ -18828,8 +18586,6 @@ server <- function(input, output, session) {
       f1_review_status(list(type = "success", message = sprintf("Registro %s confirmado. Estado: reviewed.", intake_id), details = character()))
     }, error = function(error) {
       f1_review_status(list(type = "error", message = "No se pudo confirmar el registro.", details = conditionMessage(error)))
-    }, finally = {
-      if (!is.null(connection)) dbDisconnect(connection)
     })
   })
 
@@ -19331,231 +19087,11 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$process_bulk_upload, {
-    req(input$bulk_upload_file)
-
-    bulk_upload_result(NULL)
-
-    csv_data <- tryCatch(
-      read.csv(
-        input$bulk_upload_file$datapath,
-        stringsAsFactors = FALSE,
-        check.names = FALSE,
-        na.strings = c("", "NA")
-      ),
-      error = function(error) {
-        bulk_upload_result(list(
-          type = "error",
-          message = "No se pudo leer el archivo CSV.",
-          details = conditionMessage(error)
-        ))
-        NULL
-      }
-    )
-
-    if (is.null(csv_data)) {
-      return()
-    }
-
-    missing_columns <- setdiff(egg_count_intake_columns, names(csv_data))
-    extra_columns <- setdiff(names(csv_data), egg_count_intake_columns)
-    validation_details <- character()
-
-    if (length(missing_columns) > 0) {
-      validation_details <- c(
-        validation_details,
-        paste("Faltan columnas:", paste(missing_columns, collapse = ", "))
-      )
-    }
-
-    if (length(extra_columns) > 0) {
-      validation_details <- c(
-        validation_details,
-        paste("El archivo contiene columnas no esperadas:", paste(extra_columns, collapse = ", "))
-      )
-    }
-
-    if (length(validation_details) > 0) {
-      bulk_upload_result(list(
-        type = "error",
-        message = "El archivo no tiene la estructura esperada.",
-        details = validation_details
-      ))
-      return()
-    }
-
-    csv_data <- csv_data[egg_count_intake_columns]
-
-    if (nrow(csv_data) == 0) {
-      bulk_upload_result(list(
-        type = "error",
-        message = "El archivo no contiene registros para subir.",
-        details = character()
-      ))
-      return()
-    }
-
-    clean_text <- function(value) {
-      value <- trimws(as.character(value))
-      value[value %in% c("", "NA", "NaN")] <- NA_character_
-      value
-    }
-
-    parse_integer <- function(value) {
-      suppressWarnings(as.integer(value))
-    }
-
-    parse_date <- function(value) {
-      value <- clean_text(value)
-      suppressWarnings(as.Date(value, format = "%Y-%m-%d"))
-    }
-
-    required_text_columns <- c("country", "oviposition_code", "count_responsible_code")
-    integer_columns <- c(
-      "cycle",
-      "round_number",
-      "quadrant",
-      "intact_eggs",
-      "hatched_eggs",
-      "canoe_eggs",
-      "unfertilized_eggs",
-      "other_species_count"
-    )
-    date_columns <- c("placement_date", "removal_date", "count_date")
-
-    for (column in c("country", "oviposition_code", "substrate_code", "collection_site", "count_responsible_code", "notes")) {
-      csv_data[[column]] <- clean_text(csv_data[[column]])
-    }
-
-    for (column in integer_columns) {
-      csv_data[[column]] <- parse_integer(csv_data[[column]])
-    }
-
-    raw_date_values <- lapply(csv_data[date_columns], clean_text)
-    for (column in date_columns) {
-      csv_data[[column]] <- parse_date(csv_data[[column]])
-    }
-
-    for (column in required_text_columns) {
-      bad_rows <- which(is.na(csv_data[[column]]))
-      if (length(bad_rows) > 0) {
-        validation_details <- c(
-          validation_details,
-          paste0("La columna ", column, " tiene valores vacíos en filas: ", paste(head(bad_rows, 10), collapse = ", "))
-        )
-      }
-    }
-
-    bad_country_rows <- which(!is.na(csv_data$country) & !(csv_data$country %in% country_choices))
-    if (length(bad_country_rows) > 0) {
-      validation_details <- c(
-        validation_details,
-        paste0(
-          "La columna country debe usar uno de estos valores: ",
-          paste(country_choices, collapse = ", "),
-          ". Filas: ",
-          paste(head(bad_country_rows, 10), collapse = ", ")
-        )
-      )
-    }
-
-    for (column in integer_columns) {
-      bad_rows <- which(is.na(csv_data[[column]]))
-      if (length(bad_rows) > 0) {
-        validation_details <- c(
-          validation_details,
-          paste0("La columna ", column, " debe contener números enteros en filas: ", paste(head(bad_rows, 10), collapse = ", "))
-        )
-      }
-    }
-
-    count_columns <- c("intact_eggs", "hatched_eggs", "canoe_eggs", "unfertilized_eggs", "other_species_count")
-    for (column in count_columns) {
-      bad_rows <- which(!is.na(csv_data[[column]]) & csv_data[[column]] < 0)
-      if (length(bad_rows) > 0) {
-        validation_details <- c(
-          validation_details,
-          paste0("La columna ", column, " no puede tener valores negativos. Filas: ", paste(head(bad_rows, 10), collapse = ", "))
-        )
-      }
-    }
-
-    bad_round_rows <- which(!is.na(csv_data$round_number) & !(csv_data$round_number %in% 1:4))
-    if (length(bad_round_rows) > 0) {
-      validation_details <- c(
-        validation_details,
-        paste0("La ronda debe estar entre 1 y 4. Filas: ", paste(head(bad_round_rows, 10), collapse = ", "))
-      )
-    }
-
-    bad_count_date_rows <- which(is.na(csv_data$count_date))
-    if (length(bad_count_date_rows) > 0) {
-      validation_details <- c(
-        validation_details,
-        paste0("La fecha de conteo es obligatoria y debe usar YYYY-MM-DD. Filas: ", paste(head(bad_count_date_rows, 10), collapse = ", "))
-      )
-    }
-
-    for (column in c("placement_date", "removal_date")) {
-      bad_rows <- which(!is.na(raw_date_values[[column]]) & is.na(csv_data[[column]]))
-      if (length(bad_rows) > 0) {
-        validation_details <- c(
-          validation_details,
-          paste0("La columna ", column, " debe usar formato YYYY-MM-DD. Filas: ", paste(head(bad_rows, 10), collapse = ", "))
-        )
-      }
-    }
-
-    bad_date_order_rows <- which(
-      !is.na(csv_data$placement_date) &
-        !is.na(csv_data$removal_date) &
-        csv_data$placement_date > csv_data$removal_date
-    )
-    if (length(bad_date_order_rows) > 0) {
-      validation_details <- c(
-        validation_details,
-        paste0("La fecha de colocación no puede ser posterior a la fecha de retiro. Filas: ", paste(head(bad_date_order_rows, 10), collapse = ", "))
-      )
-    }
-
-    if (length(validation_details) > 0) {
-      bulk_upload_result(list(
-        type = "error",
-        message = "El archivo tiene errores de validación. Corrija el CSV y vuelva a subirlo.",
-        details = validation_details
-      ))
-      return()
-    }
-
-    csv_data$submitted_by <- Sys.getenv("PROJECT_REI_SUBMITTED_BY", unset = value_or_default(app_user, "local-prototype-user"))
-
-    connection <- NULL
-    tryCatch({
-      connection <- connect_to_supabase()
-      dbWithTransaction(connection, {
-        dbAppendTable(
-          connection,
-          Id(schema = "rei", table = "egg_count_intake"),
-          csv_data
-        )
-      })
-
-      bulk_upload_result(list(
-        type = "success",
-        message = paste0(nrow(csv_data), " registros guardados como pendientes de revisión."),
-        details = character()
-      ))
-      submission_status(paste0(nrow(csv_data), " registros cargados por subida masiva. Estado de revisión: pending."))
-    }, error = function(error) {
-      bulk_upload_result(list(
-        type = "error",
-        message = "La carga a Supabase falló.",
-        details = conditionMessage(error)
-      ))
-    }, finally = {
-      if (!is.null(connection)) {
-        dbDisconnect(connection)
-      }
-    })
+    bulk_upload_result(list(
+      type = "warning",
+      message = "El formato antiguo de huevos no está habilitado en esta base.",
+      details = "Use los formularios vigentes de Captura de Datos."
+    ))
   })
 
   output$download_request_data_csv <- downloadHandler(
@@ -19619,86 +19155,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$submit, {
     req(active_dataset() == "egg_count_raw")
-
-    errors <- validation_errors()
-    if (length(errors) > 0) {
-      submission_status("El envío fue bloqueado. Resuelva los mensajes de validación anteriores.")
-      return()
-    }
-
-    record <- form_data()
-    connection <- NULL
-
-    tryCatch({
-      connection <- connect_to_supabase()
-      submitted_by <- Sys.getenv("PROJECT_REI_SUBMITTED_BY", unset = "local-prototype-user")
-
-      result <- dbGetQuery(
-        connection,
-        "
-          insert into rei.egg_count_intake (
-            country,
-            cycle,
-            round_number,
-            quadrant,
-            oviposition_code,
-            substrate_code,
-            collection_site,
-            placement_date,
-            removal_date,
-            count_date,
-            count_responsible_code,
-            intact_eggs,
-            hatched_eggs,
-            canoe_eggs,
-            unfertilized_eggs,
-            other_species_count,
-            notes,
-            submitted_by
-          )
-          values (
-            $1, $2, $3, $4, $5, nullif($6, ''), nullif($7, ''),
-            $8, $9, $10, $11, $12, $13, $14, $15, $16,
-            nullif($17, ''), $18
-          )
-          returning intake_id, calculated_total, review_status, submitted_at
-        ",
-        params = list(
-          record$country,
-          as.integer(record$cycle),
-          as.integer(record$round_number),
-          as.integer(record$quadrant),
-          record$oviposition_code,
-          record$substrate_code,
-          record$collection_site,
-          as.character(record$placement_date),
-          as.character(record$removal_date),
-          as.character(record$count_date),
-          record$count_responsible_code,
-          as.integer(record$intact_eggs),
-          as.integer(record$hatched_eggs),
-          as.integer(record$canoe_eggs),
-          as.integer(record$unfertilized_eggs),
-          as.integer(record$other_species_count),
-          record$notes,
-          submitted_by
-        )
-      )
-
-      submission_status(sprintf(
-        "Registro de ingreso %s guardado con total %s. Estado de revisión: %s.",
-        result$intake_id,
-        result$calculated_total,
-        result$review_status
-      ))
-      reset_form()
-    }, error = function(error) {
-      submission_status(paste("El envío falló:", conditionMessage(error)))
-    }, finally = {
-      if (!is.null(connection)) {
-        dbDisconnect(connection)
-      }
-    })
+    submission_status("El formato antiguo de huevos no está habilitado en esta base. Use los formularios vigentes de Captura de Datos.")
   })
 }
 
