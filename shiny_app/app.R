@@ -331,7 +331,7 @@ supabase_private_rpc <- function(function_name, body) {
   if (resp_status(response) >= 300) {
     response_body <- resp_body_json(response, check_type = FALSE)
     message <- response_body$message %||% sprintf("HTTP %s", resp_status(response))
-    stop(paste0("Supabase rechazó la captura: ", message))
+    stop(paste0("Supabase rechazó la operación: ", message))
   }
   resp_body_json(response, check_type = FALSE, simplifyVector = TRUE)
 }
@@ -11483,23 +11483,25 @@ server <- function(input, output, session) {
   }
 
   f7_fetch_review_record <- function(intake_id) {
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    header <- dbGetQuery(
-      connection,
-      "select * from public.formulario_7_bioensayo_intake where intake_id = $1",
-      params = list(as.integer(intake_id))
+    intake_id <- as.integer(intake_id)
+    header <- supabase_private_select(
+      "formulario_7_bioensayo_intake",
+      select = "*",
+      filters = list(intake_id = paste0("eq.", intake_id)),
+      page_size = 1L
     )
     if (nrow(header) == 0) return(NULL)
-    results <- dbGetQuery(
-      connection,
-      "select fase, botella, tiempo_minutos, hora_lectura, vivos, incapacitados from public.formulario_7_bioensayo_resultado_intake where intake_id = $1 order by fase, botella, tiempo_minutos",
-      params = list(as.integer(intake_id))
+    results <- supabase_private_select(
+      "formulario_7_bioensayo_resultado_intake",
+      select = "fase,botella,tiempo_minutos,hora_lectura,vivos,incapacitados",
+      filters = list(intake_id = paste0("eq.", intake_id)),
+      order = "fase.asc,botella.asc,tiempo_minutos.asc"
     )
-    comments <- dbGetQuery(
-      connection,
-      "select comentario, nombre from public.formulario_7_bioensayo_comentario_intake where intake_id = $1",
-      params = list(as.integer(intake_id))
+    comments <- supabase_private_select(
+      "formulario_7_bioensayo_comentario_intake",
+      select = "comentario,nombre",
+      filters = list(intake_id = paste0("eq.", intake_id)),
+      page_size = 1L
     )
 
     values <- setNames(rep(list(NA_character_), length(formulario_7_intake_columns)), formulario_7_intake_columns)
@@ -11535,15 +11537,15 @@ server <- function(input, output, session) {
   f7_fetch_review_record_by_code <- function(codigo_bioensayo) {
     code <- toupper(trimws(value_or_default(codigo_bioensayo, "")))
     if (!nzchar(code)) stop("Ingrese un Código de bioensayo para buscar.")
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    record <- dbGetQuery(
-      connection,
-      "select intake_id from public.formulario_7_bioensayo_intake where upper(codigo_bioensayo) = $1 order by actualizado_en desc nulls last, intake_id desc limit 1",
-      params = list(code)
+    records <- supabase_private_select(
+      "formulario_7_bioensayo_intake",
+      select = "intake_id,codigo_bioensayo,actualizado_en",
+      order = "actualizado_en.desc,intake_id.desc"
     )
-    if (!nrow(record)) return(NULL)
-    f7_fetch_review_record(record$intake_id[[1]])
+    if (!nrow(records)) return(NULL)
+    records <- records[toupper(trimws(as.character(records$codigo_bioensayo))) == code, , drop = FALSE]
+    if (!nrow(records)) return(NULL)
+    f7_fetch_review_record(records$intake_id[[1]])
   }
 
   f7_load_review_records <- function(random_sample = FALSE) {
@@ -11584,32 +11586,28 @@ server <- function(input, output, session) {
 
   f7_update_review_record <- function(intake_id, data) {
     tables <- formulario_7_tables(data[1, , drop = FALSE])
-    connection <- connect_to_supabase()
-    on.exit(dbDisconnect(connection), add = TRUE)
-    dbWithTransaction(connection, {
-      columns <- names(tables$header)
-      assignments <- paste0(as.character(dbQuoteIdentifier(connection, columns)), " = $", seq_along(columns))
-      query <- paste0(
-        "update public.formulario_7_bioensayo_intake set ", paste(assignments, collapse = ", "),
-        ", review_status = 'pending', review_notes = null, reviewed_by = null, reviewed_at = null, actualizado_en = now() where intake_id = $",
-        length(columns) + 1L
+    updated <- supabase_private_rpc(
+      "entonet_update_formulario_7",
+      list(
+        p_intake_id = as.integer(intake_id),
+        p_header = supabase_record_from_row(tables$header),
+        p_results = supabase_records_from_data_frame(tables$results),
+        p_comments = supabase_records_from_data_frame(tables$comments)
       )
-      params <- c(unname(as.list(tables$header[1, columns, drop = TRUE])), list(as.integer(intake_id)))
-      updated <- dbExecute(connection, query, params = params)
-      if (updated != 1L) stop("No se actualizó el registro seleccionado.")
-      dbExecute(connection, "delete from public.formulario_7_bioensayo_resultado_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      dbExecute(connection, "delete from public.formulario_7_bioensayo_comentario_intake where intake_id = $1", params = list(as.integer(intake_id)))
-      if (nrow(tables$results)) {
-        tables$results$intake_id <- as.integer(intake_id)
-        tables$results <- tables$results[c("intake_id", "fase", "botella", "tiempo_minutos", "hora_lectura", "vivos", "incapacitados")]
-        dbAppendTable(connection, Id(schema = "public", table = "formulario_7_bioensayo_resultado_intake"), tables$results)
-      }
-      if (nrow(tables$comments)) {
-        tables$comments$intake_id <- as.integer(intake_id)
-        tables$comments <- tables$comments[c("intake_id", "comentario", "nombre")]
-        dbAppendTable(connection, Id(schema = "public", table = "formulario_7_bioensayo_comentario_intake"), tables$comments)
-      }
-    })
+    )
+    if (length(updated) != 1L || !identical(as.character(updated[[1]]), as.character(intake_id))) {
+      stop("No se actualizó el registro seleccionado.")
+    }
+  }
+
+  f7_confirm_review_record <- function(intake_id, notes, reviewed_by) {
+    updated <- supabase_private_rpc(
+      "entonet_confirm_formulario_7",
+      list(p_intake_id = as.integer(intake_id), p_review_notes = notes, p_reviewed_by = reviewed_by)
+    )
+    if (length(updated) != 1L || !identical(as.character(updated[[1]]), as.character(intake_id))) {
+      stop("No se confirmó el registro seleccionado.")
+    }
   }
 
   f7_delete_review_record <- function(intake_id, reason, deleted_by) {
@@ -12841,19 +12839,12 @@ server <- function(input, output, session) {
     selected <- f7_review_selected()
     if (is.null(selected)) return()
     intake_id <- as.integer(selected$header$intake_id[[1]])
-    connection <- NULL
     f7_review_status(list(type = "info", message = sprintf("Confirmando el registro %s...", intake_id), details = character()))
     tryCatch({
       withProgress(message = "Confirmando registro", value = 0, {
-        incProgress(0.20, detail = "Abriendo conexión con Supabase")
-        connection <- connect_to_supabase()
+        incProgress(0.20, detail = "Preparando la confirmación")
         incProgress(0.40, detail = "Guardando la revisión")
-        updated <- dbGetQuery(
-          connection,
-          "update public.formulario_7_bioensayo_intake set review_status = 'reviewed', review_notes = nullif($1, ''), reviewed_by = nullif($2, ''), reviewed_at = now(), actualizado_en = now() where intake_id = $3 returning intake_id, review_status, reviewed_by, reviewed_at",
-          params = list(f5_text(input$f7_review_notes), f5_text(input$f7_reviewed_by), intake_id)
-        )
-        if (nrow(updated) != 1) stop("No se actualizó el registro seleccionado.")
+        f7_confirm_review_record(intake_id, f5_text(input$f7_review_notes), f5_text(input$f7_reviewed_by))
         incProgress(0.25, detail = "Actualizando el formulario")
         f7_select_review_record(intake_id)
         f7_review_records(f7_load_review_records())
@@ -12862,8 +12853,6 @@ server <- function(input, output, session) {
       f7_review_status(list(type = "success", message = sprintf("Registro %s confirmado. Estado: reviewed.", intake_id), details = character()))
     }, error = function(error) {
       f7_review_status(list(type = "error", message = "No se pudo confirmar el registro.", details = conditionMessage(error)))
-    }, finally = {
-      if (!is.null(connection)) dbDisconnect(connection)
     })
   })
 
