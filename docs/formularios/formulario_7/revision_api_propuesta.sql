@@ -114,4 +114,3 @@ revoke all on function public.entonet_confirm_formulario_7(bigint, text, text) f
 grant execute on function public.entonet_update_formulario_7(bigint, jsonb, jsonb, jsonb) to service_role;
 grant execute on function public.entonet_confirm_formulario_7(bigint, text, text) to service_role;
 notify pgrst, 'reload schema';
-
