@@ -5065,6 +5065,7 @@ ui <- fluidPage(
       }
       .capture-module-title {
         font-size: 29px;
+        white-space: nowrap;
       }
       .capture-dataset-title {
         font-size: 27px;
@@ -16664,9 +16665,17 @@ server <- function(input, output, session) {
     }
 
     if (identical(module, "capture")) {
+      capture_title <- "Captura de Datos"
+      if (!is.null(active_capture_subdivision())) {
+        capture_title <- paste(
+          capture_title,
+          c(campo = "Campo", insectario = "Insectario", laboratorio = "Laboratorio")[[active_capture_subdivision()]]
+        )
+      }
+
       return(div(
         class = "module-panel",
-        h3(class = "capture-module-title", "Captura de Datos"),
+        h3(class = "capture-module-title", capture_title),
         uiOutput("active_dataset_header"),
         uiOutput("data_entry_area")
       ))
@@ -17336,13 +17345,13 @@ server <- function(input, output, session) {
 
     if (is.null(dataset)) {
       if (identical(subdivision, "campo")) {
-        return(h3(class = "capture-dataset-title", "Campo"))
+        return(NULL)
       }
       if (identical(subdivision, "insectario")) {
-        return(h3(class = "capture-dataset-title", "Insectario"))
+        return(NULL)
       }
       if (identical(subdivision, "laboratorio")) {
-        return(h3(class = "capture-dataset-title", "Laboratorio"))
+        return(NULL)
       }
       return(tagList(
         div(
@@ -17441,18 +17450,18 @@ server <- function(input, output, session) {
             class = "capture-form-choice"
           ),
           actionButton(
-            "select_formulario_7_capture",
-            tagList(
-              strong("Formulario 7: Bioensayo de botella CDC"),
-              span("Ingrese a las opciones de subida masiva, ingreso individual, revisión e impresión del Formulario 7.")
-            ),
-            class = "capture-form-choice capture-form-choice-secondary"
-          ),
-          actionButton(
             "select_formulario_6_capture",
             tagList(
               strong("Formulario 6: Crianza y conteo de adultos"),
               span("Genere el machote imprimible para crianza y conteo de adultos usando el código territorial del Formulario 1.")
+            ),
+            class = "capture-form-choice capture-form-choice-secondary"
+          ),
+          actionButton(
+            "select_formulario_7_capture",
+            tagList(
+              strong("Formulario 7: Bioensayo de botella CDC"),
+              span("Ingrese a las opciones de subida masiva, ingreso individual, revisión e impresión del Formulario 7.")
             ),
             class = "capture-form-choice capture-form-choice-secondary"
           )
