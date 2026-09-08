@@ -1074,6 +1074,144 @@ formulario_7_non_24h_result_columns <- grep("resultado_(hora_inicio|0min|15min|3
 formulario_7_is_temefos <- function(value) {
   identical(toupper(trimws(value_or_default(value, ""))), "TEMEFOS")
 }
+
+f7_cdc_diagnostic_time <- function(insecticide) {
+  code <- toupper(trimws(iconv(value_or_default(insecticide, ""), to = "ASCII//TRANSLIT")))
+  if (!nzchar(code)) return(NA_integer_)
+  if (grepl("DDT", code, fixed = TRUE)) return(45L)
+  if (grepl("PER|PERMETRINA|PERMETHRIN|DEL|DELTAMETRINA|DELTAMETHRIN|BEN|BENDIOCARB|MAL|MALATION|MALATHION|ALF|ALFA|CYPERMETHRIN|CIPERMETRINA|LAM|LAMBDA", code)) {
+    return(30L)
+  }
+  NA_integer_
+}
+
+f7_cdc_count_value <- function(value) {
+  suppressWarnings(as.numeric(value))
+}
+
+f7_cdc_analysis_for_row <- function(row) {
+  diagnostic_time <- f7_cdc_diagnostic_time(row$insecticida)
+  empty_result <- list(
+    cdc_tiempo_diagnostico_min = diagnostic_time,
+    cdc_mortalidad_prueba_pct = NA_real_,
+    cdc_mortalidad_control_pct = NA_real_,
+    cdc_mortalidad_corregida_pct = NA_real_,
+    cdc_correccion = NA_character_,
+    cdc_resultado = NA_character_,
+    cdc_clasificacion_mapa = "Sin cálculo CDC"
+  )
+  if (is.na(diagnostic_time)) {
+    empty_result$cdc_correccion <- "Insecticida sin tiempo diagnóstico CDC configurado"
+    return(empty_result)
+  }
+
+  treated_bottles <- c("b1", "b2", "b3", "b4")
+  treated_vivos <- sum(vapply(treated_bottles, function(bottle) {
+    f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_", bottle, "_vivos")]])
+  }, numeric(1)), na.rm = TRUE)
+  treated_incapacitados <- sum(vapply(treated_bottles, function(bottle) {
+    f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_", bottle, "_incapacitados")]])
+  }, numeric(1)), na.rm = TRUE)
+  control_vivos <- f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_c1_vivos")]])
+  control_incapacitados <- f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_c1_incapacitados")]])
+  treated_total <- treated_vivos + treated_incapacitados
+  control_total <- control_vivos + control_incapacitados
+
+  if (is.na(treated_total) || is.na(control_total) || treated_total <= 0 || control_total <= 0) {
+    empty_result$cdc_correccion <- "Lecturas insuficientes al tiempo diagnóstico"
+    return(empty_result)
+  }
+
+  test_mortality <- treated_incapacitados / treated_total * 100
+  control_mortality <- control_incapacitados / control_total * 100
+  corrected_mortality <- test_mortality
+  correction <- "Sin corrección Abbott"
+  status <- NA_character_
+  map_status <- "Sin cálculo CDC"
+
+  if (control_mortality > 20) {
+    correction <- "Ensayo inválido: control >20%"
+    status <- "Ensayo inválido"
+    map_status <- "Ensayo inválido"
+  } else {
+    if (control_mortality > 3) {
+      corrected_mortality <- (test_mortality - control_mortality) * 100 / (100 - control_mortality)
+      corrected_mortality <- max(0, min(100, corrected_mortality))
+      correction <- "Corrección Abbott"
+    }
+    status <- ifelse(
+      corrected_mortality >= 98,
+      "Susceptible",
+      ifelse(corrected_mortality >= 90, "Sospecha de Resistencia", "Resistente")
+    )
+    map_status <- ifelse(
+      identical(status, "Resistente"),
+      "Resistencia",
+      ifelse(identical(status, "Sospecha de Resistencia"), "Sospecha Resistencia", "Susceptible")
+    )
+  }
+
+  list(
+    cdc_tiempo_diagnostico_min = diagnostic_time,
+    cdc_mortalidad_prueba_pct = round(test_mortality, 1),
+    cdc_mortalidad_control_pct = round(control_mortality, 1),
+    cdc_mortalidad_corregida_pct = round(corrected_mortality, 1),
+    cdc_correccion = correction,
+    cdc_resultado = status,
+    cdc_clasificacion_mapa = map_status
+  )
+}
+
+f7_add_cdc_analysis <- function(records) {
+  if (!nrow(records)) return(records)
+  analysis <- lapply(seq_len(nrow(records)), function(index) f7_cdc_analysis_for_row(records[index, , drop = FALSE]))
+  for (field in names(analysis[[1]])) {
+    records[[field]] <- vapply(analysis, function(item) item[[field]], analysis[[1]][[field]])
+  }
+  records
+}
+
+f7_attach_result_counts <- function(records) {
+  if (!nrow(records)) return(records)
+  count_columns <- grep("_(vivos|incapacitados)$", formulario_7_result_columns, value = TRUE)
+  for (column in count_columns) {
+    records[[column]] <- NA_real_
+  }
+
+  intake_ids <- unique(stats::na.omit(as.character(records$intake_id)))
+  if (!length(intake_ids)) return(records)
+  results <- supabase_private_select(
+    "formulario_7_bioensayo_resultado_intake",
+    select = "intake_id,botella,tiempo_minutos,vivos,incapacitados",
+    filters = list(intake_id = paste0("in.(", paste(intake_ids, collapse = ","), ")")),
+    order = "intake_id.asc,tiempo_minutos.asc,botella.asc"
+  )
+  if (!nrow(results)) return(records)
+
+  record_index <- match(as.character(results$intake_id), as.character(records$intake_id))
+  for (row_index in seq_len(nrow(results))) {
+    target <- record_index[[row_index]]
+    if (is.na(target)) next
+    minutes <- suppressWarnings(as.integer(results$tiempo_minutos[[row_index]]))
+    bottle <- as.character(results$botella[[row_index]])
+    if (is.na(minutes) || is.na(bottle) || !nzchar(bottle)) next
+    prefix <- if (identical(minutes, 1440L)) {
+      paste0("resultado_24h_", bottle)
+    } else {
+      paste0("resultado_", minutes, "min_", bottle)
+    }
+    vivos_column <- paste0(prefix, "_vivos")
+    incapacitados_column <- paste0(prefix, "_incapacitados")
+    if (vivos_column %in% names(records)) {
+      records[[vivos_column]][[target]] <- f7_cdc_count_value(results$vivos[[row_index]])
+    }
+    if (incapacitados_column %in% names(records)) {
+      records[[incapacitados_column]][[target]] <- f7_cdc_count_value(results$incapacitados[[row_index]])
+    }
+  }
+
+  records
+}
 formulario_7_comment_columns <- c("comentario", "comentario_nombre")
 formulario_7_intake_columns <- c(
   setdiff(formulario_7_header_columns, c("fuente_formulario")),
@@ -4150,7 +4288,6 @@ ui <- fluidPage(
         margin: 6px 0 4px;
         padding: 9px 10px;
         text-align: left;
-        text-transform: uppercase;
         width: 100%;
       }
       .sidebar-form-group-title:hover,
@@ -5955,7 +6092,8 @@ ui <- fluidPage(
       .f7-viz-kpi-grid {
         display: grid;
         gap: 14px;
-        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        grid-auto-flow: dense;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         margin-top: 18px;
       }
       .f7-viz-toolbar {
@@ -5970,6 +6108,23 @@ ui <- fluidPage(
         font-size: 13px;
         font-weight: 700;
       }
+      .f7-viz-critical-filter {
+        background: #eef7fb;
+        border: 1px solid #9ccfdc;
+        border-left: 5px solid #008c8f;
+        border-radius: 8px;
+        margin: 14px 0 16px;
+        padding: 14px 16px 8px;
+      }
+      .f7-viz-critical-filter .form-group {
+        margin-bottom: 6px;
+      }
+      .f7-viz-critical-filter-note {
+        color: #526070;
+        font-size: 13px;
+        font-weight: 700;
+        margin: 2px 0 0;
+      }
       .f7-viz-kpi-card {
         background: #ffffff;
         border-top: 4px solid #008c8f;
@@ -5977,10 +6132,57 @@ ui <- fluidPage(
         box-shadow: 0 4px 14px rgba(16, 34, 61, 0.08);
         padding: 16px 18px;
       }
+      .f7-viz-kpi-card-primary {
+        align-content: start;
+        border-top-color: #006f72;
+        display: grid;
+        gap: 10px 18px;
+        grid-column: span 1;
+        grid-row: span 2;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+        min-height: 160px;
+      }
+      .f7-viz-kpi-primary-main {
+        grid-column: 1;
+        grid-row: 1;
+      }
+      .f7-viz-kpi-primary-secondary {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .f7-viz-kpi-primary-secondary-stack {
+        display: grid;
+        gap: 10px;
+      }
+      .f7-viz-kpi-primary-wide {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
       .f7-viz-kpi-label {
         color: #526070;
         font-size: 13px;
         font-weight: 700;
+      }
+      .f7-viz-kpi-primary-label {
+        color: #526070;
+        display: block;
+        font-size: 18px;
+        font-weight: 800;
+      }
+      .f7-viz-kpi-card-primary .f7-viz-kpi-primary-value {
+        color: #082243;
+        display: block;
+        font-size: 53px;
+        font-weight: 800;
+        line-height: 1.02;
+        margin-top: 4px;
+      }
+      .f7-viz-kpi-submetric-label {
+        color: #7A8696;
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0;
       }
       .f7-viz-kpi-value {
         color: #082243;
@@ -5988,6 +6190,29 @@ ui <- fluidPage(
         font-size: 28px;
         font-weight: 800;
         margin-top: 4px;
+      }
+      .f7-viz-kpi-secondary-value {
+        color: #3E4C59;
+        display: block;
+        font-size: 26px;
+        font-weight: 800;
+        line-height: 1.08;
+        margin-top: 4px;
+      }
+      .f7-viz-kpi-green-value {
+        color: #2E7D32;
+        display: block;
+        font-size: 18px;
+        font-weight: 800;
+        line-height: 1.2;
+        margin-top: 4px;
+        overflow-wrap: anywhere;
+        text-align: left;
+      }
+      .f7-viz-kpi-date-value {
+        font-size: 18px;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
       }
       .f7-viz-diagnostic-layout {
         align-items: start;
@@ -6019,6 +6244,9 @@ ui <- fluidPage(
       @media (max-width: 900px) {
         .f7-viz-kpi-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .f7-viz-kpi-card-primary {
+          grid-column: span 2;
         }
         .f7-viz-toolbar {
           align-items: flex-start;
@@ -6931,9 +7159,10 @@ server <- function(input, output, session) {
     )
 
     leaflet() |>
-      addProviderTiles(
-        providers$CartoDB.Positron,
-        options = providerTileOptions(noWrap = TRUE)
+      addTiles(
+        urlTemplate = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution = "&copy; OpenStreetMap contributors",
+        options = tileOptions(noWrap = TRUE)
       ) |>
       setView(lng = -83.5, lat = 14.4, zoom = 5) |>
       addCircleMarkers(
@@ -14197,7 +14426,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_request, {
-    active_area("data")
+    active_area(if (identical(active_area(), "request")) NULL else "request")
     active_module("request")
     active_capture_subdivision(NULL)
     active_request_subdivision(NULL)
@@ -14206,7 +14435,7 @@ server <- function(input, output, session) {
   })
 
   select_request_subdivision <- function(subdivision) {
-    active_area("data")
+    active_area("request")
     active_module("request")
     active_capture_subdivision(NULL)
     active_request_subdivision(if (identical(active_request_subdivision(), subdivision)) NULL else subdivision)
@@ -14289,7 +14518,7 @@ server <- function(input, output, session) {
   }
 
   observeEvent(input$show_request_reactivos, {
-    active_area("data")
+    active_area("request")
     active_module("request")
     active_capture_subdivision(NULL)
     active_request_subdivision("reactivos")
@@ -14300,7 +14529,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_request_servicios_index, {
-    active_area("data")
+    active_area("request")
     active_module("request")
     active_request_subdivision("reactivos")
     active_request_reactivos_category(NULL)
@@ -14409,7 +14638,7 @@ server <- function(input, output, session) {
   })
 
   select_request_data_subdivision <- function(subdivision) {
-    active_area("data")
+    active_area("request")
     active_module("request")
     active_capture_subdivision(NULL)
     active_request_subdivision("datos")
@@ -14525,6 +14754,8 @@ server <- function(input, output, session) {
           ubicacion_municipio_catalogo$municipio[municipio_index],
           records$municipio
         )
+        records <- f7_attach_result_counts(records)
+        records <- f7_add_cdc_analysis(records)
       }
       f7_visualization_records(records)
       f7_visualization_last_refresh(Sys.time())
@@ -14586,10 +14817,32 @@ server <- function(input, output, session) {
       values <- values[nzchar(trimws(values))]
       c(setNames("all", all_label), setNames(values, values))
     }
+    selected_choice <- function(input_id, choices, default = "all") {
+      selected <- input[[input_id]]
+      if (is.null(selected) || !length(selected) || !(selected %in% unname(choices))) {
+        return(default)
+      }
+      selected
+    }
     tagList(
+      div(
+        class = "f7-viz-critical-filter",
+        fluidRow(
+          column(
+            6,
+            selectInput(
+              "f7_viz_type",
+              "Tipo de bioensayo",
+              choices = filter_choices(records$tipo_bioensayo),
+              selected = selected_choice("f7_viz_type", filter_choices(records$tipo_bioensayo))
+            )
+          )
+        ),
+        p(class = "f7-viz-critical-filter-note", "Seleccione un Tipo de bioensayo para generar las gráficas y tablas de clasificación CDC.")
+      ),
       fluidRow(
         column(
-          4,
+          6,
           dateRangeInput(
             "f7_viz_date_range",
             "Fecha de realización",
@@ -14601,19 +14854,12 @@ server <- function(input, output, session) {
           )
         ),
         column(
-          4,
+          6,
           selectInput(
             "f7_viz_project",
             "Código de bioensayo",
-            choices = filter_choices(records$codigo_bioensayo)
-          )
-        ),
-        column(
-          4,
-          selectInput(
-            "f7_viz_type",
-            "Tipo de bioensayo",
-            choices = filter_choices(records$tipo_bioensayo)
+            choices = filter_choices(records$codigo_bioensayo),
+            selected = selected_choice("f7_viz_project", filter_choices(records$codigo_bioensayo))
           )
         )
       ),
@@ -14623,7 +14869,8 @@ server <- function(input, output, session) {
           selectInput(
             "f7_viz_department",
             "Departamento",
-            choices = filter_choices(records$departamento)
+            choices = filter_choices(records$departamento),
+            selected = selected_choice("f7_viz_department", filter_choices(records$departamento))
           )
         ),
         column(
@@ -14631,7 +14878,8 @@ server <- function(input, output, session) {
           selectInput(
             "f7_viz_municipality",
             "Municipio",
-            choices = filter_choices(records$municipio)
+            choices = filter_choices(records$municipio),
+            selected = selected_choice("f7_viz_municipality", filter_choices(records$municipio))
           )
         ),
         column(
@@ -14639,50 +14887,40 @@ server <- function(input, output, session) {
           selectInput(
             "f7_viz_insecticide",
             "Insecticida",
-            choices = filter_choices(records$insecticida)
+            choices = filter_choices(records$insecticida),
+            selected = selected_choice("f7_viz_insecticide", filter_choices(records$insecticida))
           )
         ),
         column(
-          4,
+          6,
           selectInput(
             "f7_viz_population",
             "Población",
-            choices = filter_choices(records$nombre_poblacion, "Todas")
+            choices = filter_choices(records$nombre_poblacion, "Todas"),
+            selected = selected_choice("f7_viz_population", filter_choices(records$nombre_poblacion, "Todas"))
           )
         ),
         column(
-          4,
-          selectInput(
-            "f7_viz_diagnostic_result",
-            "Resultado diagnóstico",
-            choices = c(
-              "Todos" = "all",
-              "Susceptible" = "Susceptible",
-              "Sospecha Resistencia" = "Sospecha de Resistencia",
-              "Resistencia" = "Resistente",
-              "No aplica" = "not_applicable"
-            )
-          )
-        ),
-        column(
-          4,
+          6,
           conditionalPanel(
             condition = "input.f7_viz_type == 'Sinergistas'",
             selectInput(
               "f7_viz_synergist",
               "Mecanismo de resistencia",
-              choices = filter_choices(records$sinergista_tipo)
+              choices = filter_choices(records$sinergista_tipo),
+              selected = selected_choice("f7_viz_synergist", filter_choices(records$sinergista_tipo))
             )
           )
         ),
         column(
-          4,
+          6,
           conditionalPanel(
-            condition = "input.f7_viz_type == 'Intensidad Exploratorio' && (input.f7_viz_diagnostic_result == 'Sospecha de Resistencia' || input.f7_viz_diagnostic_result == 'Resistente')",
+            condition = "input.f7_viz_type == 'Intensidad Exploratorio'",
             selectInput(
               "f7_viz_intensity_dose",
               "Concentración de intensidad",
-              choices = filter_choices(records$dosis_intensidad)
+              choices = filter_choices(records$dosis_intensidad),
+              selected = selected_choice("f7_viz_intensity_dose", filter_choices(records$dosis_intensidad))
             )
           )
         )
@@ -14755,18 +14993,9 @@ server <- function(input, output, session) {
       records <- records[!is.na(records$sinergista_tipo) & records$sinergista_tipo == synergist, , drop = FALSE]
     }
     intensity_dose <- input$f7_viz_intensity_dose
-    intensity_dose_enabled <- identical(input$f7_viz_type, "Intensidad Exploratorio") &&
-      input$f7_viz_diagnostic_result %in% c("Sospecha de Resistencia", "Resistente")
+    intensity_dose_enabled <- identical(input$f7_viz_type, "Intensidad Exploratorio")
     if (!is.null(intensity_dose) && length(intensity_dose) && !identical(intensity_dose, "all") && intensity_dose_enabled) {
       records <- records[!is.na(records$dosis_intensidad) & records$dosis_intensidad == intensity_dose, , drop = FALSE]
-    }
-    diagnostic_result <- input$f7_viz_diagnostic_result
-    if (!is.null(diagnostic_result) && length(diagnostic_result) && !identical(diagnostic_result, "all")) {
-      if (identical(diagnostic_result, "not_applicable")) {
-        records <- records[is.na(records$resultado_diagnostico), , drop = FALSE]
-      } else {
-        records <- records[!is.na(records$resultado_diagnostico) & records$resultado_diagnostico == diagnostic_result, , drop = FALSE]
-      }
     }
     records
   })
@@ -14791,9 +15020,10 @@ server <- function(input, output, session) {
         latitude = group$latitude[[1]],
         longitude = group$longitude[[1]],
         bioensayos = nrow(group),
-        susceptible = sum(group$resultado_diagnostico %in% c("Suceptible", "Susceptible"), na.rm = TRUE),
-        sospecha = sum(group$resultado_diagnostico == "Sospecha de Resistencia", na.rm = TRUE),
-        resistente = sum(group$resultado_diagnostico == "Resistente", na.rm = TRUE),
+        susceptible = sum(group$cdc_resultado == "Susceptible", na.rm = TRUE),
+        sospecha = sum(group$cdc_resultado == "Sospecha de Resistencia", na.rm = TRUE),
+        resistente = sum(group$cdc_resultado == "Resistente", na.rm = TRUE),
+        invalido = sum(group$cdc_resultado == "Ensayo inválido", na.rm = TRUE),
         fecha_ultima = max(group$fecha_realizacion_bioensayo, na.rm = TRUE),
         tipos = paste(sort(unique(group$tipo_bioensayo)), collapse = ", "),
         stringsAsFactors = FALSE
@@ -14812,7 +15042,7 @@ server <- function(input, output, session) {
       ifelse(
         points$sospecha > 0,
         "Sospecha Resistencia",
-        ifelse(points$susceptible > 0, "Susceptible", "Sin resultado diagnóstico")
+        ifelse(points$invalido > 0, "Ensayo inválido", ifelse(points$susceptible > 0, "Susceptible", "Sin cálculo CDC"))
       )
     )
     points
@@ -14823,7 +15053,7 @@ server <- function(input, output, session) {
     insecticide_levels <- c("DDT", "Permetrina", "Deltametrina", "Bendiocarb", "Malatión", "Alfa-cipermetrina", "Lambda-cialotrina", "Temefos")
     synergist_levels <- c("DEF", "PBO", "DM")
     intensity_dose_levels <- c("1X", "2X", "5X", "10X")
-    result_levels <- c("Resistencia", "Sospecha Resistencia", "Susceptible")
+    result_levels <- c("Resistencia", "Sospecha Resistencia", "Susceptible", "Ensayo inválido", "Sin cálculo CDC")
     insecticide_codes <- toupper(trimws(as.character(records$insecticida)))
     insecticide <- ifelse(
       grepl("DDT", insecticide_codes),
@@ -14855,12 +15085,16 @@ server <- function(input, output, session) {
       )
     )
     diagnostic_result <- ifelse(
-      records$resultado_diagnostico == "Resistente",
+      records$cdc_resultado == "Resistente",
       "Resistencia",
       ifelse(
-        records$resultado_diagnostico == "Sospecha de Resistencia",
+        records$cdc_resultado == "Sospecha de Resistencia",
         "Sospecha Resistencia",
-        ifelse(records$resultado_diagnostico %in% c("Suceptible", "Susceptible"), "Susceptible", NA_character_)
+        ifelse(
+          records$cdc_resultado == "Susceptible",
+          "Susceptible",
+          ifelse(records$cdc_resultado == "Ensayo inválido", "Ensayo inválido", "Sin cálculo CDC")
+        )
       )
     )
     category <- insecticide
@@ -14886,17 +15120,55 @@ server <- function(input, output, session) {
 
   output$f7_visualization_kpis <- renderUI({
     records <- f7_visualization_filtered()
-    mapped <- records[!is.na(records$latitude) & !is.na(records$longitude), , drop = FALSE]
+    populations <- unique(stats::na.omit(as.character(records$nombre_poblacion)))
+    departments <- unique(stats::na.omit(as.character(records$departamento)))
+    insecticides <- sort(unique(stats::na.omit(as.character(records$insecticida))))
+    insecticide_label <- if (!length(insecticides)) {
+      "Sin dato"
+    } else if (length(insecticides) == 1) {
+      insecticides[[1]]
+    } else {
+      paste(insecticides, collapse = ", ")
+    }
+    evaluated_dates <- stats::na.omit(as.Date(records$fecha_realizacion_bioensayo))
+    date_range_label <- if (!length(evaluated_dates)) {
+      "Sin fecha"
+    } else if (min(evaluated_dates) == max(evaluated_dates)) {
+      format(min(evaluated_dates), "%Y-%m-%d")
+    } else {
+      paste(format(min(evaluated_dates), "%Y-%m-%d"), format(max(evaluated_dates), "%Y-%m-%d"), sep = " a ")
+    }
     municipalities <- if (nrow(records)) length(unique(paste(records$codigo_departamento, records$codigo_municipio_mapa))) else 0L
-    mapped_municipalities <- if (nrow(mapped)) length(unique(paste(mapped$codigo_departamento, mapped$codigo_municipio_mapa))) else 0L
     div(
       class = "f7-viz-kpi-grid",
-      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Bioensayos"), span(class = "f7-viz-kpi-value", nrow(records))),
-      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Poblaciones"), span(class = "f7-viz-kpi-value", length(unique(records$nombre_poblacion)))),
-      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Municipios representados"), span(class = "f7-viz-kpi-value", municipalities)),
-      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Municipios en mapa"), span(class = "f7-viz-kpi-value", mapped_municipalities)),
+      div(
+        class = "f7-viz-kpi-card f7-viz-kpi-card-primary",
+        div(
+          class = "f7-viz-kpi-primary-main",
+          span(class = "f7-viz-kpi-primary-label", "Bioensayos"),
+          span(class = "f7-viz-kpi-primary-value", nrow(records))
+        ),
+        div(
+          class = "f7-viz-kpi-primary-secondary f7-viz-kpi-primary-secondary-stack",
+          div(
+            span(class = "f7-viz-kpi-submetric-label", "Departamento"),
+            span(class = "f7-viz-kpi-secondary-value", length(departments))
+          ),
+          div(
+            span(class = "f7-viz-kpi-submetric-label", "Municipios"),
+            span(class = "f7-viz-kpi-secondary-value", municipalities)
+          )
+        ),
+        div(
+          class = "f7-viz-kpi-primary-wide",
+          span(class = "f7-viz-kpi-submetric-label", "Insecticida"),
+          span(class = "f7-viz-kpi-green-value", insecticide_label)
+        )
+      ),
+      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Poblaciones"), span(class = "f7-viz-kpi-value", length(populations))),
+      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Fechas evaluadas"), span(class = "f7-viz-kpi-value f7-viz-kpi-date-value", date_range_label)),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Pendientes de revisión"), span(class = "f7-viz-kpi-value", sum(records$review_status == "pending", na.rm = TRUE))),
-      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Resultados resistentes"), span(class = "f7-viz-kpi-value", sum(records$resultado_diagnostico == "Resistente", na.rm = TRUE)))
+      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Resistencia CDC"), span(class = "f7-viz-kpi-value", sum(records$cdc_resultado == "Resistente", na.rm = TRUE)))
     )
   })
 
@@ -14909,7 +15181,11 @@ server <- function(input, output, session) {
       list(lng = -89.5, lat = 14.6, zoom = 6)
     )
     map <- leaflet() |>
-      addProviderTiles(providers$CartoDB.Positron) |>
+      addTiles(
+        urlTemplate = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution = "&copy; OpenStreetMap contributors",
+        options = tileOptions(noWrap = TRUE)
+      ) |>
       setView(lng = center$lng, lat = center$lat, zoom = center$zoom) |>
       addControl(
         html = "Ubicaciones aproximadas por municipio. Las coordenadas reales vendrán del vínculo con colecta y crianza.",
@@ -14936,8 +15212,8 @@ server <- function(input, output, session) {
         )
     }
     palette <- colorFactor(
-      palette = c("#C62828", "#F9A825", "#9CA3AF", "#757575"),
-      domain = c("Resistencia", "Sospecha Resistencia", "Susceptible", "Sin resultado diagnóstico")
+      palette = c("#C62828", "#F9A825", "#2E7D32", "#6B7280", "#9CA3AF"),
+      domain = c("Resistencia", "Sospecha Resistencia", "Susceptible", "Ensayo inválido", "Sin cálculo CDC")
     )
     popup <- paste0(
       "<strong>", htmltools::htmlEscape(points$nombre_poblacion), "</strong>",
@@ -14947,6 +15223,7 @@ server <- function(input, output, session) {
       "<br>Susceptible: ", points$susceptible,
       "<br>Sospecha Resistencia: ", points$sospecha,
       "<br>Resistencia: ", points$resistente,
+      "<br>Ensayo inválido: ", points$invalido,
       "<br>Última prueba: ", points$fecha_ultima,
       "<br>Tipos: ", htmltools::htmlEscape(points$tipos)
     )
@@ -14968,7 +15245,7 @@ server <- function(input, output, session) {
         position = "bottomright",
         pal = palette,
         values = points$clasificacion,
-        title = "Resultado diagnóstico"
+        title = "Clasificación CDC"
       )
     if (!is.null(department_overlay)) {
       map <- map |>
@@ -15000,7 +15277,7 @@ server <- function(input, output, session) {
     on.exit(par(previous_margins), add = TRUE)
     bar_positions <- barplot(
       percentages,
-      col = c("#C62828", "#F9A825", "#9CA3AF"),
+      col = c("#C62828", "#F9A825", "#2E7D32", "#6B7280", "#9CA3AF"),
       border = NA,
       width = 0.62,
       space = 0.85,
@@ -15042,8 +15319,8 @@ server <- function(input, output, session) {
     )
     legend(
       "top",
-      legend = c("Resistencia", "Sospecha\nResistencia", "Susceptible"),
-      fill = c("#C62828", "#F9A825", "#9CA3AF"),
+      legend = c("Resistencia", "Sospecha\nResistencia", "Susceptible", "Inválido", "Sin cálculo"),
+      fill = c("#C62828", "#F9A825", "#2E7D32", "#6B7280", "#9CA3AF"),
       border = NA,
       bty = "n",
       horiz = TRUE,
@@ -15067,6 +15344,8 @@ server <- function(input, output, session) {
       Resistencia = as.integer(counts["Resistencia", ]),
       `Sospecha Resistencia` = as.integer(counts["Sospecha Resistencia", ]),
       Susceptible = as.integer(counts["Susceptible", ]),
+      `Ensayo inválido` = as.integer(counts["Ensayo inválido", ]),
+      `Sin cálculo CDC` = as.integer(counts["Sin cálculo CDC", ]),
       Total = as.integer(colSums(counts)),
       check.names = FALSE,
       stringsAsFactors = FALSE
@@ -15110,15 +15389,12 @@ server <- function(input, output, session) {
       Mecanismo = ifelse(is.na(records$sinergista_tipo), "No aplica", records$sinergista_tipo),
       `Concentración intensidad` = ifelse(is.na(records$dosis_intensidad), "No aplica", records$dosis_intensidad),
       Insecticida = records$insecticida,
-      `Resultado diagnóstico` = ifelse(
-        is.na(records$resultado_diagnostico),
-        "No aplica",
-        ifelse(
-          records$resultado_diagnostico %in% c("Suceptible", "Susceptible"),
-          "Susceptible",
-          ifelse(records$resultado_diagnostico == "Sospecha de Resistencia", "Sospecha Resistencia", "Resistencia")
-        )
-      ),
+      `Tiempo diagnóstico CDC` = ifelse(is.na(records$cdc_tiempo_diagnostico_min), "", paste0(records$cdc_tiempo_diagnostico_min, " min")),
+      `Mortalidad prueba CDC` = ifelse(is.na(records$cdc_mortalidad_prueba_pct), "", paste0(records$cdc_mortalidad_prueba_pct, "%")),
+      `Mortalidad control CDC` = ifelse(is.na(records$cdc_mortalidad_control_pct), "", paste0(records$cdc_mortalidad_control_pct, "%")),
+      `Mortalidad corregida CDC` = ifelse(is.na(records$cdc_mortalidad_corregida_pct), "", paste0(records$cdc_mortalidad_corregida_pct, "%")),
+      `Clasificación CDC` = ifelse(is.na(records$cdc_resultado), "Sin cálculo CDC", records$cdc_resultado),
+      `Resultado digitado` = ifelse(is.na(records$resultado_diagnostico), "No aplica", records$resultado_diagnostico),
       Estado = records$review_status,
       `Ingresado en` = display_date(records$creado_en),
       check.names = FALSE,
@@ -15149,45 +15425,62 @@ server <- function(input, output, session) {
     }
 
     if (identical(query$dataset, "formulario_7_bioensayo_botella_cdc")) {
+      selected_bioassay_type <- value_or_default(input$f7_viz_type, "all")
+      cdc_summary_bubbles <- if (!identical(selected_bioassay_type, "all")) {
+        uiOutput("f7_visualization_kpis")
+      } else {
+        NULL
+      }
+      cdc_detail_outputs <- if (!identical(selected_bioassay_type, "all")) {
+        tagList(
+          div(
+            class = "f7-viz-diagnostic-layout",
+            div(
+              class = "visualization-results-card f7-viz-diagnostic-panel",
+              h4("Clasificación CDC"),
+              p("Distribución porcentual calculada con la mortalidad al tiempo diagnóstico; el total aparece arriba de cada barra."),
+              div(
+                class = "f7-viz-diagnostic-plot",
+                plotOutput("f7_visualization_diagnostic_bar_chart", height = "455px")
+              )
+            ),
+            div(
+              class = "visualization-results-card f7-viz-summary-table",
+              h4("Tabla resumen"),
+              tableOutput("f7_visualization_diagnostic_summary_table"),
+              tags$hr(),
+              h4("Tipo y revisión"),
+              tableOutput("f7_visualization_type_status_table")
+            )
+          ),
+          div(
+            class = "visualization-results-card",
+            h4("Registros filtrados"),
+            tableOutput("f7_visualization_table")
+          )
+        )
+      } else {
+        NULL
+      }
       return(tagList(
         div(
           class = "visualization-results-card",
           h4(paste("Mapa de bioensayos y poblaciones -", query$country)),
           p("Utilice los filtros para explorar los registros del Formulario 7. Los puntos actuales son centroides aproximados por municipio; los registros sin coordenada aproximada permanecen disponibles en las tablas."),
+          div(
+            class = "alert alert-info",
+            HTML("Método de análisis: la clasificación se calcula con la mortalidad al tiempo diagnóstico del <em>CDC Bottle Bioassay</em>. Cuando la mortalidad del control es &gt;3% y ≤20% se aplica corrección de Abbott; si el control es &gt;20% el ensayo se marca como inválido. Interpretación CDC: 98-100% susceptible, 90-97% sospecha de resistencia y &lt;90% resistente. Fuente: <a href='https://www.cdc.gov/mosquitoes/media/pdfs/2024/04/CDC-Global-Bottle-Bioassay-Manual-508.pdf' target='_blank' rel='noopener'>CDC Global Bottle Bioassay Manual</a>.")
+          ),
           uiOutput("f7_visualization_refresh_status"),
           uiOutput("f7_visualization_filters")
         ),
         uiOutput("f7_visualization_error_message"),
-        uiOutput("f7_visualization_kpis"),
+        cdc_summary_bubbles,
         div(
           class = "visualization-results-card",
           leafletOutput("f7_visualization_map", height = "365px")
         ),
-        div(
-          class = "f7-viz-diagnostic-layout",
-          div(
-            class = "visualization-results-card f7-viz-diagnostic-panel",
-            h4("Resultados diagnósticos"),
-            p("Distribución porcentual por insecticida; el total aparece arriba de cada barra."),
-            div(
-              class = "f7-viz-diagnostic-plot",
-              plotOutput("f7_visualization_diagnostic_bar_chart", height = "455px")
-            )
-          ),
-          div(
-            class = "visualization-results-card f7-viz-summary-table",
-            h4("Tabla resumen"),
-            tableOutput("f7_visualization_diagnostic_summary_table"),
-            tags$hr(),
-            h4("Tipo y revisión"),
-            tableOutput("f7_visualization_type_status_table")
-          )
-        ),
-        div(
-          class = "visualization-results-card",
-          h4("Registros filtrados"),
-          tableOutput("f7_visualization_table")
-        )
+        cdc_detail_outputs
       ))
     }
 
@@ -15335,12 +15628,12 @@ server <- function(input, output, session) {
       if (identical(capture_subdivision, value)) "sidebar-form-group-title-active" else ""
     )
     request_subdivision_class <- function(value) paste(
-      "sidebar-form-group-title",
-      if (identical(request_subdivision, value)) "sidebar-form-group-title-active" else ""
+      "sidebar-subitem",
+      if (identical(request_subdivision, value)) "sidebar-subitem-active" else ""
     )
     request_data_subdivision_class <- function(value) paste(
-      "sidebar-form-item",
-      if (identical(request_data_subdivision, value)) "sidebar-form-item-active" else ""
+      "sidebar-form-group-title",
+      if (identical(request_data_subdivision, value)) "sidebar-form-group-title-active" else ""
     )
     category_button <- function(id, label, value) {
       actionButton(
@@ -15362,23 +15655,7 @@ server <- function(input, output, session) {
           actionButton("show_capture_insectario", "Insectario", class = subdivision_class("insectario")),
           actionButton("show_capture_laboratorio", "Laboratorio", class = subdivision_class("laboratorio"))
         ),
-        actionButton("show_visualization", "Visualización de Datos", class = subitem_class("visualization")),
-        actionButton("show_request", "Solicitudes", class = subitem_class("request")),
-        if (identical(module, "request")) div(
-          class = "sidebar-form-list",
-          actionButton("show_request_datos", "Datos", class = request_subdivision_class("datos")),
-          if (identical(request_subdivision, "datos")) tagList(
-            actionButton("show_request_data_campo", "Campo", class = request_data_subdivision_class("campo")),
-            actionButton("show_request_data_insectario", "Insectario", class = request_data_subdivision_class("insectario")),
-            actionButton("show_request_data_laboratorio", "Laboratorio", class = request_data_subdivision_class("laboratorio"))
-          ),
-          if (request_is_global_admin()) {
-            actionButton("show_request_encuestas", "Encuestas", class = request_subdivision_class("encuestas"))
-          },
-          actionButton("show_request_reactivos", "Servicios", class = request_subdivision_class("reactivos")),
-          actionButton("show_request_equipo", "Equipo", class = request_subdivision_class("equipo")),
-          actionButton("show_request_apoyo_tecnico", "Apoyo Técnico", class = request_subdivision_class("apoyo_tecnico"))
-        )
+        actionButton("show_visualization", "Visualización de Datos", class = subitem_class("visualization"))
       ),
       category_button("show_protocols_area", "Protocolos", "protocols"),
       if (identical(area, "protocols")) div(
@@ -15392,6 +15669,25 @@ server <- function(input, output, session) {
         actionButton("show_live_training", "Capacitaciones en vivo", class = subitem_class("training_live")),
         actionButton("show_workshops_training", "Talleres prácticos", class = subitem_class("training_workshops")),
         actionButton("show_materials_training", "Materiales de apoyo", class = subitem_class("training_materials"))
+      ),
+      category_button("show_request", "Solicitudes", "request"),
+      if (identical(area, "request")) div(
+        class = "sidebar-submenu",
+        if (identical(module, "request")) tagList(
+          actionButton("show_request_datos", "Datos", class = request_subdivision_class("datos")),
+          if (identical(request_subdivision, "datos")) div(
+            class = "sidebar-form-list",
+            actionButton("show_request_data_campo", "Campo", class = request_data_subdivision_class("campo")),
+            actionButton("show_request_data_insectario", "Insectario", class = request_data_subdivision_class("insectario")),
+            actionButton("show_request_data_laboratorio", "Laboratorio", class = request_data_subdivision_class("laboratorio"))
+          ),
+          if (request_is_global_admin()) {
+            actionButton("show_request_encuestas", "Encuestas", class = request_subdivision_class("encuestas"))
+          },
+          actionButton("show_request_reactivos", "Servicios", class = request_subdivision_class("reactivos")),
+          actionButton("show_request_equipo", "Equipo", class = request_subdivision_class("equipo")),
+          actionButton("show_request_apoyo_tecnico", "Apoyo Técnico", class = request_subdivision_class("apoyo_tecnico"))
+        )
       )
     )
   })
@@ -16613,6 +16909,13 @@ server <- function(input, output, session) {
       return(uiOutput("data_module_area"))
     }
 
+    if (identical(area, "request")) {
+      if (is.null(module)) {
+        active_module("request")
+      }
+      return(uiOutput("data_module_area"))
+    }
+
     if (identical(area, "protocols")) {
       if (is.null(module)) return(tagList(
         uiOutput("portal_intro_area"),
@@ -17226,17 +17529,9 @@ server <- function(input, output, session) {
         if (is.null(data_subdivision)) {
           return(div(
             class = "module-panel",
-            h3("Datos"),
-            p("Seleccione el área de datos que desea descargar. Las opciones disponibles dependen de su perfil, institución y país."),
             div(
-              class = "capture-subdivision-list",
-              div(class = "capture-subdivision-panel", h4("Campo"), p("Datos de captura en campo, incluyendo colocación y retiro de ovitrampas.")),
-              div(class = "capture-subdivision-panel", h4("Insectario"), p("Datos de cría, alimentación, conteo y bioensayos.")),
-              div(class = "capture-subdivision-panel", h4("Laboratorio"), p("Datos de laboratorio disponibles solo para perfiles autorizados."))
-            ),
-            div(
-              class = "alert alert-info",
-              "Use el menú lateral debajo de Datos para seleccionar Campo, Insectario o Laboratorio."
+              class = "request-flow-panel",
+              img(src = "solicitudes-flow.png", alt = "Flujo de Solicitudes EntoNet")
             )
           ))
         }
