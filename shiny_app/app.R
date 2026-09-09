@@ -1455,6 +1455,12 @@ supabase_auth_update_password <- function(access_token, password) {
 supabase_auth_send_password_recovery <- function(email) {
   project_url <- storage_project_url()
   redirect_url <- value_or_default(auth_redirect_url, "")
+  # Older deployments configured the Connect Cloud management page.
+  redirect_url <- sub(
+    "^https://connect[.]posit[.]cloud/[^/]+/content/([0-9a-fA-F-]{36})/?$",
+    "https://\\1.share.connect.posit.cloud/",
+    redirect_url
+  )
 
   if (!nzchar(project_url)) {
     stop("SUPABASE_URL is not configured and could not be derived from SUPABASE_DB_URL.")

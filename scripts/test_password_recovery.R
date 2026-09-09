@@ -43,3 +43,11 @@ if (requireNamespace('V8', quietly=TRUE)) {
   ctx$eval("events['DOMContentLoaded'](); if(sent.length!==0)throw Error('sent before connection'); Shiny.shinyapp.$socket.readyState=1; events['shiny:connected'](); if(sent.length!==1||sent[0].value.access_token!=='test-token')throw Error('lost recovery callback'); events['shiny:connected'](); if(sent.length!==1)throw Error('replayed callback'); window.location.hash='#error_description=expired'; events['shiny:connected'](); if(sent[1].name!=='supabase_auth_error'||window.location.hash!=='')throw Error('error handling failed');")
   cat('PASS: delayed Shiny connection, recovery delivery, no replay, expired-link callback\n')
 }
+
+# Legacy Connect Cloud settings must resolve to the public app, not its dashboard.
+e$profile <- data.frame(email='registered@example.org', activo=TRUE, user_id='test-user')
+e$auth_redirect_url <- 'https://connect.posit.cloud/jgjuarez/content/019fd804-ab87-d742-2fd8-d0eafe0ab418'
+invisible(e$supabase_auth_send_password_recovery('registered@example.org'))
+stopifnot(identical(url_parse(tail(e$calls, 1)[[1]]$url)$query$redirect_to,
+  'https://019fd804-ab87-d742-2fd8-d0eafe0ab418.share.connect.posit.cloud/'))
+cat('PASS: legacy Connect Cloud redirect normalization\n')
