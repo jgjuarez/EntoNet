@@ -72,6 +72,25 @@ Redirect URLs: https://CONNECT_CLOUD_CONTENT_URL/**
 Invitation and password-recovery links must redirect to the deployed content
 URL, not to `127.0.0.1`, once users outside the local machine start logging in.
 
+Password recovery uses `POST /auth/v1/recover?redirect_to=...`. The JSON body
+contains only the email. EntoNet checks for an exact email match to an active,
+Auth-linked profile on the server before requesting an email; the public
+response is identical for eligible and unknown addresses.
+
+Set `ENTONET_AUTH_REDIRECT_URL`, Supabase Site URL, and an exact Redirect URL
+to the public application URL (including its trailing slash):
+`https://019fd804-ab87-d742-2fd8-d0eafe0ab418.share.connect.posit.cloud/`.
+Do not use the `connect.posit.cloud/jgjuarez/content/...` management page.
+The Reset Password email template should link to `{{ .ConfirmationURL }}`.
+After deploying, request a fresh recovery email; old emails retain their old
+redirect destination. Opening the link should show the password form, and
+saving matching passwords of at least eight characters should allow login.
+Expired links should prompt the user to request a new one.
+
+Run the request-level regression checks from the repository root:
+`Rscript scripts/test_password_recovery.R`. These use mocked HTTP responses
+and do not send email or change any real password.
+
 The authenticated portal uses a left navigation rail. Its top-level sections
 are Datos, Protocolos, and Entrenamientos; selecting one expands its submenu
 vertically. The main workspace remains on the right and renders a module only

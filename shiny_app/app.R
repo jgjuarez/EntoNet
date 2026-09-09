@@ -1466,12 +1466,22 @@ supabase_auth_send_password_recovery <- function(email) {
     stop("ENTONET_AUTH_REDIRECT_URL is not configured.")
   }
 
+  email <- tolower(trimws(email))
+  profile <- fetch_usuario_perfil(auth_email = email)
+  if (nrow(profile) != 1 ||
+      !identical(tolower(trimws(value_or_default(profile$email, ""))), email) ||
+      !isTRUE(profile$activo[[1]]) ||
+      !nzchar(value_or_default(profile$user_id, ""))) {
+    return(list())
+  }
+
   response <- request(paste0(project_url, "/auth/v1/recover")) |>
+    req_url_query(redirect_to = redirect_url) |>
     req_headers(
       apikey = supabase_auth_api_key,
       `Content-Type` = "application/json"
     ) |>
-    req_body_json(list(email = email, redirect_to = redirect_url), auto_unbox = TRUE) |>
+    req_body_json(list(email = email), auto_unbox = TRUE) |>
     req_error(is_error = function(response) FALSE) |>
     req_perform()
 
@@ -3011,7 +3021,7 @@ ui <- fluidPage(
         }
       })();
       function sendSupabaseAuthHashToShiny() {
-        if (typeof Shiny === 'undefined') {
+        if (typeof Shiny === 'undefined' || !Shiny.shinyapp || !Shiny.shinyapp.$socket || Shiny.shinyapp.$socket.readyState !== 1) {
           return;
         }
         var params = new URLSearchParams('');
@@ -3032,6 +3042,8 @@ ui <- fluidPage(
         var errorDescription = params.get('error_description');
         if (errorDescription) {
           Shiny.setInputValue('supabase_auth_error', errorDescription, {priority: 'event'});
+          try { window.sessionStorage.removeItem('entonet_supabase_auth_params'); } catch (error) {}
+          window.history.replaceState(null, document.title, window.location.pathname);
           return;
         }
         if (accessToken && (!authType || authType === 'invite' || authType === 'recovery' || authType === 'signup')) {
@@ -3051,7 +3063,7 @@ ui <- fluidPage(
       document.addEventListener('DOMContentLoaded', function() {
         setTimeout(sendSupabaseAuthHashToShiny, 250);
       });
-      document.addEventListener('shiny:connected', function() {
+      $(document).on('shiny:connected', function() {
         sendSupabaseAuthHashToShiny();
       });
     ")),
@@ -7397,6 +7409,8 @@ server <- function(input, output, session) {
 
   observeEvent(input$setup_return_to_login, {
     removeModal()
+    password_setup_token("")
+    password_setup_refresh_token("")
     password_setup_status(NULL)
     public_page("login")
   })
@@ -7446,14 +7460,16 @@ server <- function(input, output, session) {
     })
 
     if (!is.null(result)) {
-      password_reset_status(div(class = "alert alert-success", "Enlace enviado. Revise su correo y abra el enlace para definir una nueva contraseña."))
+      password_reset_status(div(class = "alert alert-success", "Si el correo corresponde a una cuenta registrada y activa, recibirá un enlace para definir una nueva contraseña."))
     }
   })
 
   observeEvent(input$supabase_auth_error, {
-    login_error(div(class = "alert alert-danger", paste("Supabase no pudo completar la invitación:", input$supabase_auth_error)))
+    password_setup_token("")
+    password_setup_refresh_token("")
+    login_error(div(class = "alert alert-danger", "El enlace expiró o no es válido. Solicite otro desde Restablecer contraseña."))
     public_page("login")
-  }, ignoreInit = TRUE)
+  }, ignoreInit = FALSE)
 
   observeEvent(input$supabase_auth_hash, {
     auth_hash <- input$supabase_auth_hash
@@ -7470,7 +7486,7 @@ server <- function(input, output, session) {
     login_error(NULL)
     public_page("login")
     show_password_setup_modal()
-  }, ignoreInit = TRUE)
+  }, ignoreInit = FALSE)
 
   observeEvent(input$setup_password_save, {
     password <- value_or_default(input$setup_password, "")
