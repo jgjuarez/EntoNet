@@ -3,6 +3,7 @@ library(DBI)
 library(RPostgres)
 library(httr2)
 library(leaflet)
+library(ggplot2)
 
 read_local_env_value <- function(name) {
   value <- Sys.getenv(name, unset = "")
@@ -6378,9 +6379,13 @@ ui <- fluidPage(
       .f7-viz-diagnostic-panel {
         padding: 14px 16px;
       }
-      .f7-viz-diagnostic-panel h4 {
-        font-size: 17px;
-        margin-bottom: 4px;
+      .f7-viz-diagnostic-panel h5,
+      .f7-viz-diagnostic-summary h5,
+      .f7-viz-diagnostic-curve h5 {
+        color: #082243;
+        font-size: 16pt;
+        font-weight: 800;
+        margin: 0 0 8px;
       }
       .f7-viz-diagnostic-panel p {
         font-size: 13pt;
@@ -6391,12 +6396,10 @@ ui <- fluidPage(
       }
       .f7-viz-diagnostic-summary {
         padding: 14px 16px;
+        grid-column: 1 / -1;
       }
-      .f7-viz-diagnostic-summary h5 {
-        color: #082243;
-        font-size: 16pt;
-        font-weight: 800;
-        margin: 0 0 8px;
+      .f7-viz-diagnostic-curve {
+        padding: 14px 16px;
       }
       .f7-viz-summary-section {
         border-top: 1px solid #e5e7eb;
@@ -15802,6 +15805,141 @@ server <- function(input, output, session) {
     )
   })
 
+  f7_mortality_curve_data <- function(records, selected_type) {
+    if (!nrow(records)) return(data.frame())
+    is_true <- function(values) tolower(trimws(as.character(values))) %in% c("true", "t", "1", "si", "sí", "yes")
+
+    if (identical(selected_type, "Diagnóstica 1X")) {
+      records <- records[is_true(records$bioensayo_diagnostica_1x), , drop = FALSE]
+      records$curva_categoria <- as.character(records$insecticida)
+    } else if (startsWith(selected_type, "Intensidad")) {
+      records <- records[!is.na(records$bioensayo_intensidad) & nzchar(trimws(as.character(records$bioensayo_intensidad))), , drop = FALSE]
+      records$curva_categoria <- as.character(records$dosis_intensidad)
+      missing_category <- is.na(records$curva_categoria) | !nzchar(trimws(records$curva_categoria))
+      missing_category[is.na(missing_category)] <- TRUE
+      records$curva_categoria[missing_category] <- as.character(records$bioensayo_intensidad[missing_category])
+    } else if (identical(selected_type, "Sinergistas")) {
+      records <- records[!is.na(records$sinergista_tipo) & nzchar(trimws(as.character(records$sinergista_tipo))), , drop = FALSE]
+      records$curva_categoria <- as.character(records$sinergista_tipo)
+    } else {
+      return(data.frame())
+    }
+
+    if (!nrow(records)) return(data.frame())
+
+    time_points <- c(0L, 15L, 30L, 45L, 60L, 1440L)
+    time_labels <- c("0 min", "15 min", "30 min", "45 min", "60 min", "24 h")
+    treated_bottles <- c("b1", "b2", "b3", "b4")
+    rows <- list()
+
+    for (record_index in seq_len(nrow(records))) {
+      for (minutes_index in seq_along(time_points)) {
+        minutes <- time_points[[minutes_index]]
+        prefix_time <- if (identical(minutes, 1440L)) "24h" else paste0(minutes, "min")
+        vivos <- 0
+        muertos <- 0
+        has_counts <- FALSE
+
+        for (bottle in treated_bottles) {
+          vivos_value <- f7_cdc_count_value(records[[paste0("resultado_", prefix_time, "_", bottle, "_vivos")]][[record_index]])
+          muertos_value <- f7_cdc_count_value(records[[paste0("resultado_", prefix_time, "_", bottle, "_incapacitados")]][[record_index]])
+          if (!is.na(vivos_value) || !is.na(muertos_value)) has_counts <- TRUE
+          vivos <- vivos + ifelse(is.na(vivos_value), 0, vivos_value)
+          muertos <- muertos + ifelse(is.na(muertos_value), 0, muertos_value)
+        }
+
+        total <- vivos + muertos
+        if (!has_counts || total <= 0) next
+        rows[[length(rows) + 1L]] <- data.frame(
+          codigo_bioensayo = records$codigo_bioensayo[[record_index]],
+          departamento = records$departamento[[record_index]],
+          insecticida = records$insecticida[[record_index]],
+          curva_categoria = records$curva_categoria[[record_index]],
+          tiempo_min = minutes,
+          tiempo = factor(time_labels[[minutes_index]], levels = time_labels),
+          mortalidad = muertos / total * 100,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+
+    if (!length(rows)) return(data.frame())
+    do.call(rbind, rows)
+  }
+
+  output$f7_visualization_diagnostic_curve_plot <- renderPlot({
+    records <- f7_visualization_filtered()
+    selected_type <- value_or_default(input$f7_viz_type, "all")
+    if (identical(selected_type, "all")) {
+      plot.new()
+      text(0.5, 0.56, "Seleccione un tipo de bioensayo", cex = 1, font = 2, col = "#082243")
+      text(0.5, 0.45, "La curva se genera para Diagnóstica 1X, Intensidad y Sinergistas.", cex = 0.82, col = "#526070")
+      return(invisible(NULL))
+    }
+
+    curve_data <- f7_mortality_curve_data(records, selected_type)
+    if (!nrow(curve_data)) {
+      plot.new()
+      text(0.5, 0.56, "Sin curvas para graficar", cex = 1, font = 2, col = "#082243")
+      text(0.5, 0.45, "Revise los filtros o los conteos por botella.", cex = 0.82, col = "#526070")
+      return(invisible(NULL))
+    }
+    curve_data <- curve_data[
+      !is.na(curve_data$departamento) & nzchar(trimws(as.character(curve_data$departamento))) &
+        !is.na(curve_data$curva_categoria) & nzchar(trimws(as.character(curve_data$curva_categoria))) &
+        !is.na(curve_data$mortalidad),
+      , drop = FALSE
+    ]
+    curve_data <- curve_data[!grepl("TEM|TEMEFOS", toupper(iconv(curve_data$insecticida, to = "ASCII//TRANSLIT"))), , drop = FALSE]
+    if (!nrow(curve_data)) {
+      plot.new()
+      text(0.5, 0.56, "Sin curvas para graficar", cex = 1, font = 2, col = "#082243")
+      text(0.5, 0.45, "Revise los filtros o los conteos por botella.", cex = 0.82, col = "#526070")
+      return(invisible(NULL))
+    }
+
+    curve_data$tiempo <- factor(
+      curve_data$tiempo_min,
+      levels = c(0L, 15L, 30L, 45L, 60L, 1440L),
+      labels = c("0 min", "15 min", "30 min", "45 min", "60 min", "24 h")
+    )
+    category_order <- if (identical(selected_type, "Diagnóstica 1X")) {
+      c("Permetrina", "Deltametrina")
+    } else if (startsWith(selected_type, "Intensidad")) {
+      c("1X", "2X", "5X", "10X")
+    } else {
+      c("DEF", "PBO", "DM")
+    }
+    extra_categories <- sort(setdiff(unique(as.character(curve_data$curva_categoria)), category_order))
+    curve_data$curva_categoria <- factor(as.character(curve_data$curva_categoria), levels = c(category_order, extra_categories))
+    curve_data$bioensayo_departamento <- paste(curve_data$codigo_bioensayo, curve_data$departamento, sep = " | ")
+    curve_data$bioensayo_puntos <- ave(curve_data$tiempo_min, curve_data$bioensayo_departamento, FUN = length)
+    ggplot(curve_data, aes(x = tiempo, y = mortalidad)) +
+      geom_hline(yintercept = 90, linetype = "dashed", color = "#CBD5E1", linewidth = 0.35) +
+      geom_hline(yintercept = 98, linetype = "dashed", color = "#94A3B8", linewidth = 0.35) +
+      geom_line(data = curve_data[curve_data$bioensayo_puntos > 1, , drop = FALSE], aes(group = bioensayo_departamento), color = "#6B7280", alpha = 0.2, linewidth = 0.35) +
+      geom_point(aes(group = bioensayo_departamento), color = "#6B7280", alpha = 0.22, size = 0.7) +
+      stat_summary(aes(color = departamento, group = departamento), fun = mean, geom = "line", linewidth = 1.05) +
+      stat_summary(aes(color = departamento, group = departamento), fun = mean, geom = "point", size = 1.8) +
+      facet_wrap(~ curva_categoria, ncol = 1) +
+      scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25), labels = function(values) paste0(values, "%")) +
+      scale_color_viridis_d(option = "D", end = 0.88) +
+      labs(x = "Tiempo", y = "Mortalidad (%)", color = "Departamento") +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        strip.text = element_text(color = "#082243", face = "bold", size = 10),
+        axis.title = element_text(color = "#082243", face = "bold"),
+        axis.text = element_text(color = "#526070"),
+        legend.position = "bottom",
+        legend.title = element_text(color = "#082243", face = "bold"),
+        legend.text = element_text(color = "#526070", size = 9)
+      )
+  }, bg = "transparent", res = 110)
+
   output$f7_visualization_diagnostic_summary_table <- renderUI({
     records <- f7_visualization_filtered()
     selected_type <- value_or_default(input$f7_viz_type, "all")
@@ -15852,14 +15990,16 @@ server <- function(input, output, session) {
         factor(as.character(group_records[[comparison_field]]), levels = comparison_groups),
         factor(group_results, levels = result_levels)
       )
-      header <- tags$tr(lapply(c(comparison_label, result_levels), tags$th))
+      header <- tags$tr(lapply(c(comparison_label, result_levels, "Totales"), tags$th))
       rows <- lapply(seq_along(comparison_groups), function(index) {
         group_name <- comparison_groups[[index]]
+        row_counts <- as.integer(counts[group_name, result_levels])
         tags$tr(
           tags$td(group_name),
-          tags$td(as.integer(counts[group_name, "Resistencia"])),
-          tags$td(as.integer(counts[group_name, "Sospecha Resistencia"])),
-          tags$td(as.integer(counts[group_name, "Susceptible"]))
+          tags$td(row_counts[[1]]),
+          tags$td(row_counts[[2]]),
+          tags$td(row_counts[[3]]),
+          tags$td(sum(row_counts, na.rm = TRUE))
         )
       })
       tags$table(class = "table table-condensed table-striped", tags$thead(header), tags$tbody(rows))
@@ -16149,13 +16289,19 @@ server <- function(input, output, session) {
             class = "f7-viz-diagnostic-layout",
             div(
               class = "visualization-results-card f7-viz-diagnostic-panel",
-              h4(style = "font-size:16pt;", "Resultados de Resistencia"),
+              h5("Resultados de Resistencia"),
               p("Tasa de mortalidad calculada con el método CDC por tipo de bioensayo y departamento."),
               div(
                 class = "f7-viz-diagnostic-plot",
-                plotOutput("f7_visualization_resistance_plot", height = "340px"),
+                plotOutput("f7_visualization_resistance_plot", height = "400px"),
                 uiOutput("f7_visualization_resistance_legend")
               )
+            ),
+            div(
+              class = "visualization-results-card f7-viz-diagnostic-curve",
+              h5("Curvas de mortalidad por departamento"),
+              p("Líneas grises = bioensayos individuales, líneas de color = promedio departamental. Las facetas se ajustan al tipo de bioensayo seleccionado."),
+              plotOutput("f7_visualization_diagnostic_curve_plot", height = "470px")
             ),
             div(
               class = "visualization-results-card f7-viz-diagnostic-summary f7-viz-summary-table",
