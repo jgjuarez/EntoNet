@@ -1121,17 +1121,26 @@ formulario_7_result_columns <- unlist(lapply(formulario_7_bottles, function(bott
 }), use.names = FALSE)
 formulario_7_non_24h_result_columns <- grep("resultado_(hora_inicio|0min|15min|30min|45min|60min)_", formulario_7_result_columns, value = TRUE)
 formulario_7_is_temefos <- function(value) {
-  identical(toupper(trimws(value_or_default(value, ""))), "TEMEFOS")
+  code <- toupper(trimws(iconv(value_or_default(value, ""), to = "ASCII//TRANSLIT")))
+  grepl("TEM|TEMEFOS", code)
 }
 
 f7_cdc_diagnostic_time <- function(insecticide) {
   code <- toupper(trimws(iconv(value_or_default(insecticide, ""), to = "ASCII//TRANSLIT")))
   if (!nzchar(code)) return(NA_integer_)
+  if (grepl("TEM|TEMEFOS", code)) return(1440L)
   if (grepl("DDT", code, fixed = TRUE)) return(45L)
   if (grepl("PER|PERMETRINA|PERMETHRIN|DEL|DELTAMETRINA|DELTAMETHRIN|BEN|BENDIOCARB|MAL|MALATION|MALATHION|ALF|ALFA|CYPERMETHRIN|CIPERMETRINA|LAM|LAMBDA", code)) {
     return(30L)
   }
   NA_integer_
+}
+
+f7_cdc_result_prefix <- function(diagnostic_time, bottle) {
+  if (identical(as.integer(diagnostic_time), 1440L)) {
+    return(paste0("resultado_24h_", bottle))
+  }
+  paste0("resultado_", diagnostic_time, "min_", bottle)
 }
 
 f7_cdc_count_value <- function(value) {
@@ -1156,13 +1165,14 @@ f7_cdc_analysis_for_row <- function(row) {
 
   treated_bottles <- c("b1", "b2", "b3", "b4")
   treated_vivos <- sum(vapply(treated_bottles, function(bottle) {
-    f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_", bottle, "_vivos")]])
+    f7_cdc_count_value(row[[paste0(f7_cdc_result_prefix(diagnostic_time, bottle), "_vivos")]])
   }, numeric(1)), na.rm = TRUE)
   treated_incapacitados <- sum(vapply(treated_bottles, function(bottle) {
-    f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_", bottle, "_incapacitados")]])
+    f7_cdc_count_value(row[[paste0(f7_cdc_result_prefix(diagnostic_time, bottle), "_incapacitados")]])
   }, numeric(1)), na.rm = TRUE)
-  control_vivos <- f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_c1_vivos")]])
-  control_incapacitados <- f7_cdc_count_value(row[[paste0("resultado_", diagnostic_time, "min_c1_incapacitados")]])
+  control_prefix <- f7_cdc_result_prefix(diagnostic_time, "c1")
+  control_vivos <- f7_cdc_count_value(row[[paste0(control_prefix, "_vivos")]])
+  control_incapacitados <- f7_cdc_count_value(row[[paste0(control_prefix, "_incapacitados")]])
   treated_total <- treated_vivos + treated_incapacitados
   control_total <- control_vivos + control_incapacitados
 
@@ -15958,7 +15968,7 @@ server <- function(input, output, session) {
           p("Utilice los filtros para explorar los registros del Formulario 7. Los puntos actuales son centroides aproximados por municipio; los registros sin coordenada aproximada permanecen disponibles en las tablas."),
           div(
             class = "alert alert-info",
-            HTML("Método de análisis: la clasificación se calcula con la mortalidad al tiempo diagnóstico del <em>CDC Bottle Bioassay</em>. Cuando la mortalidad del control es &gt;3% y ≤20% se aplica corrección de Abbott; si el control es &gt;20% el ensayo se marca como inválido. Interpretación CDC: 98-100% susceptible, 90-97% sospecha de resistencia y &lt;90% resistente. Fuente: <a href='https://www.cdc.gov/mosquitoes/media/pdfs/2024/04/CDC-Global-Bottle-Bioassay-Manual-508.pdf' target='_blank' rel='noopener'>CDC Global Bottle Bioassay Manual</a>.")
+            HTML("Método de análisis: la clasificación se calcula con la mortalidad al tiempo diagnóstico del <em>CDC Bottle Bioassay</em>; para Temefos se usa la lectura de 24 horas. Cuando la mortalidad del control es &gt;3% y ≤20% se aplica corrección de Abbott; si el control es &gt;20% el ensayo se marca como inválido. Interpretación CDC: 98-100% susceptible, 90-97% sospecha de resistencia y &lt;90% resistente. Fuente: <a href='https://www.cdc.gov/mosquitoes/media/pdfs/2024/04/CDC-Global-Bottle-Bioassay-Manual-508.pdf' target='_blank' rel='noopener'>CDC Global Bottle Bioassay Manual</a>.")
           ),
           uiOutput("f7_visualization_refresh_status"),
           uiOutput("f7_visualization_filters")
