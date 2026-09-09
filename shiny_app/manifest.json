@@ -2610,10 +2610,10 @@
   },
   "files": {
     "app.R": {
-      "checksum": "761247a6d4b2ce1e965c51169ea69ff1"
+      "checksum": "bdb59aa89603b3381f1d725342401d3e"
     },
     "README.md": {
-      "checksum": "f73da1f9de72fa682e710e5cb68a4acd"
+      "checksum": "fe2f0e7996e01ff7a76f839f229d6db0"
     },
     "www/ces-logo-cropped.png": {
       "checksum": "559ab5cc9945012594c02d6c4844a1c3"
@@ -2662,6 +2662,9 @@
     },
     "www/reactivos-larvicidas.png": {
       "checksum": "ecfc9258b8585113c13fc09cbf32cb49"
+    },
+    "www/reactivos-producto-entonet.png": {
+      "checksum": "e9f013e4ea41f4a7973b7cc02e190065"
     },
     "www/reactivos-residuales.png": {
       "checksum": "68cda73b63d70fee3c85aee194c191c9"

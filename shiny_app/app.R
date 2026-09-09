@@ -1452,6 +1452,34 @@ supabase_auth_update_password <- function(access_token, password) {
   body
 }
 
+supabase_private_insert <- function(table, payload) {
+  project_url <- storage_project_url()
+  if (!nzchar(project_url) || !nzchar(supabase_service_role_key)) {
+    return(invisible(FALSE))
+  }
+  if (!grepl("^[a-z0-9_]+$", table)) {
+    stop("Nombre de tabla no permitido para la API privada.")
+  }
+
+  payload <- payload[!vapply(payload, is.null, logical(1))]
+  response <- request(paste0(project_url, "/rest/v1/", table)) |>
+    req_headers(
+      Authorization = paste("Bearer", supabase_service_role_key),
+      apikey = supabase_service_role_key,
+      `Content-Type` = "application/json",
+      Prefer = "return=minimal"
+    ) |>
+    req_body_json(payload, auto_unbox = TRUE) |>
+    req_error(is_error = function(response) FALSE) |>
+    req_perform()
+
+  if (resp_status(response) >= 300) {
+    stop(sprintf("La API privada de Supabase respondió HTTP %s.", resp_status(response)))
+  }
+
+  invisible(TRUE)
+}
+
 supabase_auth_send_password_recovery <- function(email) {
   project_url <- storage_project_url()
   redirect_url <- value_or_default(auth_redirect_url, "")
@@ -3074,6 +3102,31 @@ ui <- fluidPage(
       });
     ")),
     tags$script(HTML("
+      function entonetAnonymousSessionId() {
+        var key = 'entonet_anonymous_session_id';
+        try {
+          var existing = window.localStorage.getItem(key);
+          if (existing) {
+            return existing;
+          }
+          var generated = 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 12);
+          window.localStorage.setItem(key, generated);
+          return generated;
+        } catch (error) {
+          return 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 12);
+        }
+      }
+      function sendEntonetPublicClientToShiny() {
+        if (typeof Shiny === 'undefined') {
+          return;
+        }
+        Shiny.setInputValue('entonet_public_client', {
+          anonymous_session_id: entonetAnonymousSessionId(),
+          href: window.location.href || '',
+          referrer: document.referrer || '',
+          user_agent: navigator.userAgent || ''
+        }, {priority: 'event'});
+      }
       function sendEntonetPublicRouteToShiny() {
         if (typeof Shiny === 'undefined') {
           return;
@@ -3093,9 +3146,11 @@ ui <- fluidPage(
         }
       }
       document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(sendEntonetPublicClientToShiny, 200);
         setTimeout(sendEntonetPublicRouteToShiny, 250);
       });
       document.addEventListener('shiny:connected', function() {
+        sendEntonetPublicClientToShiny();
         sendEntonetPublicRouteToShiny();
         setTimeout(sendEntonetPublicRouteToShiny, 500);
       });
@@ -6899,6 +6954,109 @@ server <- function(input, output, session) {
     position = value_or_default(profile_position, "Rol no configurado"),
     country = value_or_default(profile_country, "País no configurado")
   )
+  last_public_traffic_signature <- reactiveVal("")
+
+  request_value <- function(name) {
+    if (is.null(session$request)) return("")
+    value_or_default(session$request[[name]], "")
+  }
+
+  request_ip_address <- function() {
+    forwarded_for <- request_value("HTTP_X_FORWARDED_FOR")
+    if (nzchar(forwarded_for)) {
+      return(trimws(strsplit(forwarded_for, ",", fixed = TRUE)[[1]][[1]]))
+    }
+
+    value_or_default(
+      request_value("HTTP_X_REAL_IP"),
+      request_value("REMOTE_ADDR")
+    )
+  }
+
+  request_user_agent <- function() {
+    client <- input$entonet_public_client
+    client_agent <- if (!is.null(client)) value_or_default(client$user_agent, "") else ""
+    value_or_default(client_agent, request_value("HTTP_USER_AGENT"))
+  }
+
+  request_referrer <- function() {
+    client <- input$entonet_public_client
+    client_referrer <- if (!is.null(client)) value_or_default(client$referrer, "") else ""
+    value_or_default(client_referrer, request_value("HTTP_REFERER"))
+  }
+
+  nullable_text <- function(value) {
+    value <- trimws(value_or_default(value, ""))
+    if (nzchar(value)) value else NULL
+  }
+
+  nullable_uuid <- function(value) {
+    value <- trimws(value_or_default(value, ""))
+    if (grepl("^[0-9a-fA-F-]{36}$", value)) value else NULL
+  }
+
+  log_auth_access <- function(event_type, success = NULL, login_identifier = NULL,
+                              email = NULL, user_id = NULL, profile = NULL,
+                              auth_user = NULL, error_message = NULL) {
+    if (!is.null(profile) && nrow(profile) > 0) {
+      email <- email %||% value_or_default(profile$email[[1]], "")
+      user_id <- user_id %||% value_or_default(profile$user_id[[1]], "")
+    }
+    if (!is.null(auth_user)) {
+      email <- email %||% value_or_default(auth_user$email, "")
+      user_id <- user_id %||% value_or_default(auth_user$id, "")
+    }
+
+    payload <- list(
+      event_type = event_type,
+      success = success,
+      login_identifier = nullable_text(login_identifier),
+      email = nullable_text(email),
+      user_id = nullable_uuid(user_id),
+      usuario = if (!is.null(profile) && nrow(profile) > 0) nullable_text(profile$usuario[[1]]) else nullable_text(user_profile$username),
+      nombre = if (!is.null(profile) && nrow(profile) > 0) nullable_text(profile$nombre[[1]]) else nullable_text(user_profile$name),
+      rol = if (!is.null(profile) && nrow(profile) > 0) nullable_text(profile$rol[[1]]) else nullable_text(user_profile$position),
+      pais = if (!is.null(profile) && nrow(profile) > 0) nullable_text(profile$pais[[1]]) else nullable_text(user_profile$country),
+      id_institucion = if (!is.null(profile) && nrow(profile) > 0) nullable_text(profile$id_institucion[[1]]) else nullable_text(user_profile$institution),
+      error_message = nullable_text(substr(value_or_default(error_message, ""), 1, 500)),
+      ip_address = nullable_text(request_ip_address()),
+      user_agent = nullable_text(request_user_agent()),
+      referrer = nullable_text(request_referrer()),
+      page = nullable_text(public_page()),
+      path = nullable_text(value_or_default(session$clientData$url_pathname, "")),
+      query_string = nullable_text(value_or_default(session$clientData$url_search, "")),
+      session_token = nullable_text(session$token)
+    )
+
+    tryCatch(
+      supabase_private_insert("entonet_auth_access_log", payload),
+      error = function(error) message("No se pudo registrar auditoria de acceso: ", conditionMessage(error))
+    )
+    invisible(TRUE)
+  }
+
+  log_public_traffic <- function(page) {
+    client <- input$entonet_public_client
+    anonymous_session_id <- if (!is.null(client)) value_or_default(client$anonymous_session_id, "") else ""
+    href <- if (!is.null(client)) value_or_default(client$href, "") else ""
+
+    payload <- list(
+      page = value_or_default(page, "login"),
+      path = nullable_text(value_or_default(session$clientData$url_pathname, "")),
+      query_string = nullable_text(value_or_default(session$clientData$url_search, "")),
+      href = nullable_text(href),
+      anonymous_session_id = nullable_text(anonymous_session_id),
+      ip_address = nullable_text(request_ip_address()),
+      user_agent = nullable_text(request_user_agent()),
+      referrer = nullable_text(request_referrer())
+    )
+
+    tryCatch(
+      supabase_private_insert("entonet_public_traffic_log", payload),
+      error = function(error) message("No se pudo registrar trafico publico: ", conditionMessage(error))
+    )
+    invisible(TRUE)
+  }
 
   apply_profile_to_capture_inputs <- function() {
     institution <- value_or_default(user_profile$institution, default_institution_id)
@@ -7200,6 +7358,24 @@ server <- function(input, output, session) {
     authenticated_page()
   })
 
+  observe({
+    req(!logged_in())
+    req(input$entonet_public_client)
+    page <- value_or_default(public_page(), "login")
+    client <- input$entonet_public_client
+    anonymous_session_id <- if (!is.null(client)) value_or_default(client$anonymous_session_id, "") else ""
+    signature <- paste(
+      page,
+      value_or_default(session$clientData$url_pathname, ""),
+      value_or_default(session$clientData$url_search, ""),
+      anonymous_session_id,
+      sep = "|"
+    )
+    if (identical(signature, last_public_traffic_signature())) return()
+    last_public_traffic_signature(signature)
+    log_public_traffic(page)
+  })
+
   observeEvent(input$landing_program, {
     public_page("program")
   })
@@ -7461,11 +7637,13 @@ server <- function(input, output, session) {
     result <- tryCatch({
       supabase_auth_send_password_recovery(email)
     }, error = function(error) {
+      log_auth_access("password_reset_request_failed", FALSE, login_identifier = email, email = email, error_message = conditionMessage(error))
       password_reset_status(div(class = "alert alert-danger", paste("No se pudo enviar el enlace:", conditionMessage(error))))
       NULL
     })
 
     if (!is.null(result)) {
+      log_auth_access("password_reset_requested", TRUE, login_identifier = email, email = email)
       password_reset_status(div(class = "alert alert-success", "Si el correo corresponde a una cuenta registrada y activa, recibirá un enlace para definir una nueva contraseña."))
     }
   })
@@ -7538,6 +7716,8 @@ server <- function(input, output, session) {
       return()
     }
 
+    log_auth_access("login_attempt", login_identifier = login_user)
+
     if (is_sat26_survey_login(login_user, login_password)) {
       user_profile$username <- "EncuestaSatisfaccion"
       user_profile$email <- ""
@@ -7560,6 +7740,7 @@ server <- function(input, output, session) {
       sat26_resume_status(NULL)
       login_error(NULL)
       session$sendCustomMessage("sat26ScrollTop", list())
+      log_auth_access("sat26_login_success", TRUE, login_identifier = login_user)
       return()
     }
 
@@ -7582,6 +7763,7 @@ server <- function(input, output, session) {
 
       list(auth_session = auth_session, auth_user = auth_user, profile = profile[1, , drop = FALSE])
     }, error = function(error) {
+      log_auth_access("login_failed", FALSE, login_identifier = login_user, error_message = conditionMessage(error))
       login_error(div(class = "alert alert-danger", paste("No se pudo iniciar sesión:", conditionMessage(error))))
       NULL
     })
@@ -7601,11 +7783,13 @@ server <- function(input, output, session) {
       public_page("login")
       login_error(NULL)
       apply_profile_to_capture_inputs()
+      log_auth_access("login_success", TRUE, login_identifier = login_user, profile = profile, auth_user = result$auth_user)
       return()
     }
   })
 
   observeEvent(input$logout, {
+    log_auth_access("logout", TRUE)
     logged_in(FALSE)
     user_profile$access_token <- ""
     user_profile$refresh_token <- ""
