@@ -1109,6 +1109,7 @@ formulario_7_bottle_labels <- c(
   b3 = "Botella experimental 3", b4 = "Botella experimental 4",
   c1 = "Botella control 1"
 )
+formulario_7_intensity_bottle_doses <- c(b1 = "1X", b2 = "2X", b3 = "5X", b4 = "10X")
 formulario_7_result_columns <- unlist(lapply(formulario_7_bottles, function(bottle) {
   c(
     paste0("resultado_hora_inicio_", bottle),
@@ -1146,6 +1147,110 @@ f7_cdc_result_prefix <- function(diagnostic_time, bottle) {
 
 f7_cdc_count_value <- function(value) {
   suppressWarnings(as.numeric(value))
+}
+
+f7_cdc_classify_mortality <- function(test_mortality, control_mortality) {
+  if (is.na(test_mortality) || is.na(control_mortality)) {
+    return(list(
+      corrected_mortality = NA_real_,
+      correction = "Lecturas insuficientes al tiempo diagnóstico",
+      status = NA_character_,
+      map_status = "Sin cálculo CDC"
+    ))
+  }
+  corrected_mortality <- test_mortality
+  correction <- "Sin corrección Abbott"
+  status <- NA_character_
+  map_status <- "Sin cálculo CDC"
+  if (control_mortality > 20) {
+    correction <- "Ensayo inválido: control >20%"
+    status <- "Ensayo inválido"
+    map_status <- "Ensayo inválido"
+  } else {
+    if (control_mortality > 3) {
+      corrected_mortality <- (test_mortality - control_mortality) * 100 / (100 - control_mortality)
+      corrected_mortality <- max(0, min(100, corrected_mortality))
+      correction <- "Corrección Abbott"
+    }
+    status <- ifelse(
+      corrected_mortality >= 98,
+      "Susceptible",
+      ifelse(corrected_mortality >= 90, "Sospecha de Resistencia", "Resistente")
+    )
+    map_status <- ifelse(
+      identical(status, "Resistente"),
+      "Resistencia",
+      ifelse(identical(status, "Sospecha de Resistencia"), "Sospecha Resistencia", "Susceptible")
+    )
+  }
+  list(
+    corrected_mortality = corrected_mortality,
+    correction = correction,
+    status = status,
+    map_status = map_status
+  )
+}
+
+f7_intensity_exploratory_analysis <- function(row) {
+  diagnostic_time <- f7_cdc_diagnostic_time(row$insecticida)
+  if (is.na(diagnostic_time)) {
+    return(list(
+      resultado_diagnostico = NA_character_,
+      dosis_intensidad = NA_character_,
+      detalles = "Insecticida sin tiempo diagnóstico CDC configurado"
+    ))
+  }
+  control_prefix <- f7_cdc_result_prefix(diagnostic_time, "c1")
+  control_vivos <- f7_cdc_count_value(row[[paste0(control_prefix, "_vivos")]])
+  control_incapacitados <- f7_cdc_count_value(row[[paste0(control_prefix, "_incapacitados")]])
+  control_total <- control_vivos + control_incapacitados
+  if (is.na(control_total) || control_total <= 0) {
+    return(list(resultado_diagnostico = NA_character_, dosis_intensidad = NA_character_, detalles = "Lectura de control insuficiente"))
+  }
+  control_mortality <- control_incapacitados / control_total * 100
+  dose_results <- data.frame(dosis = character(), resultado = character(), mortalidad = numeric(), stringsAsFactors = FALSE)
+  for (bottle in names(formulario_7_intensity_bottle_doses)) {
+    prefix <- f7_cdc_result_prefix(diagnostic_time, bottle)
+    vivos <- f7_cdc_count_value(row[[paste0(prefix, "_vivos")]])
+    incapacitados <- f7_cdc_count_value(row[[paste0(prefix, "_incapacitados")]])
+    total <- vivos + incapacitados
+    if (is.na(total) || total <= 0) next
+    test_mortality <- incapacitados / total * 100
+    classified <- f7_cdc_classify_mortality(test_mortality, control_mortality)
+    dose_results <- rbind(
+      dose_results,
+      data.frame(
+        dosis = formulario_7_intensity_bottle_doses[[bottle]],
+        resultado = classified$status,
+        mortalidad = round(classified$corrected_mortality, 1),
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+  if (!nrow(dose_results)) {
+    return(list(resultado_diagnostico = NA_character_, dosis_intensidad = NA_character_, detalles = "Lecturas de dosis insuficientes"))
+  }
+  if (any(dose_results$resultado == "Ensayo inválido", na.rm = TRUE)) {
+    return(list(resultado_diagnostico = "Ensayo inválido", dosis_intensidad = NA_character_, detalles = "Control >20% o dosis inválida"))
+  }
+  if (any(dose_results$resultado == "Resistente", na.rm = TRUE)) {
+    operational_result <- "Resistente"
+  } else if (any(dose_results$resultado == "Sospecha de Resistencia", na.rm = TRUE)) {
+    operational_result <- "Sospecha de Resistencia"
+  } else {
+    operational_result <- "Susceptible"
+  }
+  nonsusceptible <- dose_results[dose_results$resultado %in% c("Resistente", "Sospecha de Resistencia"), , drop = FALSE]
+  associated_dose <- NA_character_
+  if (nrow(nonsusceptible)) {
+    dose_order <- c("1X", "2X", "5X", "10X")
+    associated_dose <- tail(dose_order[dose_order %in% nonsusceptible$dosis], 1)
+  }
+  list(
+    resultado_diagnostico = operational_result,
+    dosis_intensidad = associated_dose,
+    detalles = paste(paste0(dose_results$dosis, ": ", dose_results$resultado, " (", dose_results$mortalidad, "%)"), collapse = "; ")
+  )
 }
 
 f7_cdc_analysis_for_row <- function(row) {
@@ -1219,6 +1324,89 @@ f7_cdc_analysis_for_row <- function(row) {
     cdc_correccion = correction,
     cdc_resultado = status,
     cdc_clasificacion_mapa = map_status
+  )
+}
+
+f7_qc_findings <- function(records) {
+  out <- data.frame(intake_id = character(), poblacion = character(), insecticida = character(), mortalidad = numeric(), diagnostica = numeric(), referencias = character(), motivo = character())
+  if (!nrow(records)) return(out)
+  truth <- function(x) tolower(as.character(x)) %in% c("true", "t", "1")
+  analyses <- lapply(seq_len(nrow(records)), function(i) f7_diagnostic_capture_analysis(records[i, , drop = FALSE]))
+  mortality <- vapply(seq_len(nrow(records)), function(i) {
+    if (is.na(analyses[[i]]$resultado_diagnostico)) return(NA_real_)
+    f7_cdc_analysis_for_row(records[i, , drop = FALSE])$cdc_mortalidad_corregida_pct
+  }, numeric(1))
+  fields <- c("pais", "codigo_departamento", "codigo_municipio", "nombre_poblacion", "insecticida")
+  keys <- lapply(records[fields], function(x) toupper(trimws(as.character(x))))
+  for (i in seq_len(nrow(records))) {
+    row <- records[i, , drop = FALSE]
+    reasons <- f7_bottle_total_errors(row)
+    baseline <- NA_real_
+    refs <- ""
+    synergist <- any(truth(unlist(row[c("sinergista_def", "sinergista_pbo", "sinergista_dm")])) )
+    diagnostic <- truth(row$bioensayo_diagnostica_1x)
+    if (synergist || diagnostic) {
+      if (is.na(mortality[[i]])) reasons <- c(reasons, analyses[[i]]$detalles)
+    }
+    if (synergist) {
+      consistent <- vapply(seq_len(nrow(records)), function(j) !length(f7_bottle_total_errors(records[j, , drop = FALSE])), logical(1))
+      matches <- truth(records$bioensayo_diagnostica_1x) & is.finite(mortality) & consistent
+      for (key in keys) matches <- matches & !is.na(key) & !is.na(key[[i]]) & nzchar(key) & key == key[[i]]
+      matches[is.na(matches)] <- FALSE
+      if (any(matches)) {
+        baseline <- mean(mortality[matches])
+        refs <- paste(records$intake_id[matches], collapse = ", ")
+        if (is.finite(mortality[[i]]) && mortality[[i]] <= baseline) reasons <- c(reasons, "Mortalidad con sinergista menor o igual al promedio Diagnóstica 1X")
+      } else reasons <- c(reasons, "Sin Diagnóstica 1X comparable en el período")
+    }
+    if (length(reasons)) out <- rbind(out, data.frame(intake_id = as.character(row$intake_id), poblacion = as.character(row$nombre_poblacion), insecticida = as.character(row$insecticida), mortalidad = mortality[[i]], diagnostica = round(baseline, 1), referencias = refs, motivo = paste(reasons, collapse = "; ")))
+  }
+  out
+}
+
+f7_bottle_total_errors <- function(row) {
+  errors <- character()
+  times <- if (formulario_7_is_temefos(row$insecticida)) "24h" else c("0min", "15min", "30min", "45min", "60min", "24h")
+  for (bottle in c("b1", "b2", "b3", "b4", "c1")) {
+    totals <- vapply(times, function(time) {
+      counts <- suppressWarnings(as.numeric(unlist(row[paste0("resultado_", time, "_", bottle, c("_vivos", "_incapacitados"))], use.names = FALSE)))
+      if (length(counts) != 2L || any(!is.finite(counts)) || any(counts < 0)) return(NA_real_)
+      sum(counts)
+    }, numeric(1))
+    totals <- totals[!is.na(totals)]
+    if (length(unique(totals)) > 1L) {
+      errors <- c(errors, paste0(
+        "Botella ", toupper(bottle), ": el total de vivos e incapacitados debe ser igual entre tiempos. ",
+        paste(paste0(names(totals), " = ", totals), collapse = "; "), "."
+      ))
+    }
+  }
+  errors
+}
+
+f7_diagnostic_capture_analysis <- function(row) {
+  diagnostic_time <- f7_cdc_diagnostic_time(row$insecticida)
+  pending <- function(message) list(resultado_diagnostico = NA_character_, detalles = message)
+  if (is.na(diagnostic_time)) return(pending("Insecticida sin tiempo diagnóstico configurado"))
+  for (bottle in c("b1", "b2", "b3", "b4", "c1")) {
+    prefix <- f7_cdc_result_prefix(diagnostic_time, bottle)
+    counts <- vapply(c("_vivos", "_incapacitados"), function(suffix) {
+      value <- f7_cdc_count_value(row[[paste0(prefix, suffix)]])
+      if (length(value) == 1L) value else NA_real_
+    }, numeric(1))
+    if (any(!is.finite(counts)) || any(counts < 0) || any(counts != floor(counts)) || sum(counts) <= 0) {
+      return(pending(paste("Complete los conteos de", toupper(bottle), "a", if (diagnostic_time == 1440L) "24 horas" else paste(diagnostic_time, "minutos"))))
+    }
+  }
+  analysis <- f7_cdc_analysis_for_row(row)
+  if (identical(analysis$cdc_resultado, "Ensayo inválido")) return(pending(analysis$cdc_correccion))
+  list(
+    resultado_diagnostico = analysis$cdc_resultado,
+    detalles = paste0(
+      "Lectura: ", if (diagnostic_time == 1440L) "24 horas" else paste(diagnostic_time, "minutos"),
+      ". Mortalidad: ", analysis$cdc_mortalidad_corregida_pct,
+      "%. Control: ", analysis$cdc_mortalidad_control_pct, "%. ", analysis$cdc_correccion
+    )
   )
 }
 
@@ -2600,7 +2788,7 @@ formulario_7_capture_form <- function() {
               inline = TRUE
             ),
             conditionalPanel(
-              "input.f7_tipo_bioensayo == 'diagnostica_1x' || input.f7_tipo_bioensayo == 'intensidad' || input.f7_tipo_bioensayo == 'sinergistas'",
+              "input.f7_tipo_bioensayo == 'intensidad' && input.f7_bioensayo_intensidad != 'Exploratorio'",
               radioButtons(
                 "f7_resultado_diagnostico",
                 "Resultado de la prueba diagnóstica *",
@@ -2613,10 +2801,10 @@ formulario_7_capture_form <- function() {
               radioButtons("f7_bioensayo_intensidad", "Intensidad *", choices = c("Exploratorio", "Completa"), inline = TRUE),
               conditionalPanel(
                 "input.f7_bioensayo_intensidad == 'Exploratorio'",
-                div(class = "alert alert-info", strong("Dosis incluidas: "), "1X, 2X, 5X y 10X, más su control. Si el resultado es Resistente o Sospecha de Resistencia, indique la concentración mayor asociada.")
+                div(class = "alert alert-info", strong("Dosis incluidas: "), "1X, 2X, 5X y 10X, más su control. El sistema calcula el resultado y guarda automáticamente la concentración mayor asociada cuando el resultado es Resistente o Sospecha de Resistencia.")
               ),
               conditionalPanel(
-                "input.f7_bioensayo_intensidad == 'Completa' || (input.f7_bioensayo_intensidad == 'Exploratorio' && (input.f7_resultado_diagnostico == 'Resistente' || input.f7_resultado_diagnostico == 'Sospecha de Resistencia'))",
+                "input.f7_bioensayo_intensidad == 'Completa'",
                 selectInput("f7_dosis_intensidad", "Concentración asociada *", choices = c("Seleccione" = "", "1X" = "1X", "2X" = "2X", "5X" = "5X", "10X" = "10X"))
               )
             ),
@@ -2716,10 +2904,11 @@ formulario_7_capture_form <- function() {
           )
         )
       ),
-      do.call(tabPanel, c(list(title = "Resultados por botella", value = "resultados"), list(do.call(tabsetPanel, c(list(id = "f7_result_bottle"), bottle_tabs))))),
+      do.call(tabPanel, c(list(title = "Resultados por botella", value = "resultados"), list(uiOutput("f7_bottle_totals_warning"), do.call(tabsetPanel, c(list(id = "f7_result_bottle"), bottle_tabs))))),
       tabPanel(
         "Comentarios y envío",
         value = "comentarios_envio",
+        uiOutput("f7_calculated_diagnostic_result_ui"),
         fluidRow(
           column(8, textAreaInput("f7_comentario", "Comentario", rows = 3)),
           column(4, textInput("f7_comentario_nombre", "Nombre"))
@@ -11621,12 +11810,6 @@ server <- function(input, output, session) {
     if (length(missing_review_24h)) {
       details <- c(details, paste0("codigo_revision_24h es obligatorio. Filas: ", paste(head(missing_review_24h, 10), collapse = ", ")))
     }
-    data$codigo_bioensayo <- formulario_7_codigo_bioensayo_final(
-      data$codigo_bioensayo, data$bioensayo_diagnostica_1x, data$bioensayo_intensidad, data$dosis_intensidad,
-      data$sinergista_def, data$sinergista_pbo, data$sinergista_dm
-    )
-    bad_generated_code <- which(is.na(data$codigo_bioensayo))
-    if (length(bad_generated_code)) details <- c(details, paste0("No se pudo generar codigo_bioensayo. Revise el tipo de bioensayo. Filas: ", paste(head(bad_generated_code, 10), collapse = ", ")))
     for (column in numeric_columns) {
       raw <- data[[column]]
       parsed <- suppressWarnings(as.numeric(raw))
@@ -11667,15 +11850,17 @@ server <- function(input, output, session) {
         if (length(bad)) details <- c(details, paste0(column, " no aplica para Temefos; solo registre lecturas de 24h. Filas: ", paste(head(bad, 10), collapse = ", ")))
       }
     }
-    duplicate_codes <- unique(data$codigo_bioensayo[duplicated(data$codigo_bioensayo) & !is.na(data$codigo_bioensayo)])
-    if (length(duplicate_codes)) details <- c(details, paste0("Código de bioensayo duplicado dentro del archivo: ", paste(duplicate_codes, collapse = ", "), "."))
-
     for (row in seq_len(nrow(data))) {
       has_synergist <- any(c(data$sinergista_def[[row]], data$sinergista_pbo[[row]], data$sinergista_dm[[row]]), na.rm = TRUE)
       is_diagnostic <- isTRUE(data$bioensayo_diagnostica_1x[[row]])
       is_intensity <- !is.na(data$bioensayo_intensidad[[row]])
       selected_types <- sum(is_diagnostic, is_intensity, has_synergist)
       if (selected_types != 1) details <- c(details, paste("Fila", row, ": seleccione exactamente un Tipo de Bioensayo: Diagnóstica 1X, Intensidad o Sinergistas."))
+      if (is_diagnostic || has_synergist) {
+        calculated <- f7_diagnostic_capture_analysis(data[row, , drop = FALSE])
+        data$resultado_diagnostico[[row]] <- calculated$resultado_diagnostico
+        if (is.na(calculated$resultado_diagnostico)) details <- c(details, paste0("Fila ", row, ": ", calculated$detalles, "."))
+      }
       if (is_diagnostic) {
         if (is.na(data$resultado_diagnostico[[row]])) details <- c(details, paste("Fila", row, ": indique el resultado de la prueba diagnóstica."))
         if (!is.na(data$dosis_intensidad[[row]]) || has_synergist || is_intensity) details <- c(details, paste("Fila", row, ": Diagnóstica 1X no admite modalidad de intensidad, dosis de intensidad ni sinergistas."))
@@ -11683,10 +11868,17 @@ server <- function(input, output, session) {
       if (is_intensity) {
         current_result <- data$resultado_diagnostico[[row]]
         current_dose <- data$dosis_intensidad[[row]]
+        if (identical(data$bioensayo_intensidad[[row]], "Exploratorio")) {
+          exploratory <- f7_intensity_exploratory_analysis(data[row, , drop = FALSE])
+          if (!is.na(exploratory$resultado_diagnostico)) data$resultado_diagnostico[[row]] <- exploratory$resultado_diagnostico
+          data$dosis_intensidad[[row]] <- exploratory$dosis_intensidad
+          current_result <- data$resultado_diagnostico[[row]]
+          current_dose <- data$dosis_intensidad[[row]]
+        }
         if (is.na(current_result)) details <- c(details, paste("Fila", row, ": indique el resultado de la prueba diagnóstica para Intensidad."))
         if (identical(data$bioensayo_intensidad[[row]], "Exploratorio")) {
           if (identical(current_result, "Susceptible") && !is.na(current_dose)) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio Susceptible no debe llevar dosis_intensidad."))
-          if (current_result %in% c("Sospecha de Resistencia", "Resistente") && is.na(current_dose)) details <- c(details, paste("Fila", row, ": Intensidad Exploratorio con Resistente o Sospecha de Resistencia requiere dosis_intensidad 1X, 2X, 5X o 10X."))
+          if (current_result %in% c("Sospecha de Resistencia", "Resistente") && is.na(current_dose)) details <- c(details, paste("Fila", row, ": no se pudo calcular dosis_intensidad a partir de las botellas 1X, 2X, 5X y 10X."))
         }
         if (identical(data$bioensayo_intensidad[[row]], "Completa") && is.na(data$dosis_intensidad[[row]])) details <- c(details, paste("Fila", row, ": Intensidad Completa requiere dosis_intensidad 1X, 2X, 5X o 10X."))
         if (is_diagnostic || has_synergist) details <- c(details, paste("Fila", row, ": Intensidad no puede combinarse con Diagnóstica 1X o Sinergistas."))
@@ -11715,6 +11907,19 @@ server <- function(input, output, session) {
       bad <- which(xor(is.na(lives), is.na(disabled)))
       if (length(bad)) details <- c(details, paste0(base, " debe incluir vivos e incapacitados juntos. Filas: ", paste(head(bad, 10), collapse = ", ")))
     }
+
+    data$codigo_bioensayo <- formulario_7_codigo_bioensayo_final(
+      data$codigo_bioensayo, data$bioensayo_diagnostica_1x, data$bioensayo_intensidad, data$dosis_intensidad,
+      data$sinergista_def, data$sinergista_pbo, data$sinergista_dm
+    )
+    bad_generated_code <- which(is.na(data$codigo_bioensayo))
+    for (row in seq_len(nrow(data))) {
+      total_errors <- f7_bottle_total_errors(data[row, , drop = FALSE])
+      if (length(total_errors)) details <- c(details, paste0("Fila ", row, ": ", total_errors))
+    }
+    if (length(bad_generated_code)) details <- c(details, paste0("No se pudo generar codigo_bioensayo. Revise el tipo de bioensayo. Filas: ", paste(head(bad_generated_code, 10), collapse = ", ")))
+    duplicate_codes <- unique(data$codigo_bioensayo[duplicated(data$codigo_bioensayo) & !is.na(data$codigo_bioensayo)])
+    if (length(duplicate_codes)) details <- c(details, paste0("Código de bioensayo duplicado dentro del archivo: ", paste(duplicate_codes, collapse = ", "), "."))
 
     list(data = data, details = unique(details))
   }
@@ -12631,6 +12836,14 @@ server <- function(input, output, session) {
     values$sinergista_pbo <- as.character(identical(selected_synergist, "PBO"))
     values$sinergista_dm <- as.character(identical(selected_synergist, "DM"))
     values$resultado_diagnostico <- diagnostic_result
+    if (selected_bioassay_type %in% c("diagnostica_1x", "sinergistas")) {
+      values$resultado_diagnostico <- f7_diagnostic_capture_analysis(values)$resultado_diagnostico
+    }
+    if (identical(selected_bioassay_type, "intensidad") && identical(selected_modality, "Exploratorio")) {
+      exploratory <- f7_intensity_exploratory_analysis(values)
+      values$resultado_diagnostico <- exploratory$resultado_diagnostico
+      values$dosis_intensidad <- exploratory$dosis_intensidad
+    }
     values$nombre_quien_ingreso <- value_or_default(input$f7_creado_por, user_profile$name)
     values$codigo_bioensayo <- formulario_7_codigo_bioensayo_final(
       values$codigo_bioensayo, values$bioensayo_diagnostica_1x, values$bioensayo_intensidad, values$dosis_intensidad,
@@ -12670,15 +12883,12 @@ server <- function(input, output, session) {
         c("codigo_bioensayo", "pais", "codigo_departamento", "codigo_municipio", "nombre_poblacion", "fecha_registro"),
         c("código de bioensayo", "país", "departamento", "municipio", "nombre de la población", "fecha de registro")
       )
-      if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "intensidad", "sinergistas")) {
+      if (identical(input$f7_tipo_bioensayo, "intensidad") && !identical(input$f7_bioensayo_intensidad, "Exploratorio")) {
         if (missing_value("resultado_diagnostico")) errors <- c(errors, "Seleccione el resultado: Susceptible, Sospecha de Resistencia o Resistente.")
       }
       if (identical(input$f7_tipo_bioensayo, "intensidad")) {
         if (missing_value("bioensayo_intensidad")) errors <- c(errors, "Seleccione Intensidad Exploratorio o Completa.")
         if (identical(input$f7_bioensayo_intensidad, "Completa") && missing_value("dosis_intensidad")) errors <- c(errors, "Seleccione la concentración de intensidad 1X, 2X, 5X o 10X.")
-        if (identical(input$f7_bioensayo_intensidad, "Exploratorio") && value("resultado_diagnostico") %in% c("Sospecha de Resistencia", "Resistente") && missing_value("dosis_intensidad")) {
-          errors <- c(errors, "Seleccione la concentración asociada a la resistencia o sospecha.")
-        }
       }
       if (identical(input$f7_tipo_bioensayo, "sinergistas")) {
         if (missing_value("sinergista_tipo")) errors <- c(errors, "Seleccione el sinergista: DEF, PBO o DM.")
@@ -12744,11 +12954,25 @@ server <- function(input, output, session) {
     }
 
     if (identical(step, "resultados")) {
+      errors <- c(errors, f7_bottle_total_errors(row))
+      if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "sinergistas")) {
+        calculated <- f7_diagnostic_capture_analysis(row)
+        if (is.na(calculated$resultado_diagnostico)) errors <- c(errors, paste0("No se pudo calcular el resultado: ", calculated$detalles, "."))
+      }
       validate_readings(
         formulario_7_result_columns,
         grep("hora_", formulario_7_result_columns, value = TRUE),
         "Resultados"
       )
+      if (identical(input$f7_tipo_bioensayo, "intensidad") && identical(input$f7_bioensayo_intensidad, "Exploratorio")) {
+        exploratory <- f7_intensity_exploratory_analysis(row)
+        if (is.na(exploratory$resultado_diagnostico)) {
+          errors <- c(errors, paste0("No se pudo calcular el resultado exploratorio: ", exploratory$detalles, "."))
+        }
+        if (exploratory$resultado_diagnostico %in% c("Sospecha de Resistencia", "Resistente") && is.na(exploratory$dosis_intensidad)) {
+          errors <- c(errors, "No se pudo detectar la concentración mayor asociada a resistencia o sospecha.")
+        }
+      }
     }
     unique(errors)
   }
@@ -12766,6 +12990,12 @@ server <- function(input, output, session) {
     f7_navigation_status(list(type = "idle", message = NULL, details = character()))
   }, ignoreInit = TRUE)
 
+  output$f7_bottle_totals_warning <- renderUI({
+    errors <- f7_bottle_total_errors(formulario_7_input_row())
+    if (!length(errors)) return(NULL)
+    div(class = "alert alert-warning", strong("Revise los totales por botella"), tags$ul(lapply(errors, tags$li)))
+  })
+
   output$f7_navigation_status <- renderUI({
     status <- f7_navigation_status()
     if (identical(status$type, "idle")) return(NULL)
@@ -12782,6 +13012,44 @@ server <- function(input, output, session) {
       class = "f7-navigation-row",
       if (current_index > 1) actionButton("f7_previous_step", "Anterior"),
       if (current_index < length(f7_capture_steps)) actionButton("f7_next_step", "Seguir", class = "btn-primary")
+    )
+  })
+
+  output$f7_calculated_diagnostic_result_ui <- renderUI({
+    row <- formulario_7_input_row()
+    if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "sinergistas")) {
+      calculated <- f7_diagnostic_capture_analysis(row)
+      return(div(
+        class = if (is.na(calculated$resultado_diagnostico)) "alert alert-warning" else "summary-box",
+        strong("Resultado de la prueba diagnóstica calculado: "),
+        if (is.na(calculated$resultado_diagnostico)) "Pendiente" else calculated$resultado_diagnostico,
+        tags$br(),
+        tags$small(calculated$detalles)
+      ))
+    }
+    if (identical(input$f7_tipo_bioensayo, "intensidad") && identical(input$f7_bioensayo_intensidad, "Exploratorio")) {
+      exploratory <- f7_intensity_exploratory_analysis(row)
+      if (is.na(exploratory$resultado_diagnostico)) {
+        return(div(
+          class = "alert alert-warning",
+          strong("Resultado de la prueba diagnóstica calculado: "),
+          "pendiente por lecturas insuficientes.",
+          div(exploratory$detalles)
+        ))
+      }
+      return(div(
+        class = "summary-box",
+        strong("Resultado de la prueba diagnóstica calculado: "), exploratory$resultado_diagnostico,
+        tags$br(),
+        strong("Concentración mayor asociada: "), ifelse(is.na(exploratory$dosis_intensidad), "No aplica", exploratory$dosis_intensidad),
+        tags$br(),
+        tags$small(exploratory$detalles)
+      ))
+    }
+    result <- f7_clean_text(row$resultado_diagnostico)[[1]]
+    div(
+      class = "summary-box",
+      strong("Resultado de la prueba diagnóstica: "), ifelse(is.na(result), "Pendiente", result)
     )
   })
 
@@ -13046,6 +13314,60 @@ server <- function(input, output, session) {
     f7_review_edit_mode(FALSE)
     record
   }
+
+  f7_qc_results <- reactiveVal(NULL)
+  observeEvent(input$open_formulario_7_qc, {
+    f7_qc_results(NULL)
+    showModal(modalDialog(
+      title = "Control de Calidad - Formulario 7", size = "l", easyClose = TRUE,
+      dateRangeInput("f7_qc_dates", "Fechas de ingreso", start = Sys.Date() - 365, end = Sys.Date()),
+      actionButton("f7_qc_run", "Evaluar ingresos", class = "btn-primary"),
+      p("Referencia: promedio de mortalidad de Diagnóstica 1X en el período seleccionado, por país, departamento, municipio, población e insecticida. Las alertas requieren revisión y no modifican registros."),
+      uiOutput("f7_qc_list"), footer = modalButton("Cerrar")
+    ))
+  })
+  observeEvent(input$f7_qc_run, {
+    f7_qc_results(NULL)
+    tryCatch({
+      req(length(input$f7_qc_dates) == 2L)
+      if (anyNA(input$f7_qc_dates) || input$f7_qc_dates[[1]] > input$f7_qc_dates[[2]]) stop("Seleccione fechas válidas.")
+      findings <- withProgress(message = "Evaluando Control de Calidad", value = 0, {
+        records <- load_review_records_private(
+          "formulario_7_bioensayo_intake", select = "*",
+          start_date = as.Date(input$f7_qc_dates[[1]]), end_date = as.Date(input$f7_qc_dates[[2]]),
+          status = "all", submitter_field = "nombre_quien_ingreso", random_sample = FALSE, max_records = .Machine$integer.max
+        )
+        incProgress(0.3, detail = "Consultando lecturas")
+        if (nrow(records)) records <- f7_attach_result_counts(records)
+        result <- f7_qc_findings(records)
+        incProgress(0.7, detail = "Comparación completada")
+        result
+      })
+      f7_qc_results(findings)
+    }, error = function(error) showNotification(conditionMessage(error), type = "error", duration = NULL))
+  })
+  output$f7_qc_list <- renderUI({
+    records <- f7_qc_results()
+    if (is.null(records)) return(NULL)
+    if (!nrow(records)) return(p("No se encontraron alertas en los registros consultados."))
+    div(style = "overflow-x:auto;", tags$table(class = "table table-striped",
+      tags$thead(tags$tr(lapply(c("Ingreso", "Población", "Insecticida", "Mortalidad (%)", "Diagnóstica 1X (%)", "IDs de referencia", "Motivo"), tags$th))),
+      tags$tbody(lapply(seq_len(nrow(records)), function(i) tags$tr(
+        tags$td(tags$a(href = "#", as.character(records$intake_id[[i]]),
+          onclick = sprintf("Shiny.setInputValue('f7_qc_select', %s, {priority:'event'}); return false;", as.integer(records$intake_id[[i]])))),
+        lapply(records[i, setdiff(names(records), "intake_id"), drop = FALSE], function(x) tags$td(ifelse(is.na(x), "—", as.character(x))))
+      )))
+    ))
+  })
+  observeEvent(input$f7_qc_select, {
+    req(as.character(input$f7_qc_select) %in% as.character(f7_qc_results()$intake_id))
+    tryCatch({
+      f7_select_review_record(f5_integer(input$f7_qc_select))
+      f7_review_edit_mode(FALSE)
+      f7_review_delete_mode(FALSE)
+      show_formulario_7_review_modal()
+    }, error = function(error) showNotification(conditionMessage(error), type = "error"))
+  })
 
   observeEvent(input$open_formulario_7_review, {
     f7_review_records(data.frame())
@@ -18695,7 +19017,8 @@ server <- function(input, output, session) {
             capture_action_row("Subida de datos masiva", "Cargue varios bioensayos desde el machote CSV oficial actualizado, que incluye dosis_intensidad.", "open_formulario_7_bulk_upload", "Abrir subida masiva"),
             capture_action_row("Ingreso individual de datos", "Capture un bioensayo con las lecturas agrupadas por botella y tiempo.", "open_formulario_7_entry", "Abrir ingreso individual"),
             capture_action_row("Revisar formulario", "Abra registros de Formulario 7 para confirmar la revisión o activar y editar sus valores.", "open_formulario_7_review", "Abrir revisión"),
-            capture_action_row("Imprimir formulario", "Genere el machote de Formulario 7 con Código Bioensayo y ubicación prellenados.", "open_formulario_7_print", "Abrir impresión")
+            capture_action_row("Imprimir formulario", "Genere el machote de Formulario 7 con Código Bioensayo y ubicación prellenados.", "open_formulario_7_print", "Abrir impresión"),
+            capture_action_row("Control de Calidad", "", "open_formulario_7_qc", "Abrir QC")
           ),
           div(
             class = "form-preview-panel",
