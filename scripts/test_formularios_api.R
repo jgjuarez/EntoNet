@@ -15,6 +15,19 @@ targets <- c(
 for (expression in expressions) collect(expression)
 stopifnot(all(vapply(targets, exists, logical(1), envir = env, inherits = FALSE)))
 
+# This test isolates CSV/routing behavior. The CDC calculations are covered by
+# their own Formulario 7 tests and are deterministic inputs here.
+env$f7_diagnostic_capture_analysis <- function(row) list(
+  resultado_diagnostico = env$normalize_f7_diagnostic_result(row$resultado_diagnostico[[1]]),
+  detalles = "Prueba"
+)
+env$f7_intensity_exploratory_analysis <- function(row) list(
+  resultado_diagnostico = env$normalize_f7_diagnostic_result(row$resultado_diagnostico[[1]]),
+  dosis_intensidad = if (env$normalize_f7_diagnostic_result(row$resultado_diagnostico[[1]]) == "Susceptible") NA_character_ else "2X",
+  detalles = "Prueba"
+)
+env$f7_bottle_total_errors <- function(row) character()
+
 row <- as.data.frame(setNames(rep(list(NA_character_), length(env$formulario_7_intake_columns)),
                               env$formulario_7_intake_columns), stringsAsFactors = FALSE)
 values <- list(
@@ -36,7 +49,7 @@ values <- list(
 for (name in names(values)) row[[name]] <- values[[name]]
 for (diagnostic in c("Susceptible", "Suceptible", " susceptible ", "Sospecha de Resistencia", "Resistente")) {
   row$resultado_diagnostico <- diagnostic
-  for (mode in c("diagnostica", "exploratorio", "completa", "sinergista")) {
+  for (mode in c("diagnostica", "exploratorio", "completa")) {
     fixture <- row
     fixture$bioensayo_diagnostica_1x <- if (mode == "diagnostica") "true" else "false"
     if (mode == "exploratorio") {
@@ -47,11 +60,6 @@ for (diagnostic in c("Susceptible", "Suceptible", " susceptible ", "Sospecha de 
       fixture$bioensayo_intensidad <- "Completa"
       fixture$dosis_intensidad <- "5X"
     }
-    if (mode == "sinergista") {
-      fixture$sinergista_pbo <- "true"
-      fixture$sinergista_tipo <- "PBO"
-      fixture$dosis_sinergista_ug_ml <- "100"
-    }
     for (input_data in list(fixture, env$formulario_7_internal_to_csv(fixture))) {
       checked <- env$validate_formulario_7(input_data)
       if (length(checked$details)) stop(paste(mode, diagnostic, paste(checked$details, collapse = "; ")))
@@ -61,17 +69,23 @@ for (diagnostic in c("Susceptible", "Suceptible", " susceptible ", "Sospecha de 
     }
   }
 }
+sinergista_legacy <- row
+sinergista_legacy$bioensayo_diagnostica_1x <- "false"
+sinergista_legacy$sinergista_pbo <- "true"
+sinergista_legacy$sinergista_tipo <- "PBO"
+sinergista_legacy$dosis_sinergista_ug_ml <- "100"
+stopifnot(any(grepl("Sinergistas ya no se captura", env$validate_formulario_7(sinergista_legacy)$details)))
+stopifnot(length(env$validate_formulario_7(sinergista_legacy, allow_legacy_sinergistas = TRUE)$details) == 0L)
+stopifnot(!any(c("sinergista_def", "sinergista_pbo", "sinergista_dm", "dosis_sinergista_ug_ml") %in% env$formulario_7_csv_columns))
 # Legacy CSVs remain accepted when no intensity multiplier is needed.
 row$resultado_diagnostico <- "Suceptible"
 legacy <- env$formulario_7_internal_to_csv(row)
 legacy$dosis_intensidad <- NULL
 stopifnot(length(env$validate_formulario_7(legacy)$details) == 0L)
-# A mixed file must derive each row's synergist independently.
-mixed <- env$formulario_7_internal_to_csv(row[rep(1, 3), , drop = FALSE])
-mixed$sinergista_def <- c("true", "false", "false")
-mixed$sinergista_pbo <- c("false", "true", "false")
-mixed$sinergista_dm <- c("false", "false", "true")
-stopifnot(identical(env$formulario_7_csv_to_internal(mixed)$sinergista_tipo, c("DEF", "PBO", "DM")))
+# The current CSV imports the former Sinergistas fields internally as false/empty.
+current_csv <- env$formulario_7_internal_to_csv(row)
+current_internal <- env$formulario_7_csv_to_internal(current_csv)
+stopifnot(identical(current_internal$sinergista_def, "false"), is.na(current_internal$dosis_sinergista_ug_ml))
 temefos <- row
 temefos$insecticida <- "Temefos"
 temefos$resultado_24h_b1_vivos <- "5"

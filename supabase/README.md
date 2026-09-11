@@ -23,7 +23,10 @@ Orden sugerido de ejecucion:
 17. `024_formulario_7_sinergista_dosis.sql`
 18. `025_formulario_7_rename_capture_columns.sql`
 19. `026_formulario_7_sinergista_resultado_diagnostico.sql`
-20. Scripts futuros de catalogos, permisos y vistas.
+20. `041_entonet_access_tracking_logs.sql`
+21. `042_formulario_7_sinergistas_base.sql`
+22. `043_formulario_7_base_actual_sin_sinergistas.sql`
+23. Scripts futuros de catalogos, permisos y vistas.
 
 Permisos privados recientes:
 
@@ -62,7 +65,20 @@ Formulario 7 usa un modelo normalizado alineado con el ingreso individual:
 - `formulario_7_bioensayo_comentario_intake`: un comentario asociado.
 - `formulario_7_bioensayo_eliminacion_audit`: auditoría mínima con motivo obligatorio cuando un registro se elimina desde revisión.
 
-El CSV oficial de Formulario 7 usa 118 columnas visibles para carga y descarga.
+La nueva captura de Sinergistas usa tablas separadas para no mezclar los sets
+Sinergista/Etanol con la base actual de Diagnóstica e Intensidad:
+
+- `formulario_7_sinergista_intake`: encabezado, datos comunes, resultados calculados por set y metadatos de revisión.
+- `formulario_7_sinergista_resultado_intake`: lecturas atómicas por `tipo_set`, `etapa`, `botella` y `tiempo_minutos`.
+- `formulario_7_sinergista_comentario_intake`: comentario general y observaciones de pretratamiento/bioensayo para Sinergista y Etanol.
+- `entonet_insert_formulario_7_sinergista(jsonb, jsonb, jsonb)`: inserción transaccional privada para la integración del website mediante `service_role`.
+
+La base histórica (`formulario_7_bioensayo_*`) recibe únicamente Diagnóstica e
+Intensidad desde la migración 043. Los registros anteriores de Sinergistas se
+mantienen disponibles para consulta y revisión, pero los nuevos se rechazan y
+deben usar las tablas separadas anteriores.
+
+El CSV actual de Diagnóstica e Intensidad usa 115 columnas visibles para carga y descarga.
 La tabla principal usa esos mismos nombres operativos para evitar confusión al
 descargar datos desde la aplicación o directamente desde Supabase.
 La Intensidad Exploratorio guarda `dosis_intensidad` solo cuando el resultado

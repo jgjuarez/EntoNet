@@ -4,8 +4,13 @@ library(RPostgres)
 library(httr2)
 library(leaflet)
 library(ggplot2)
+source("f7_sets_local.R", local = TRUE)
+local_f7_mode <- identical(Sys.getenv("ENTONET_LOCAL_F7"), "1")
+source("f7_components_local.R", local = TRUE)
 
 read_local_env_value <- function(name) {
+  # The local F7 app does not read Supabase credentials or connect to remote data.
+  if (local_f7_mode && startsWith(name, "SUPABASE")) return("")
   value <- Sys.getenv(name, unset = "")
 
   if (nzchar(value)) {
@@ -1471,8 +1476,7 @@ formulario_7_csv_columns <- c(
   "formulario_codigo", "formulario_nombre", "fecha_registro", "codigo_bioensayo",
   "pais", "id_institucion", "codigo_departamento", "codigo_municipio",
   "nombre_poblacion", "nombre_quien_ingreso", "bioensayo_diagnostica_1x",
-  "bioensayo_intensidad", "dosis_intensidad", "dosis_intensidad_ug_ml", "sinergista_def",
-  "sinergista_pbo", "sinergista_dm", "dosis_sinergista_ug_ml",
+  "bioensayo_intensidad", "dosis_intensidad", "dosis_intensidad_ug_ml",
   "resultado_diagnostico", "fecha_realizacion_bioensayo", "insecticida",
   "solvente_utilizado", "solvente_otro", "lote_insecticida",
   "fecha_revestimiento_botellas", "numero_usos_botella_e1",
@@ -1523,6 +1527,12 @@ formulario_7_csv_to_internal <- function(csv_data) {
     internal_name <- formulario_7_external_to_internal_names[[external_name]]
     if (external_name %in% names(csv_data)) data[[internal_name]] <- csv_data[[external_name]]
   }
+  # Sinergistas has its own intake structure. The current F7 CSV only accepts
+  # Diagnóstica and Intensidad; these legacy fields remain for historic rows.
+  data$sinergista_def <- "false"
+  data$sinergista_pbo <- "false"
+  data$sinergista_dm <- "false"
+  data$dosis_sinergista_ug_ml <- NA_character_
   data$codigo_control_calidad[is.na(data$codigo_control_calidad) | !nzchar(trimws(data$codigo_control_calidad))] <- "NO APLICA"
   data$fuente_formulario[is.na(data$fuente_formulario) | !nzchar(trimws(data$fuente_formulario))] <- "Formulario 7_Bioensayo .docx"
   data$sinergista_tipo <- NA_character_
@@ -2743,7 +2753,7 @@ formulario_7_capture_form <- function() {
   })
 
   tagList(
-    div(class = "alert alert-info", "Complete los campos obligatorios. Las lecturas están agrupadas por botella y se guardarán como un registro pendiente de revisión."),
+    div(class = "alert alert-info", "Complete los datos generales y las lecturas por botella. En Sinergistas, capture los dos sets y guarde el borrador local para revisión."),
     tabsetPanel(
       id = "f7_capture_tab",
       tabPanel(
@@ -2904,7 +2914,13 @@ formulario_7_capture_form <- function() {
           )
         )
       ),
-      do.call(tabPanel, c(list(title = "Resultados por botella", value = "resultados"), list(uiOutput("f7_bottle_totals_warning"), do.call(tabsetPanel, c(list(id = "f7_result_bottle"), bottle_tabs))))),
+      tabPanel("Resultados por botella", value = "resultados",
+        conditionalPanel("input.f7_tipo_bioensayo == 'sinergistas'", f7_sets_ui()),
+        conditionalPanel("input.f7_tipo_bioensayo != 'sinergistas'",
+          uiOutput("f7_bottle_totals_warning"),
+          do.call(tabsetPanel, c(list(id = "f7_result_bottle"), bottle_tabs))
+        )
+      ),
       tabPanel(
         "Comentarios y envío",
         value = "comentarios_envio",
@@ -2914,7 +2930,7 @@ formulario_7_capture_form <- function() {
           column(4, textInput("f7_comentario_nombre", "Nombre"))
         ),
         uiOutput("f7_save_status"),
-        div(class = "submit-row", actionButton("save_formulario_7", "Guardar registro pendiente", class = "btn-primary"))
+        div(class = "submit-row", actionButton("save_formulario_7", "Guardar captura completa", class = "btn-primary"))
       )
     ),
     uiOutput("f7_navigation_status"),
@@ -6947,6 +6963,19 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
+  if (local_f7_mode) {
+    f7_local_directory <- normalizePath(file.path("..", "output", "f7_componentes"), mustWork = FALSE)
+    f7_component_server("f7_local_capture", "flujo", directory = f7_local_directory)
+    output$f7_local_request_csv <- downloadHandler(
+      filename = function() paste0("formulario_7_", value_or_default(input$f7_local_request_type, "actual"), ".csv"),
+      content = function(file) write.csv(f7_local_sheet(value_or_default(input$f7_local_request_type, "actual"), f7_local_directory), file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
+    )
+    output$f7_local_request_count <- renderUI({
+      input$f7_local_request_refresh
+      selected <- value_or_default(input$f7_local_request_type, "actual")
+      div(class = "alert alert-info", paste(nrow(f7_local_sheet(selected, f7_local_directory)), "capturas completas locales en esta sábana."))
+    })
+  }
   submission_status <- reactiveVal("No se ha enviado ningún registro en esta sesión.")
   active_area <- reactiveVal(NULL)
   active_module <- reactiveVal(NULL)
@@ -11741,7 +11770,7 @@ server <- function(input, output, session) {
     result
   }
 
-  validate_formulario_7 <- function(csv_data) {
+  validate_formulario_7 <- function(csv_data, allow_legacy_sinergistas = FALSE) {
     details <- character()
     expected_columns <- if (all(formulario_7_intake_columns %in% names(csv_data))) formulario_7_intake_columns else formulario_7_csv_columns
     # Older CSV templates omit the intensity multiplier; validation still requires it when applicable.
@@ -11886,6 +11915,9 @@ server <- function(input, output, session) {
         details <- c(details, paste("Fila", row, ": dosis_intensidad solo corresponde al Tipo de Bioensayo Intensidad."))
       }
       if (has_synergist) {
+        if (!isTRUE(allow_legacy_sinergistas)) {
+          details <- c(details, paste0("Fila ", row, ": Sinergistas ya no se captura en la base actual. Use la nueva base de Sinergistas (sets Sinergista y Etanol)."))
+        }
         if (is.na(data$sinergista_tipo[[row]])) details <- c(details, paste("Fila", row, ": indique sinergista_tipo DEF, PBO o DM."))
         if (is.na(data$dosis_sinergista_ug_ml[[row]])) details <- c(details, paste("Fila", row, ": indique dosis_sinergista_ug_ml."))
         if (is.na(data$resultado_diagnostico[[row]])) details <- c(details, paste("Fila", row, ": indique el resultado de la prueba diagnóstica para Sinergistas."))
@@ -12019,6 +12051,19 @@ server <- function(input, output, session) {
     as.character(existing$codigo_bioensayo)
   }
 
+  formulario_7_sinergista_existing_unique_codes <- function(codes) {
+    codes <- unique(f7_clean_text(codes))
+    codes <- codes[!is.na(codes)]
+    if (!length(codes)) return(character())
+    existing <- supabase_private_select(
+      "formulario_7_sinergista_intake",
+      select = "codigo_bioensayo",
+      filters = list(codigo_bioensayo = paste0("in.(", paste(codes, collapse = ","), ")")),
+      order = "codigo_bioensayo.asc"
+    )
+    as.character(existing$codigo_bioensayo)
+  }
+
   insert_formulario_7 <- function(connection = NULL, data, progress_callback = NULL) {
     intake_ids <- character(nrow(data))
     for (row_index in seq_len(nrow(data))) {
@@ -12036,6 +12081,35 @@ server <- function(input, output, session) {
     }
     intake_ids
   }
+
+  insert_formulario_7_sinergista <- function(row, payload) {
+    tables <- f7_sinergista_tables(row, payload)
+    intake_id <- supabase_private_rpc(
+      "entonet_insert_formulario_7_sinergista",
+      list(
+        p_header = supabase_record_from_row(as.data.frame(tables$header, stringsAsFactors = FALSE)),
+        p_results = tables$results,
+        p_comments = tables$comments
+      )
+    )
+    as.character(intake_id[[1]])
+  }
+
+  f7_web_save_capture <- function(mode, row, payload = NULL) {
+    if (identical(mode, "sinergistas")) {
+      existing <- formulario_7_sinergista_existing_unique_codes(row$codigo_bioensayo)
+      if (length(existing)) stop(paste0("Código de bioensayo repetido: ", existing[[1]]))
+      intake_id <- insert_formulario_7_sinergista(row, payload)
+      return(list(message = paste0("Sinergistas guardado con sinergista_intake_id ", intake_id, " y estado pending.")))
+    }
+    validated <- validate_formulario_7(row)
+    if (length(validated$details)) stop(paste(validated$details, collapse = " · "))
+    existing <- formulario_7_existing_unique_codes(codes = validated$data$codigo_bioensayo)
+    if (length(existing)) stop(paste0("Código de bioensayo repetido: ", existing[[1]]))
+    intake_id <- insert_formulario_7(data = validated$data)[[1]]
+    list(message = paste0(if (identical(mode, "diagnostica")) "Diagnóstica" else "Intensidad", " guardada con intake_id ", intake_id, " y estado pending."))
+  }
+  f7_component_server("f7_web_capture", "flujo", save_capture = f7_web_save_capture)
 
   f7_review_boolean_fields <- c(
     "bioensayo_diagnostica_1x", "sinergista_def", "sinergista_pbo", "sinergista_dm",
@@ -12777,6 +12851,30 @@ server <- function(input, output, session) {
   observeEvent(input$close_formulario_7_print, removeModal())
 
   observeEvent(input$open_formulario_7_entry, {
+    if (local_f7_mode) {
+      showModal(modalDialog(title = "Formulario 7: ingreso individual", size = "l", easyClose = FALSE,
+        f7_component_ui("f7_local_capture", "flujo"), footer = modalButton("Cerrar")))
+      local_profile <- reactiveValuesToList(user_profile)
+      session$onFlushed(function() {
+        updateTextInput(session, "f7_local_capture-f7_id_institucion", value = local_profile$institution)
+        updateTextInput(session, "f7_local_capture-f7_creado_por", value = local_profile$name)
+        updateSelectInput(session, "f7_local_capture-f7_pais", selected = local_profile$country)
+      }, once = TRUE)
+      return()
+    }
+    showModal(modalDialog(
+      title = "Formulario 7: ingreso individual",
+      size = "l", easyClose = FALSE,
+      f7_component_ui("f7_web_capture", "flujo"),
+      footer = modalButton("Cerrar")
+    ))
+    profile <- reactiveValuesToList(user_profile)
+    session$onFlushed(function() {
+      updateTextInput(session, "f7_web_capture-f7_id_institucion", value = profile$institution)
+      updateTextInput(session, "f7_web_capture-f7_creado_por", value = profile$name)
+      updateSelectInput(session, "f7_web_capture-f7_pais", selected = profile$country)
+    }, once = TRUE)
+    return()
     f7_save_status(list(type = "idle", message = NULL, details = character()))
     f7_capture_step("informacion_general")
     f7_unlocked_step(length(f7_capture_steps))
@@ -12913,7 +13011,9 @@ server <- function(input, output, session) {
         c("origen_material", "codigo_especie_mosquito", "hora_separacion", "fecha_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo"),
         c("origen del material", "código de especie", "hora de separación", "fecha de separación", "responsable de revestimiento", "responsable del bioensayo")
       )
-      require_fields("codigo_revision_24h", "revisión a 24 horas")
+      if (!identical(input$f7_tipo_bioensayo, "sinergistas") || isTRUE(input$f7sets_incluir_24h)) {
+        require_fields("codigo_revision_24h", "revisión a 24 horas")
+      }
       if (!isTRUE(input$f7_edad_indefinida) && missing_value("edad_dias")) errors <- c(errors, "Indique la edad en días o marque Edad indefinida.")
       if (!isTRUE(input$f7_generacion_filial_indefinida) && missing_value("generacion_filial")) errors <- c(errors, "Indique la generación filial o márquela como indefinida.")
       if (!missing_value("hora_separacion") && !valid_time("hora_separacion")) errors <- c(errors, "La hora de separación debe usar HH:MM.")
@@ -12954,6 +13054,13 @@ server <- function(input, output, session) {
     }
 
     if (identical(step, "resultados")) {
+      if (identical(input$f7_tipo_bioensayo, "sinergistas")) {
+        errors <- f7_sets_errors(f7_sets_collect(input), complete = TRUE)
+        if (formulario_7_is_temefos(row$insecticida) && !isTRUE(input$f7sets_incluir_24h)) {
+          errors <- c(errors, "Temefos requiere la lectura de 24 horas en ambos sets.")
+        }
+        return(unique(errors))
+      }
       errors <- c(errors, f7_bottle_total_errors(row))
       if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "sinergistas")) {
         calculated <- f7_diagnostic_capture_analysis(row)
@@ -13017,6 +13124,13 @@ server <- function(input, output, session) {
 
   output$f7_calculated_diagnostic_result_ui <- renderUI({
     row <- formulario_7_input_row()
+    if (identical(input$f7_tipo_bioensayo, "sinergistas")) {
+      payload <- f7_sets_collect(input)
+      completed <- sum(vapply(payload$lecturas, function(r) !is.null(r$vivos) && !is.null(r$incapacitados), logical(1)))
+      return(div(class = "alert alert-info",
+        paste(completed, "de", length(payload$lecturas), "lecturas capturadas entre Sinergista y Etanol."),
+        p("El borrador local conserva ambos sets. La interpretación de resultados se revisará después de finalizar la estructura.")))
+    }
     if (input$f7_tipo_bioensayo %in% c("diagnostica_1x", "sinergistas")) {
       calculated <- f7_diagnostic_capture_analysis(row)
       return(div(
@@ -13093,6 +13207,32 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$save_formulario_7, {
+    if (identical(input$f7_tipo_bioensayo, "sinergistas")) {
+      row <- formulario_7_input_row()
+      payload <- f7_sets_collect(input)
+      errors <- unique(unlist(lapply(f7_capture_steps, function(step) f7_step_errors(step, row)), use.names = FALSE))
+      if (length(errors)) {
+        f7_save_status(list(type = "error", message = "Revise los campos del Formulario 7 Sinergistas.", details = errors))
+        return()
+      }
+      tryCatch({
+        existing_codes <- formulario_7_sinergista_existing_unique_codes(row$codigo_bioensayo)
+        if (length(existing_codes)) {
+          f7_save_status(list(
+            type = "error",
+            message = "No se guardó el Formulario 7 Sinergistas porque el código de bioensayo ya existe.",
+            details = paste0("Código de bioensayo repetido: ", existing_codes)
+          ))
+          return()
+        }
+        intake_id <- insert_formulario_7_sinergista(row, payload)
+        f7_save_status(list(type = "success", message = paste0("Sinergistas guardado con sinergista_intake_id ", intake_id, " y estado pending."), details = character()))
+        submission_status(paste0("Formulario 7 Sinergistas guardado con sinergista_intake_id ", intake_id, ". Estado de revisión: pending."))
+      }, error = function(error) {
+        f7_save_status(list(type = "error", message = "No se pudo guardar Sinergistas en Supabase.", details = conditionMessage(error)))
+      })
+      return()
+    }
     validated <- validate_formulario_7(formulario_7_input_row())
     if (length(validated$details)) {
       f7_save_status(list(type = "error", message = "Revise los campos del Formulario 7.", details = validated$details))
@@ -13492,7 +13632,9 @@ server <- function(input, output, session) {
     selected <- f7_review_selected()
     if (is.null(selected)) return()
     f7_review_status(list(type = "info", message = "Guardando cambios del Formulario 7...", details = character()))
-    validated <- validate_formulario_7(f7_review_input_row())
+    # Historical Sinergistas records remain reviewable in their original table,
+    # but new captures are rejected by the default validation path.
+    validated <- validate_formulario_7(f7_review_input_row(), allow_legacy_sinergistas = TRUE)
     if (length(validated$details)) {
       f7_review_status(list(type = "error", message = "Revise los valores editados.", details = validated$details))
       return()
@@ -18690,6 +18832,14 @@ server <- function(input, output, session) {
         ))
       }
       if (identical(subdivision, "datos")) {
+        if (local_f7_mode && identical(data_subdivision, "insectario")) {
+          return(div(class = "module-panel", h3("Solicitudes de datos · Formulario 7"),
+            p("Seleccione la sábana correspondiente. Diagnóstica e Intensidad usan la base actual; Sinergistas usa la nueva estructura Sinergista/Etanol."),
+            selectInput("f7_local_request_type", "Sábana", choices = f7_sheet_labels),
+            actionButton("f7_local_request_refresh", "Actualizar conteo"),
+            uiOutput("f7_local_request_count"),
+            downloadButton("f7_local_request_csv", "Descargar sábana CSV", class = "btn-primary")))
+        }
         allowed_subdivisions <- request_allowed_data_subdivisions()
         data_labels <- c(campo = "Campo", insectario = "Insectario", laboratorio = "Laboratorio")
         if (!length(allowed_subdivisions)) {
