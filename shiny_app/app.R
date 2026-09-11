@@ -8874,11 +8874,12 @@ server <- function(input, output, session) {
     list(header = header, details = details, data = f1_review_data_from_record(header, details))
   }
 
-  load_review_records_private <- function(table, select, start_date, end_date, status, submitter_field = NULL, exclude_submitter = NA_character_, random_sample = FALSE, max_records = 50L) {
+  load_review_records_private <- function(table, select, start_date, end_date, status, submitter_field = NULL, exclude_submitter = NA_character_, random_sample = FALSE, max_records = 50L, id_field = "intake_id") {
+    if (!grepl("^[a-z0-9_]+$", id_field)) stop("El identificador de revisión no es válido.")
     records <- supabase_private_select(
       table,
       select = select,
-      order = "creado_en.desc,intake_id.desc",
+      order = paste0("creado_en.desc,", id_field, ".desc"),
       page_size = 1000L
     )
     if (!nrow(records)) return(records)
@@ -12312,8 +12313,39 @@ server <- function(input, output, session) {
     final_code
   }
 
-  f7_fetch_review_record <- function(intake_id) {
-    intake_id <- as.integer(intake_id)
+  f7_fetch_review_record <- function(record_id, source = "bioensayo") {
+    record_id <- as.integer(record_id)
+    if (identical(source, "sinergistas")) {
+      filters <- list(sinergista_intake_id = paste0("eq.", record_id))
+      header <- supabase_private_select(
+        "formulario_7_sinergista_intake",
+        select = "*",
+        filters = filters,
+        page_size = 1L
+      )
+      if (nrow(header) == 0) return(NULL)
+      results <- supabase_private_select(
+        "formulario_7_sinergista_resultado_intake",
+        select = "tipo_set,etapa,botella,tiempo_minutos,hora_inicio,vivos,incapacitados",
+        filters = filters,
+        order = "tipo_set.asc,etapa.asc,botella.asc,tiempo_minutos.asc"
+      )
+      comments <- supabase_private_select(
+        "formulario_7_sinergista_comentario_intake",
+        select = "comentario,nombre,sinergista_observaciones_pretratamiento,sinergista_observaciones_bioensayo,etanol_observaciones_pretratamiento,etanol_observaciones_bioensayo",
+        filters = filters,
+        page_size = 1L
+      )
+      return(list(
+        source = source,
+        record_id = record_id,
+        header = header,
+        results = results,
+        comments = comments
+      ))
+    }
+
+    intake_id <- record_id
     header <- supabase_private_select(
       "formulario_7_bioensayo_intake",
       select = "*",
@@ -12361,21 +12393,61 @@ server <- function(input, output, session) {
     }
     data <- as.data.frame(values, stringsAsFactors = FALSE, check.names = FALSE)
     data$codigo_bioensayo <- f7_review_base_bioassay_code(data)
-    list(header = header, data = data)
+    list(source = "bioensayo", record_id = intake_id, header = header, data = data)
   }
 
   f7_fetch_review_record_by_code <- function(codigo_bioensayo) {
     code <- toupper(trimws(value_or_default(codigo_bioensayo, "")))
     if (!nzchar(code)) stop("Ingrese un Código de bioensayo para buscar.")
-    records <- supabase_private_select(
+    bioensayo_records <- supabase_private_select(
       "formulario_7_bioensayo_intake",
       select = "intake_id,codigo_bioensayo,actualizado_en",
       order = "actualizado_en.desc,intake_id.desc"
     )
-    if (!nrow(records)) return(NULL)
-    records <- records[toupper(trimws(as.character(records$codigo_bioensayo))) == code, , drop = FALSE]
-    if (!nrow(records)) return(NULL)
-    f7_fetch_review_record(records$intake_id[[1]])
+    sinergista_records <- supabase_private_select(
+      "formulario_7_sinergista_intake",
+      select = "sinergista_intake_id,codigo_bioensayo,actualizado_en",
+      order = "actualizado_en.desc,sinergista_intake_id.desc"
+    )
+    candidates <- list()
+    if (nrow(bioensayo_records)) {
+      matches <- bioensayo_records[toupper(trimws(as.character(bioensayo_records$codigo_bioensayo))) == code, , drop = FALSE]
+      if (nrow(matches)) candidates[[length(candidates) + 1L]] <- data.frame(
+        source = "bioensayo", record_id = matches$intake_id,
+        actualizado_en = matches$actualizado_en, stringsAsFactors = FALSE
+      )
+    }
+    if (nrow(sinergista_records)) {
+      matches <- sinergista_records[toupper(trimws(as.character(sinergista_records$codigo_bioensayo))) == code, , drop = FALSE]
+      if (nrow(matches)) candidates[[length(candidates) + 1L]] <- data.frame(
+        source = "sinergistas", record_id = matches$sinergista_intake_id,
+        actualizado_en = matches$actualizado_en, stringsAsFactors = FALSE
+      )
+    }
+    if (!length(candidates)) return(NULL)
+    candidates <- do.call(rbind, candidates)
+    candidates <- candidates[order(as.character(candidates$actualizado_en), decreasing = TRUE, na.last = TRUE), , drop = FALSE]
+    f7_fetch_review_record(candidates$record_id[[1]], candidates$source[[1]])
+  }
+
+  f7_standardize_review_records <- function(records, source) {
+    id_field <- if (identical(source, "sinergistas")) "sinergista_intake_id" else "intake_id"
+    if (!nrow(records)) return(data.frame())
+    data.frame(
+      review_key = paste(source, records[[id_field]], sep = ":"),
+      review_source = source,
+      review_source_label = if (identical(source, "sinergistas")) "Sinergistas" else "Dosis / Intensidad",
+      review_id = as.character(records[[id_field]]),
+      codigo_bioensayo = records$codigo_bioensayo,
+      fecha_registro = records$fecha_registro,
+      pais = records$pais,
+      nombre_poblacion = records$nombre_poblacion,
+      nombre_quien_ingreso = records$nombre_quien_ingreso,
+      review_status = records$review_status,
+      creado_en = records$creado_en,
+      actualizado_en = records$actualizado_en,
+      stringsAsFactors = FALSE
+    )
   }
 
   f7_load_review_records <- function(random_sample = FALSE) {
@@ -12385,7 +12457,7 @@ server <- function(input, output, session) {
     status <- f5_text(input$f7_review_filter_status)
     if (!status %in% c("pending", "reviewed", "rejected", "all")) status <- "pending"
     exclude_submitter <- if (random_sample) f7_clean_text(input$f7_review_exclude_submitter)[[1]] else NA_character_
-    load_review_records_private(
+    bioensayo_records <- load_review_records_private(
       "formulario_7_bioensayo_intake",
       select = "intake_id,codigo_bioensayo,fecha_registro,pais,nombre_poblacion,nombre_quien_ingreso,review_status,creado_en,actualizado_en",
       start_date = start_date,
@@ -12393,8 +12465,36 @@ server <- function(input, output, session) {
       status = status,
       submitter_field = "nombre_quien_ingreso",
       exclude_submitter = exclude_submitter,
-      random_sample = random_sample
+      random_sample = FALSE,
+      max_records = .Machine$integer.max
     )
+    sinergista_records <- load_review_records_private(
+      "formulario_7_sinergista_intake",
+      select = "sinergista_intake_id,codigo_bioensayo,fecha_registro,pais,nombre_poblacion,nombre_quien_ingreso,review_status,creado_en,actualizado_en",
+      start_date = start_date,
+      end_date = end_date,
+      status = status,
+      submitter_field = "nombre_quien_ingreso",
+      exclude_submitter = exclude_submitter,
+      random_sample = FALSE,
+      max_records = .Machine$integer.max,
+      id_field = "sinergista_intake_id"
+    )
+    combined <- rbind(
+      f7_standardize_review_records(bioensayo_records, "bioensayo"),
+      f7_standardize_review_records(sinergista_records, "sinergistas")
+    )
+    if (!nrow(combined)) return(combined)
+    combined <- combined[order(as.character(combined$creado_en), decreasing = TRUE, na.last = TRUE), , drop = FALSE]
+    if (random_sample) {
+      sample_size <- max(1L, ceiling(nrow(combined) * 0.10))
+      set.seed(as.integer(Sys.time()))
+      combined <- combined[sample(seq_len(nrow(combined)), size = sample_size), , drop = FALSE]
+    } else {
+      combined <- head(combined, 50L)
+    }
+    rownames(combined) <- NULL
+    combined
   }
 
   f7_review_input_id <- function(field) paste0("f7_review_value_", field)
@@ -13421,13 +13521,18 @@ server <- function(input, output, session) {
     if (is.null(records) || nrow(records) == 0) return(NULL)
     rows <- lapply(seq_len(nrow(records)), function(index) {
       record <- records[index, ]
-      intake_id <- as.character(record$intake_id[[1]])
+      review_id <- as.character(record$review_id[[1]])
+      review_key <- as.character(record$review_key[[1]])
       tags$tr(
         tags$td(tags$a(
           href = "#",
-          onclick = sprintf("Shiny.setInputValue('f7_review_select_id', '%s', {priority: 'event'}); return false;", intake_id),
-          intake_id
+          onclick = sprintf(
+            "Shiny.setInputValue('f7_review_select_key', %s, {priority: 'event'}); return false;",
+            jsonlite::toJSON(review_key, auto_unbox = TRUE)
+          ),
+          review_id
         )),
+        tags$td(f5_review_text_value(record$review_source_label)),
         tags$td(f5_review_text_value(record$codigo_bioensayo)),
           tags$td(as.character(record$fecha_registro[[1]])),
           tags$td(review_datetime_gt_value(record$creado_en)),
@@ -13442,7 +13547,7 @@ server <- function(input, output, session) {
       tags$table(
         class = "table table-striped table-condensed",
         tags$thead(tags$tr(
-          tags$th("intake_id"), tags$th("Código bioensayo"), tags$th("Fecha formulario"), tags$th("Creado en GT"),
+          tags$th("ID"), tags$th("Captura"), tags$th("Código bioensayo"), tags$th("Fecha formulario"), tags$th("Creado en GT"),
           tags$th("País"), tags$th("Población"), tags$th("Ingresado por"), tags$th("Estado")
         )),
         tags$tbody(rows)
@@ -13453,8 +13558,100 @@ server <- function(input, output, session) {
   output$f7_review_record_detail <- renderUI({
     selected <- f7_review_selected()
     if (is.null(selected) || is.null(selected$header) || nrow(selected$header) == 0) return(NULL)
-    row <- selected$data
     header <- selected$header
+    if (identical(selected$source, "sinergistas")) {
+      display_value <- function(value) {
+        if (is.null(value) || !length(value) || is.na(value[[1]]) || !nzchar(trimws(as.character(value[[1]])))) return("—")
+        value <- as.character(value[[1]])
+        if (tolower(value) %in% c("true", "false")) return(if (tolower(value) == "true") "Sí" else "No")
+        value
+      }
+      readonly_field <- function(field) {
+        div(
+          class = "form-group",
+          tags$label(f7_review_field_label(field)),
+          tags$p(class = "form-control-static", display_value(header[[field]]))
+        )
+      }
+      header_sections <- list(
+        "Información general" = c(
+          "fecha_registro", "codigo_bioensayo", "nombre_poblacion", "pais", "id_institucion",
+          "codigo_departamento", "codigo_municipio", "sinergista_tipo", "dosis_sinergista_ug_ml"
+        ),
+        "Información del bioensayo" = c(
+          "fecha_realizacion_bioensayo", "insecticida", "solvente_utilizado", "solvente_otro",
+          "dosis_intensidad_ug_ml", "lote_insecticida", "fecha_revestimiento_botellas", "incluir_24h"
+        ),
+        "Material y responsables" = c(
+          "origen_material", "edad_dias", "edad_indefinida", "codigo_especie_mosquito", "fecha_separacion",
+          "hora_separacion", "generacion_filial", "generacion_filial_indefinida", "codigo_responsable_revestimiento",
+          "codigo_responsable_bioensayo", "codigo_control_calidad", "codigo_revision_24h"
+        ),
+        "Resultados calculados" = c(
+          "sinergista_resultado_diagnostico", "etanol_resultado_diagnostico",
+          "sinergista_mortalidad_corregida_pct", "etanol_mortalidad_corregida_pct",
+          "sinergista_mortalidad_control_pct", "etanol_mortalidad_control_pct"
+        ),
+        "Auditoría" = c(
+          "fuente_formulario", "nombre_quien_ingreso", "review_status", "review_notes",
+          "reviewed_by", "reviewed_at", "creado_en", "actualizado_en"
+        )
+      )
+      header_tabs <- lapply(names(header_sections), function(section) {
+        fields <- intersect(header_sections[[section]], names(header))
+        groups <- split(fields, rep(seq_len(min(3L, length(fields))), length.out = length(fields)))
+        tabPanel(section, fluidRow(lapply(groups, function(group) column(12 / length(groups), lapply(group, readonly_field)))))
+      })
+      result_table <- function(set_name, label) {
+        rows <- selected$results
+        if (!is.null(rows) && nrow(rows)) rows <- rows[rows$tipo_set == set_name, , drop = FALSE]
+        tabPanel(
+          label,
+          if (is.null(rows) || !nrow(rows)) {
+            p("No hay lecturas registradas para este conjunto.")
+          } else {
+            tags$div(
+              style = "overflow-x:auto;",
+              tags$table(
+                class = "table table-striped table-condensed",
+                tags$thead(tags$tr(lapply(c("Etapa", "Botella", "Tiempo (min)", "Hora", "Vivos", "Incapacitados"), tags$th))),
+                tags$tbody(lapply(seq_len(nrow(rows)), function(index) tags$tr(
+                  tags$td(f7_review_field_label(rows$etapa[[index]])),
+                  tags$td(toupper(as.character(rows$botella[[index]]))),
+                  tags$td(as.character(rows$tiempo_minutos[[index]])),
+                  tags$td(display_value(rows$hora_inicio[index])),
+                  tags$td(as.character(rows$vivos[[index]])),
+                  tags$td(as.character(rows$incapacitados[[index]]))
+                )))
+              )
+            )
+          }
+        )
+      }
+      comment_fields <- if (!is.null(selected$comments) && nrow(selected$comments)) {
+        setdiff(names(selected$comments), character())
+      } else {
+        character()
+      }
+      comment_tab <- tabPanel(
+        "Comentarios",
+        if (!length(comment_fields)) p("No hay comentarios registrados.") else fluidRow(lapply(comment_fields, function(field) {
+          column(6, div(class = "form-group", tags$label(f7_review_field_label(field)), tags$p(class = "form-control-static", display_value(selected$comments[[field]]))))
+        }))
+      )
+      return(wellPanel(
+        h4(sprintf("Formulario 7 - Sinergistas - ID %s", selected$record_id)),
+        p(tags$strong("Estado: "), display_value(header$review_status), " · ", tags$strong("Código bioensayo: "), display_value(header$codigo_bioensayo)),
+        uiOutput("f7_review_detail_status_message"),
+        do.call(tabsetPanel, c(
+          list(id = "f7_review_sinergista_detail_tabs"),
+          header_tabs,
+          list(result_table("sinergista", "Lecturas con sinergista"), result_table("etanol", "Lecturas con etanol"), comment_tab)
+        ))
+      ))
+    }
+
+    row <- selected$data
     edit_mode <- f7_review_edit_mode()
     delete_mode <- f7_review_delete_mode()
     is_temefos_record <- formulario_7_is_temefos(row$insecticida[[1]])
@@ -13580,9 +13777,9 @@ server <- function(input, output, session) {
     removeModal()
   })
 
-  f7_select_review_record <- function(intake_id) {
-    record <- f7_fetch_review_record(intake_id)
-    if (is.null(record)) stop(sprintf("No se encontró intake_id %s.", intake_id))
+  f7_select_review_record <- function(record_id, source = "bioensayo") {
+    record <- f7_fetch_review_record(record_id, source)
+    if (is.null(record)) stop(sprintf("No se encontró el registro %s de %s.", record_id, source))
     f7_review_selected(record)
     f7_review_edit_mode(FALSE)
     record
@@ -13732,13 +13929,16 @@ server <- function(input, output, session) {
     })
   })
 
-  observeEvent(input$f7_review_select_id, {
-    intake_id <- f5_integer(input$f7_review_select_id)
-    if (is.na(intake_id)) return()
+  observeEvent(input$f7_review_select_key, {
+    key_parts <- strsplit(as.character(input$f7_review_select_key), ":", fixed = TRUE)[[1]]
+    if (length(key_parts) != 2L || !key_parts[[1]] %in% c("bioensayo", "sinergistas")) return()
+    source <- key_parts[[1]]
+    record_id <- f5_integer(key_parts[[2]])
+    if (is.na(record_id)) return()
     tryCatch({
-      f7_select_review_record(intake_id)
+      f7_select_review_record(record_id, source)
       f7_review_delete_mode(FALSE)
-      f7_review_status(list(type = "success", message = sprintf("Registro %s abierto para revisión.", intake_id), details = character()))
+      f7_review_status(list(type = "success", message = sprintf("Registro %s de %s abierto para revisión.", record_id, if (source == "sinergistas") "Sinergistas" else "Dosis / Intensidad"), details = character()))
     }, error = function(error) {
       f7_review_status(list(type = "error", message = "No se pudo abrir el registro.", details = conditionMessage(error)))
     })
