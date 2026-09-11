@@ -1333,9 +1333,18 @@ f7_cdc_analysis_for_row <- function(row) {
 }
 
 f7_qc_findings <- function(records) {
-  out <- data.frame(intake_id = character(), poblacion = character(), insecticida = character(), mortalidad = numeric(), diagnostica = numeric(), referencias = character(), motivo = character())
+  out <- data.frame(
+    review_key = character(), registro = character(), captura = character(), conjunto = character(),
+    poblacion = character(), insecticida = character(), mortalidad = numeric(), diagnostica = numeric(),
+    referencias = character(), motivo = character(), stringsAsFactors = FALSE
+  )
   if (!nrow(records)) return(out)
   truth <- function(x) tolower(as.character(x)) %in% c("true", "t", "1")
+  if (!"review_key" %in% names(records)) records$review_key <- paste0("bioensayo:", records$intake_id)
+  if (!"qc_source_label" %in% names(records)) records$qc_source_label <- "Dosis / Intensidad"
+  if (!"qc_set" %in% names(records)) records$qc_set <- "registro"
+  if (!"qc_set_label" %in% names(records)) records$qc_set_label <- "Registro"
+  if (!"qc_validate_mortality" %in% names(records)) records$qc_validate_mortality <- FALSE
   analyses <- lapply(seq_len(nrow(records)), function(i) f7_diagnostic_capture_analysis(records[i, , drop = FALSE]))
   mortality <- vapply(seq_len(nrow(records)), function(i) {
     if (is.na(analyses[[i]]$resultado_diagnostico)) return(NA_real_)
@@ -1348,9 +1357,10 @@ f7_qc_findings <- function(records) {
     reasons <- f7_bottle_total_errors(row)
     baseline <- NA_real_
     refs <- ""
-    synergist <- any(truth(unlist(row[c("sinergista_def", "sinergista_pbo", "sinergista_dm")])) )
+    synergist <- identical(as.character(row$qc_set[[1]]), "sinergista") || any(truth(unlist(row[c("sinergista_def", "sinergista_pbo", "sinergista_dm")])) )
     diagnostic <- truth(row$bioensayo_diagnostica_1x)
-    if (synergist || diagnostic) {
+    validate_mortality <- synergist || diagnostic || truth(row$qc_validate_mortality)
+    if (validate_mortality) {
       if (is.na(mortality[[i]])) reasons <- c(reasons, analyses[[i]]$detalles)
     }
     if (synergist) {
@@ -1360,11 +1370,17 @@ f7_qc_findings <- function(records) {
       matches[is.na(matches)] <- FALSE
       if (any(matches)) {
         baseline <- mean(mortality[matches])
-        refs <- paste(records$intake_id[matches], collapse = ", ")
+        refs <- paste(paste0(records$qc_source_label[matches], " #", records$intake_id[matches]), collapse = ", ")
         if (is.finite(mortality[[i]]) && mortality[[i]] <= baseline) reasons <- c(reasons, "Mortalidad con sinergista menor o igual al promedio Diagnóstica 1X")
       } else reasons <- c(reasons, "Sin Diagnóstica 1X comparable en el período")
     }
-    if (length(reasons)) out <- rbind(out, data.frame(intake_id = as.character(row$intake_id), poblacion = as.character(row$nombre_poblacion), insecticida = as.character(row$insecticida), mortalidad = mortality[[i]], diagnostica = round(baseline, 1), referencias = refs, motivo = paste(reasons, collapse = "; ")))
+    if (length(reasons)) out <- rbind(out, data.frame(
+      review_key = as.character(row$review_key), registro = as.character(row$intake_id),
+      captura = as.character(row$qc_source_label), conjunto = as.character(row$qc_set_label),
+      poblacion = as.character(row$nombre_poblacion), insecticida = as.character(row$insecticida),
+      mortalidad = mortality[[i]], diagnostica = round(baseline, 1), referencias = refs,
+      motivo = paste(reasons, collapse = "; "), stringsAsFactors = FALSE
+    ))
   }
   out
 }
@@ -1463,6 +1479,65 @@ f7_attach_result_counts <- function(records) {
     }
   }
 
+  records
+}
+
+f7_bind_rows_fill <- function(...) {
+  frames <- Filter(function(frame) !is.null(frame) && nrow(frame), list(...))
+  if (!length(frames)) return(data.frame())
+  columns <- unique(unlist(lapply(frames, names), use.names = FALSE))
+  frames <- lapply(frames, function(frame) {
+    missing <- setdiff(columns, names(frame))
+    for (column in missing) frame[[column]] <- NA
+    frame[, columns, drop = FALSE]
+  })
+  do.call(rbind, frames)
+}
+
+f7_sinergista_qc_records <- function(headers) {
+  if (!nrow(headers)) return(data.frame())
+  row_indexes <- rep(seq_len(nrow(headers)), each = 2L)
+  records <- headers[row_indexes, , drop = FALSE]
+  records$qc_set <- rep(c("sinergista", "etanol"), times = nrow(headers))
+  records$qc_set_label <- ifelse(records$qc_set == "sinergista", "Sinergista", "Etanol")
+  records$qc_source_label <- "Sinergistas"
+  records$qc_validate_mortality <- TRUE
+  records$intake_id <- records$sinergista_intake_id
+  records$review_key <- paste0("sinergistas:", records$sinergista_intake_id)
+  records$bioensayo_diagnostica_1x <- FALSE
+  records$sinergista_def <- records$qc_set == "sinergista" & toupper(as.character(records$sinergista_tipo)) == "DEF"
+  records$sinergista_pbo <- records$qc_set == "sinergista" & toupper(as.character(records$sinergista_tipo)) == "PBO"
+  records$sinergista_dm <- records$qc_set == "sinergista" & toupper(as.character(records$sinergista_tipo)) == "DM"
+
+  count_columns <- grep("_(vivos|incapacitados)$", formulario_7_result_columns, value = TRUE)
+  for (column in count_columns) records[[column]] <- NA_real_
+  ids <- unique(as.character(headers$sinergista_intake_id))
+  results <- supabase_private_select(
+    "formulario_7_sinergista_resultado_intake",
+    select = "sinergista_intake_id,tipo_set,etapa,botella,tiempo_minutos,vivos,incapacitados",
+    filters = list(sinergista_intake_id = paste0("in.(", paste(ids, collapse = ","), ")")),
+    order = "sinergista_intake_id.asc,tipo_set.asc,etapa.asc,tiempo_minutos.asc,botella.asc"
+  )
+  if (!nrow(results)) return(records)
+
+  record_keys <- paste(records$sinergista_intake_id, records$qc_set, sep = ":")
+  result_keys <- paste(results$sinergista_intake_id, results$tipo_set, sep = ":")
+  record_index <- match(result_keys, record_keys)
+  for (row_index in seq_len(nrow(results))) {
+    target <- record_index[[row_index]]
+    if (is.na(target)) next
+    bottle <- tolower(as.character(results$botella[[row_index]]))
+    if (bottle == "e5") next
+    bottle <- sub("^e", "b", bottle)
+    minutes <- suppressWarnings(as.integer(results$tiempo_minutos[[row_index]]))
+    if (is.na(minutes) || !bottle %in% c("b1", "b2", "b3", "b4", "c1")) next
+    prefix <- if (identical(minutes, 1440L)) paste0("resultado_24h_", bottle) else paste0("resultado_", minutes, "min_", bottle)
+    vivos_column <- paste0(prefix, "_vivos")
+    incapacitados_column <- paste0(prefix, "_incapacitados")
+    if (vivos_column %in% names(records)) records[[vivos_column]][[target]] <- f7_cdc_count_value(results$vivos[[row_index]])
+    if (incapacitados_column %in% names(records)) records[[incapacitados_column]][[target]] <- f7_cdc_count_value(results$incapacitados[[row_index]])
+  }
+  rownames(records) <- NULL
   records
 }
 formulario_7_comment_columns <- c("comentario", "comentario_nombre")
@@ -13802,15 +13877,31 @@ server <- function(input, output, session) {
       req(length(input$f7_qc_dates) == 2L)
       if (anyNA(input$f7_qc_dates) || input$f7_qc_dates[[1]] > input$f7_qc_dates[[2]]) stop("Seleccione fechas válidas.")
       findings <- withProgress(message = "Evaluando Control de Calidad", value = 0, {
-        records <- load_review_records_private(
+        bioensayo_records <- load_review_records_private(
           "formulario_7_bioensayo_intake", select = "*",
           start_date = as.Date(input$f7_qc_dates[[1]]), end_date = as.Date(input$f7_qc_dates[[2]]),
           status = "all", submitter_field = "nombre_quien_ingreso", random_sample = FALSE, max_records = .Machine$integer.max
         )
-        incProgress(0.3, detail = "Consultando lecturas")
-        if (nrow(records)) records <- f7_attach_result_counts(records)
+        sinergista_headers <- load_review_records_private(
+          "formulario_7_sinergista_intake", select = "*",
+          start_date = as.Date(input$f7_qc_dates[[1]]), end_date = as.Date(input$f7_qc_dates[[2]]),
+          status = "all", submitter_field = "nombre_quien_ingreso", random_sample = FALSE,
+          max_records = .Machine$integer.max, id_field = "sinergista_intake_id"
+        )
+        incProgress(0.25, detail = "Consultando lecturas de Dosis e Intensidad")
+        if (nrow(bioensayo_records)) {
+          bioensayo_records <- f7_attach_result_counts(bioensayo_records)
+          bioensayo_records$review_key <- paste0("bioensayo:", bioensayo_records$intake_id)
+          bioensayo_records$qc_source_label <- "Dosis / Intensidad"
+          bioensayo_records$qc_set <- "registro"
+          bioensayo_records$qc_set_label <- "Registro"
+          bioensayo_records$qc_validate_mortality <- FALSE
+        }
+        incProgress(0.25, detail = "Consultando lecturas de Sinergistas")
+        sinergista_records <- f7_sinergista_qc_records(sinergista_headers)
+        records <- f7_bind_rows_fill(bioensayo_records, sinergista_records)
         result <- f7_qc_findings(records)
-        incProgress(0.7, detail = "Comparación completada")
+        incProgress(0.5, detail = "Comparación completada")
         result
       })
       f7_qc_results(findings)
@@ -13821,18 +13912,24 @@ server <- function(input, output, session) {
     if (is.null(records)) return(NULL)
     if (!nrow(records)) return(p("No se encontraron alertas en los registros consultados."))
     div(style = "overflow-x:auto;", tags$table(class = "table table-striped",
-      tags$thead(tags$tr(lapply(c("Ingreso", "Población", "Insecticida", "Mortalidad (%)", "Diagnóstica 1X (%)", "IDs de referencia", "Motivo"), tags$th))),
+      tags$thead(tags$tr(lapply(c("Ingreso", "Captura", "Conjunto", "Población", "Insecticida", "Mortalidad (%)", "Diagnóstica 1X (%)", "IDs de referencia", "Motivo"), tags$th))),
       tags$tbody(lapply(seq_len(nrow(records)), function(i) tags$tr(
-        tags$td(tags$a(href = "#", as.character(records$intake_id[[i]]),
-          onclick = sprintf("Shiny.setInputValue('f7_qc_select', %s, {priority:'event'}); return false;", as.integer(records$intake_id[[i]])))),
-        lapply(records[i, setdiff(names(records), "intake_id"), drop = FALSE], function(x) tags$td(ifelse(is.na(x), "—", as.character(x))))
+        tags$td(tags$a(href = "#", as.character(records$registro[[i]]),
+          onclick = sprintf(
+            "Shiny.setInputValue('f7_qc_select', %s, {priority:'event'}); return false;",
+            jsonlite::toJSON(as.character(records$review_key[[i]]), auto_unbox = TRUE)
+          ))),
+        lapply(records[i, c("captura", "conjunto", "poblacion", "insecticida", "mortalidad", "diagnostica", "referencias", "motivo"), drop = FALSE], function(x) tags$td(ifelse(is.na(x), "—", as.character(x))))
       )))
     ))
   })
   observeEvent(input$f7_qc_select, {
-    req(as.character(input$f7_qc_select) %in% as.character(f7_qc_results()$intake_id))
+    selected_key <- as.character(input$f7_qc_select)
+    req(selected_key %in% as.character(f7_qc_results()$review_key))
+    key_parts <- strsplit(selected_key, ":", fixed = TRUE)[[1]]
+    req(length(key_parts) == 2L, key_parts[[1]] %in% c("bioensayo", "sinergistas"))
     tryCatch({
-      f7_select_review_record(f5_integer(input$f7_qc_select))
+      f7_select_review_record(f5_integer(key_parts[[2]]), key_parts[[1]])
       f7_review_edit_mode(FALSE)
       f7_review_delete_mode(FALSE)
       show_formulario_7_review_modal()
