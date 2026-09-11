@@ -210,6 +210,7 @@ f7_component_ui <- function(id, mode) {
     tags$style(HTML(paste0(
       ".form-group:has(select[id='", ns("f7_codigo_departamento"), "']){display:none;}",
       "#", ns("f7_capture_tab"), " ~ .tab-content .table th{background:#edf4f0;}",
+      "#", ns("f7_capture_tab"), " ~ .tab-content{padding-top:16px;}",
       "#", ns("f7_navigation_controls"), "{display:flex;gap:8px;justify-content:flex-end;margin:8px 0 14px 0;}",
       "#", ns("previous"), ",#", ns("next_step"), "{background:#008c8f;border-color:#008c8f;color:#fff;font-weight:700;}",
       "#", ns("previous"), ":hover,#", ns("next_step"), ":hover,#", ns("previous"), ":focus,#", ns("next_step"), ":focus{background:#006f72;border-color:#006f72;color:#fff;}"
@@ -308,6 +309,9 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
       row <- current()
       errors <- character()
       if (mode == "sinergistas") errors <- f7_sets_errors(f7_sets_collect(input), complete)
+      if (mode == "sinergistas" && formulario_7_is_temefos(row$insecticida[[1]])) {
+        errors <- c(errors, "Temefos solo puede capturarse para Diagnóstica e Intensidad.")
+      }
       for (k in names(row)) {
         v <- row[[k]][[1]]
         if (is.na(v) || !nzchar(v)) next

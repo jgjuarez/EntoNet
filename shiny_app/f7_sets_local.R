@@ -162,6 +162,9 @@ f7_sinergista_header_columns <- c(
 
 f7_sinergista_tables <- function(row, payload) {
   if (nrow(row) != 1L) stop("La captura de Sinergistas debe contener un solo encabezado.")
+  if (formulario_7_is_temefos(row$insecticida[[1]])) {
+    stop("Temefos solo puede capturarse para Diagnóstica e Intensidad.")
+  }
   errors <- f7_sets_errors(payload, complete = TRUE)
   if (length(errors)) stop(paste(errors, collapse = "\n"))
 

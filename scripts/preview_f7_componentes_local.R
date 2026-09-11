@@ -5,6 +5,7 @@ targets <- c("value_or_default", "formulario_7_insecticide_choices", "formulario
   "formulario_7_bottle_labels", "formulario_7_count_pair", "formulario_7_capture_form",
   "formulario_7_header_columns", "formulario_7_comment_columns", "formulario_7_result_columns",
   "formulario_7_intake_columns", "formulario_7_csv_columns",
+  "formulario_7_is_temefos",
   "formulario_7_intensity_bottle_doses", "f7_cdc_diagnostic_time", "f7_cdc_result_prefix", "f7_cdc_count_value",
   "f7_cdc_classify_mortality", "f7_intensity_exploratory_analysis", "f7_cdc_analysis_for_row", "f7_diagnostic_capture_analysis")
 for (expr in parse("shiny_app/app.R")) {

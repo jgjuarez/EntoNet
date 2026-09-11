@@ -111,7 +111,10 @@ this menu rather than beside the main `Abrir formulario` button; this is the
 standard navigation pattern for future forms.
 
 Formulario 7 also supports guided individual entry and validated bulk CSV
-upload. The website preserves the official 121-column flat template, generates
+upload. Its massive-upload window provides two CSV templates: the current
+template for Diagnóstica and Intensidad, and a separate Sinergistas template
+with the paired Sinergista and Etanol readings. The website routes each file to
+its corresponding intake tables, generates
 `codigo_unico` from rearing code, the finalized bioassay code, and registration date. The finalized bioassay code adds `D` for diagnostic assays, `I` plus dose for intensity assays, or `S` plus the selected synergists. It groups
 the individual-entry readings by bottle, and writes each upload atomically to
 the normalized `public.formulario_7_bioensayo_*_intake` tables. New records

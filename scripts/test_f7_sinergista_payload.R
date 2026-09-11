@@ -57,4 +57,12 @@ stopifnot(
   length(tables$comments) == 1L,
   identical(tables$comments[[1]]$etanol_observaciones_bioensayo, "EtOH bio")
 )
+
+temefos_row <- row
+temefos_row$insecticida <- "Temefos"
+temefos_error <- tryCatch(
+  { f7_sinergista_tables(temefos_row, payload); NULL },
+  error = function(error) conditionMessage(error)
+)
+stopifnot(identical(temefos_error, "Temefos solo puede capturarse para Diagnóstica e Intensidad."))
 cat("PASS: payload de Sinergistas separa encabezado, 50 lecturas y observaciones de ambos sets\n")

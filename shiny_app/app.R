@@ -1492,6 +1492,90 @@ formulario_7_csv_columns <- c(
   formulario_7_comment_columns
 )
 
+# La carga masiva de Sinergistas es un contrato distinto: cada fila trae los
+# dos sets (Sinergista y Etanol) y nunca usa la sábana histórica.
+f7_sinergista_csv_header_columns <- c(
+  "formulario_codigo", "formulario_nombre", "fecha_registro", "codigo_bioensayo",
+  "nombre_poblacion", "pais", "id_institucion", "codigo_departamento", "codigo_municipio",
+  "sinergista_tipo", "dosis_sinergista_ug_ml", "incluir_24h", "fecha_realizacion_bioensayo",
+  "insecticida", "solvente_utilizado", "solvente_otro", "dosis_intensidad_ug_ml",
+  "lote_insecticida", "fecha_revestimiento_botellas", "numero_usos_botella_e1",
+  "numero_usos_botella_e2", "numero_usos_botella_e3", "numero_usos_botella_e4",
+  "numero_usos_botella_c1", "origen_material", "edad_dias", "edad_indefinida",
+  "codigo_especie_mosquito", "fecha_separacion", "hora_separacion", "generacion_filial",
+  "generacion_filial_indefinida", "codigo_responsable_revestimiento",
+  "codigo_responsable_bioensayo", "codigo_control_calidad", "codigo_revision_24h",
+  "temperatura_inicial_c", "temperatura_final_c", "humedad_relativa_inicial_pct",
+  "humedad_relativa_final_pct", "hora_inicio_bioensayo", "hora_final_bioensayo",
+  "fuente_formulario", "nombre_quien_ingreso"
+)
+f7_sinergista_csv_reading_specs <- function() {
+  specs <- list()
+  for (set_name in c("sinergista", "etanol")) {
+    for (stage in c("pretratamiento", "bioensayo", "kdr_24h")) {
+      bottles <- if (stage == "pretratamiento") paste0("e", 1:5) else c(paste0("e", 1:4), "c1")
+      times <- switch(stage, pretratamiento = 60L, bioensayo = c(0L, 15L, 30L, 45L), kdr_24h = 1440L)
+      for (bottle in bottles) for (time in times) {
+        prefix <- paste(set_name, stage, bottle, sep = "_")
+        specs[[length(specs) + 1L]] <- data.frame(
+          tipo_set = set_name, etapa = stage, botella = bottle, tiempo_minutos = time,
+          hora_columna = paste0(prefix, "_hora_inicio"),
+          vivos_columna = paste0(prefix, "_", time, "min_vivos"),
+          incapacitados_columna = paste0(prefix, "_", time, "min_incapacitados"),
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  do.call(rbind, specs)
+}
+f7_sinergista_csv_specs <- f7_sinergista_csv_reading_specs()
+f7_sinergista_csv_columns <- c(
+  f7_sinergista_csv_header_columns,
+  unique(c(f7_sinergista_csv_specs$hora_columna, f7_sinergista_csv_specs$vivos_columna, f7_sinergista_csv_specs$incapacitados_columna)),
+  "sinergista_observaciones_pretratamiento", "sinergista_observaciones_bioensayo",
+  "etanol_observaciones_pretratamiento", "etanol_observaciones_bioensayo",
+  "comentario", "comentario_nombre"
+)
+formulario_7_sinergista_template <- as.data.frame(
+  setNames(rep(list(""), length(f7_sinergista_csv_columns)), f7_sinergista_csv_columns),
+  stringsAsFactors = FALSE, check.names = FALSE
+)
+formulario_7_sinergista_template$formulario_codigo <- "F7"
+formulario_7_sinergista_template$formulario_nombre <- "Registro de datos del bioensayo de la botella CDC"
+formulario_7_sinergista_template$fecha_registro <- as.character(Sys.Date())
+formulario_7_sinergista_template$id_institucion <- default_institution_id
+formulario_7_sinergista_template$incluir_24h <- "false"
+formulario_7_sinergista_template$edad_indefinida <- "true"
+formulario_7_sinergista_template$generacion_filial_indefinida <- "true"
+formulario_7_sinergista_template$codigo_control_calidad <- "NO APLICA"
+formulario_7_sinergista_template$fuente_formulario <- "Formulario 7_Sinergistas.csv"
+
+f7_sinergista_csv_to_capture <- function(data, row_index) {
+  raw <- data[row_index, , drop = FALSE]
+  header <- as.data.frame(setNames(rep(list(NA_character_), length(f7_sinergista_header_columns)), f7_sinergista_header_columns), stringsAsFactors = FALSE, check.names = FALSE)
+  for (column in intersect(names(raw), names(header))) header[[column]] <- as.character(raw[[column]][[1]])
+  header$version_estructura <- "f7_sinergistas_v1"
+  header$codigo_bioensayo <- formulario_7_codigo_bioensayo_final(header$codigo_bioensayo, "false", NA_character_, NA_character_, "false", "false", "true")
+  empty_to_null <- function(value) if (is.na(value) || !nzchar(trimws(as.character(value)))) NULL else as.character(value)
+  include_24h <- tolower(trimws(as.character(raw$incluir_24h[[1]]))) %in% c("true", "1", "si", "sí", "yes")
+  readings <- lapply(seq_len(nrow(f7_sinergista_csv_specs)), function(index) {
+    spec <- f7_sinergista_csv_specs[index, ]
+    list(tipo_set = spec$tipo_set, etapa = spec$etapa, botella = spec$botella,
+      tiempo_minutos = as.integer(spec$tiempo_minutos),
+      hora_inicio = empty_to_null(raw[[spec$hora_columna]][[1]]),
+      vivos = empty_to_null(raw[[spec$vivos_columna]][[1]]),
+      incapacitados = empty_to_null(raw[[spec$incapacitados_columna]][[1]]))
+  })
+  if (!include_24h) readings <- Filter(function(reading) reading$etapa != "kdr_24h", readings)
+  payload <- list(version_estructura = "f7_sets_local_v1", estado = "carga_masiva",
+    sets = list(
+      list(tipo_set = "sinergista", observaciones_pretratamiento = empty_to_null(raw$sinergista_observaciones_pretratamiento[[1]]), observaciones_bioensayo = empty_to_null(raw$sinergista_observaciones_bioensayo[[1]])),
+      list(tipo_set = "etanol", observaciones_pretratamiento = empty_to_null(raw$etanol_observaciones_pretratamiento[[1]]), observaciones_bioensayo = empty_to_null(raw$etanol_observaciones_bioensayo[[1]]))
+    ), lecturas = readings)
+  list(header = header, payload = payload)
+}
+
 formulario_7_template <- as.data.frame(
   setNames(rep(list(""), length(formulario_7_intake_columns)), formulario_7_intake_columns),
   stringsAsFactors = FALSE
@@ -11956,6 +12040,43 @@ server <- function(input, output, session) {
     list(data = data, details = unique(details))
   }
 
+  validate_formulario_7_sinergista_csv <- function(csv_data) {
+    details <- character()
+    missing_columns <- setdiff(f7_sinergista_csv_columns, names(csv_data))
+    extra_columns <- setdiff(names(csv_data), f7_sinergista_csv_columns)
+    if (length(missing_columns)) details <- c(details, paste("Faltan columnas:", paste(missing_columns, collapse = ", ")))
+    if (length(extra_columns)) details <- c(details, paste("Columnas no esperadas:", paste(extra_columns, collapse = ", ")))
+    if (length(details)) return(list(data = NULL, details = details, captures = NULL))
+    data <- csv_data[f7_sinergista_csv_columns]
+    for (column in names(data)) data[[column]] <- f7_clean_text(data[[column]])
+    if (!nrow(data)) return(list(data = NULL, details = "El archivo no contiene registros.", captures = NULL))
+    required <- c("formulario_codigo", "formulario_nombre", "codigo_bioensayo", "nombre_poblacion", "pais", "id_institucion", "codigo_departamento", "codigo_municipio", "sinergista_tipo", "dosis_sinergista_ug_ml", "fecha_registro", "fecha_realizacion_bioensayo", "insecticida", "solvente_utilizado", "lote_insecticida", "fecha_revestimiento_botellas", "origen_material", "codigo_especie_mosquito", "fecha_separacion", "hora_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_revision_24h", "temperatura_inicial_c", "temperatura_final_c", "humedad_relativa_inicial_pct", "humedad_relativa_final_pct", "hora_inicio_bioensayo", "hora_final_bioensayo", "nombre_quien_ingreso")
+    for (column in required) { bad <- which(is.na(data[[column]])); if (length(bad)) details <- c(details, paste0(column, " es obligatorio. Filas: ", paste(head(bad, 10), collapse = ", "))) }
+    for (column in c("fecha_registro", "fecha_realizacion_bioensayo", "fecha_revestimiento_botellas", "fecha_separacion")) {
+      bad <- which(is.na(data[[column]]) | is.na(suppressWarnings(as.Date(data[[column]], "%Y-%m-%d"))) | !grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", data[[column]]))
+      if (length(bad)) details <- c(details, paste0(column, " debe usar YYYY-MM-DD. Filas: ", paste(head(bad, 10), collapse = ", ")))
+    }
+    boolean_columns <- c("incluir_24h", "edad_indefinida", "generacion_filial_indefinida")
+    for (column in boolean_columns) { parsed <- f7_parse_boolean(data[[column]]); bad <- which(is.na(parsed)); if (length(bad)) details <- c(details, paste0(column, " debe usar true o false. Filas: ", paste(head(bad, 10), collapse = ", "))); data[[column]] <- ifelse(is.na(parsed), data[[column]], tolower(as.character(parsed))) }
+    if (any(!is.na(data$formulario_codigo) & data$formulario_codigo != "F7")) details <- c(details, "formulario_codigo debe ser F7.")
+    for (column in c("sinergista_tipo", "solvente_utilizado", "origen_material", "pais")) {
+      allowed <- switch(column, sinergista_tipo = c("DEF", "PBO", "DM"), solvente_utilizado = c("Etanol", "Otro"), origen_material = c("Silvestre", "Laboratorio"), pais = c("El Salvador", "Guatemala"))
+      bad <- which(!is.na(data[[column]]) & !data[[column]] %in% allowed); if (length(bad)) details <- c(details, paste0(column, " no es válido. Filas: ", paste(head(bad, 10), collapse = ", ")))
+    }
+    if (length(which(vapply(data$insecticida, formulario_7_is_temefos, logical(1))))) details <- c(details, "Temefos solo puede capturarse para Diagnóstica e Intensidad.")
+    captures <- vector("list", nrow(data))
+    for (index in seq_len(nrow(data))) {
+      capture <- f7_sinergista_csv_to_capture(data, index)
+      capture_errors <- tryCatch({ f7_sinergista_tables(capture$header, capture$payload); character() }, error = function(error) conditionMessage(error))
+      if (length(capture_errors)) details <- c(details, paste0("Fila ", index, ": ", capture_errors))
+      captures[[index]] <- capture
+    }
+    codes <- vapply(captures, function(capture) as.character(capture$header$codigo_bioensayo[[1]]), character(1))
+    duplicate_codes <- unique(codes[duplicated(codes) & !is.na(codes)])
+    if (length(duplicate_codes)) details <- c(details, paste0("Código de bioensayo duplicado dentro del archivo: ", paste(duplicate_codes, collapse = ", ")))
+    list(data = data, details = unique(details), captures = captures)
+  }
+
   formulario_7_tables <- function(row) {
     header <- row[formulario_7_header_columns]
     results <- list()
@@ -12093,6 +12214,15 @@ server <- function(input, output, session) {
       )
     )
     as.character(intake_id[[1]])
+  }
+
+  insert_formulario_7_sinergista_bulk <- function(captures, progress_callback = NULL) {
+    intake_ids <- character(length(captures))
+    for (index in seq_along(captures)) {
+      intake_ids[[index]] <- insert_formulario_7_sinergista(captures[[index]]$header, captures[[index]]$payload)
+      if (is.function(progress_callback)) progress_callback(index, length(captures))
+    }
+    intake_ids
   }
 
   f7_web_save_capture <- function(mode, row, payload = NULL) {
@@ -12810,15 +12940,18 @@ server <- function(input, output, session) {
       title = "Formulario 7: subida de datos masiva",
       size = "l",
       easyClose = TRUE,
-      p("Cada fila del machote representa un bioensayo. La aplicación transformará las lecturas planas en registros relacionados por botella y tiempo."),
+      p("Elija el tipo de archivo antes de subirlo. Cada fila representa un bioensayo y se guarda en la sábana correspondiente."),
       tags$ol(
-        tags$li("Descargue y complete el machote oficial sin cambiar los nombres ni el orden de sus 111 columnas visibles."),
+        tags$li("Diagnóstica e Intensidad usan el machote actual y se guardan en la base histórica."),
+        tags$li("Sinergistas usa su propio machote con los sets Sinergista y Etanol, y se guarda en la nueva base."),
         tags$li("Use fechas YYYY-MM-DD, horas HH:MM, y true/false para campos lógicos."),
-        tags$li("Cada lectura debe incluir juntos los conteos de vivos e incapacitados."),
+        tags$li("Cada lectura debe incluir juntos los conteos de vivos e incapacitados; Temefos no se permite en Sinergistas."),
         tags$li("Los registros válidos se guardarán con estado pending para revisión.")
       ),
-      downloadButton("download_formulario_7_template", "Descargar machote CSV", class = "btn-primary"),
+      div(style = "display:flex; flex-wrap:wrap; gap:12px;", downloadButton("download_formulario_7_template", "Machote Diagnóstica e Intensidad", class = "btn-primary"),
+        downloadButton("download_formulario_7_sinergista_template", "Machote Sinergistas", class = "btn-primary")),
       tags$hr(),
+      radioButtons("formulario_7_bulk_upload_type", "Tipo de archivo que subirá", choices = c("Diagnóstica e Intensidad" = "actual", "Sinergistas" = "sinergistas"), inline = TRUE),
       fileInput("formulario_7_bulk_upload_file", "Seleccione archivo CSV", accept = c(".csv", "text/csv", "text/comma-separated-values")),
       actionButton("process_formulario_7_bulk_upload", "Validar y subir CSV", class = "btn-primary"),
       uiOutput("formulario_7_bulk_upload_status"),
@@ -13056,8 +13189,8 @@ server <- function(input, output, session) {
     if (identical(step, "resultados")) {
       if (identical(input$f7_tipo_bioensayo, "sinergistas")) {
         errors <- f7_sets_errors(f7_sets_collect(input), complete = TRUE)
-        if (formulario_7_is_temefos(row$insecticida) && !isTRUE(input$f7sets_incluir_24h)) {
-          errors <- c(errors, "Temefos requiere la lectura de 24 horas en ambos sets.")
+        if (formulario_7_is_temefos(row$insecticida)) {
+          errors <- c(errors, "Temefos solo puede capturarse para Diagnóstica e Intensidad.")
         }
         return(unique(errors))
       }
@@ -19437,6 +19570,17 @@ server <- function(input, output, session) {
     }
   )
 
+  output$download_formulario_7_sinergista_template <- downloadHandler(
+    filename = function() {
+      paste0("machote_formulario_7_sinergistas_etanol_", format(Sys.Date(), "%Y%m%d"), ".csv")
+    },
+    content = function(file) {
+      template <- formulario_7_sinergista_template
+      template$fecha_registro <- as.character(Sys.Date())
+      write.csv(template, file, row.names = FALSE, na = "", fileEncoding = "UTF-8")
+    }
+  )
+
   output$download_formulario_7_printable <- downloadHandler(
     filename = function() {
       code <- f7_print_codigo_bioensayo_code()
@@ -20597,6 +20741,7 @@ server <- function(input, output, session) {
   observeEvent(input$process_formulario_7_bulk_upload, {
     req(input$formulario_7_bulk_upload_file)
     formulario_7_bulk_upload_result(NULL)
+    upload_type <- value_or_default(input$formulario_7_bulk_upload_type, "actual")
     connection <- NULL
     tryCatch({
       intake_ids <- withProgress(message = "Subiendo archivo del Formulario 7", value = 0, {
@@ -20624,7 +20769,11 @@ server <- function(input, output, session) {
           upload_aborted <- TRUE
         } else {
           incProgress(0.15, detail = "Validando las columnas visibles y sus registros")
-          validated <- validate_formulario_7(csv_data)
+          validated <- if (identical(upload_type, "sinergistas")) {
+            validate_formulario_7_sinergista_csv(csv_data)
+          } else {
+            validate_formulario_7(csv_data)
+          }
           if (length(validated$details)) {
             formulario_7_bulk_upload_result(list(
               type = "error",
@@ -20644,7 +20793,12 @@ server <- function(input, output, session) {
           NULL
         } else {
           incProgress(0.10, detail = "Verificando que el código de bioensayo no esté registrado")
-          existing_codes <- formulario_7_existing_unique_codes(codes = validated$data$codigo_bioensayo)
+          upload_codes <- if (identical(upload_type, "sinergistas")) {
+            vapply(validated$captures, function(capture) as.character(capture$header$codigo_bioensayo[[1]]), character(1))
+          } else validated$data$codigo_bioensayo
+          existing_codes <- if (identical(upload_type, "sinergistas")) {
+            formulario_7_sinergista_existing_unique_codes(codes = upload_codes)
+          } else formulario_7_existing_unique_codes(codes = upload_codes)
           if (length(existing_codes)) {
             formulario_7_bulk_upload_result(list(
               type = "error",
@@ -20658,8 +20812,13 @@ server <- function(input, output, session) {
             )
             NULL
           } else {
-            total_records <- nrow(validated$data)
-            intake_ids <- insert_formulario_7(
+            total_records <- if (identical(upload_type, "sinergistas")) length(validated$captures) else nrow(validated$data)
+            intake_ids <- if (identical(upload_type, "sinergistas")) insert_formulario_7_sinergista_bulk(
+              captures = validated$captures,
+              progress_callback = function(current_record, total_records) {
+                incProgress(0.45 / total_records, detail = paste0("Guardando registro ", current_record, " de ", total_records))
+              }
+            ) else insert_formulario_7(
               data = validated$data,
               progress_callback = function(current_record, total_records) {
                 incProgress(
@@ -20677,7 +20836,7 @@ server <- function(input, output, session) {
 
       formulario_7_bulk_upload_result(list(
         type = "success",
-        message = "Archivo subido correctamente.",
+        message = paste0("Archivo de ", if (identical(upload_type, "sinergistas")) "Sinergistas" else "Diagnóstica e Intensidad", " subido correctamente."),
         details = paste0(length(intake_ids), " registros guardados en Supabase con estado pending. Intake ID: ", paste(intake_ids, collapse = ", "))
       ))
       submission_status(paste0(length(intake_ids), " registros de Formulario 7 cargados. Estado de revisión: pending."))

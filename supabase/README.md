@@ -26,7 +26,8 @@ Orden sugerido de ejecucion:
 20. `041_entonet_access_tracking_logs.sql`
 21. `042_formulario_7_sinergistas_base.sql`
 22. `043_formulario_7_base_actual_sin_sinergistas.sql`
-23. Scripts futuros de catalogos, permisos y vistas.
+23. `044_formulario_7_sinergistas_sin_temefos.sql`
+24. Scripts futuros de catalogos, permisos y vistas.
 
 Permisos privados recientes:
 
@@ -72,6 +73,10 @@ Sinergista/Etanol con la base actual de Diagnóstica e Intensidad:
 - `formulario_7_sinergista_resultado_intake`: lecturas atómicas por `tipo_set`, `etapa`, `botella` y `tiempo_minutos`.
 - `formulario_7_sinergista_comentario_intake`: comentario general y observaciones de pretratamiento/bioensayo para Sinergista y Etanol.
 - `entonet_insert_formulario_7_sinergista(jsonb, jsonb, jsonb)`: inserción transaccional privada para la integración del website mediante `service_role`.
+
+Temefos solo se puede registrar en Diagnóstica e Intensidad. La restricción de
+la migración 044 también impide que se inserte por API o directamente en la
+tabla de Sinergistas.
 
 La base histórica (`formulario_7_bioensayo_*`) recibe únicamente Diagnóstica e
 Intensidad desde la migración 043. Los registros anteriores de Sinergistas se
