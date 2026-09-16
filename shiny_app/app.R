@@ -3101,7 +3101,7 @@ formulario_7_print_form <- function() {
   tagList(
     div(
       class = "alert alert-info",
-      "Genere el machote de Formulario 7 con el Código Bioensayo y la ubicación nacional prellenados."
+      "Seleccione el tipo de bioensayo para generar la versión 3 correspondiente: Diagnóstica/Intensidad o Sinergistas. El Código Bioensayo y la ubicación nacional se incluirán en el machote."
     ),
     wellPanel(
       h4("Código Bioensayo"),
@@ -3127,7 +3127,7 @@ formulario_7_print_form <- function() {
           numericInput("f7_print_codigo_bioensayo_correlativo", "# Bioensayo", value = 1, min = 1, step = 1),
           textInput("f7_print_generacion_filial", "Generación filial", value = "F1", placeholder = "Ej. F1"),
           numericInput("f7_print_codigo_bioensayo_anio", "Año", value = as.integer(format(Sys.Date(), "%y")), min = 0, max = 99, step = 1),
-          textInput("f7_print_version_formulario", "Versión del formulario", value = "2"),
+          textInput("f7_print_version_formulario", "Versión del formulario", value = "3"),
           textInput("f7_print_nombre_poblacion", "Nombre de población"),
           radioButtons(
             "f7_print_tipo_bioensayo",
@@ -7666,6 +7666,58 @@ server <- function(input, output, session) {
     formulario_7_internal_to_csv(header)
   }
 
+  request_fetch_formulario_7_sinergistas <- function(connection = NULL) {
+    header <- supabase_private_select(
+      "formulario_7_sinergista_intake",
+      filters = request_scope_api_filters(),
+      order = "fecha_registro.desc,sinergista_intake_id.desc"
+    )
+    empty <- formulario_7_sinergista_template[0, f7_sinergista_csv_columns, drop = FALSE]
+    if (!nrow(header)) return(empty)
+    output <- as.data.frame(
+      setNames(rep(list(rep(NA_character_, nrow(header))), length(f7_sinergista_csv_columns)), f7_sinergista_csv_columns),
+      stringsAsFactors = FALSE, check.names = FALSE
+    )
+    for (column in intersect(names(header), names(output))) output[[column]] <- header[[column]]
+    ids <- as.integer(header$sinergista_intake_id)
+    id_filter <- paste0("in.(", paste(ids, collapse = ","), ")")
+    results <- supabase_private_select(
+      "formulario_7_sinergista_resultado_intake",
+      select = "sinergista_intake_id,tipo_set,etapa,botella,tiempo_minutos,hora_inicio,vivos,incapacitados",
+      filters = list(sinergista_intake_id = id_filter),
+      order = "sinergista_intake_id.asc,tipo_set.asc,etapa.asc,botella.asc,tiempo_minutos.asc"
+    )
+    comments <- supabase_private_select(
+      "formulario_7_sinergista_comentario_intake",
+      filters = list(sinergista_intake_id = id_filter),
+      order = "sinergista_intake_id.asc"
+    )
+    row_index <- setNames(seq_len(nrow(header)), as.character(header$sinergista_intake_id))
+    if (nrow(results)) for (index in seq_len(nrow(results))) {
+      reading <- results[index, ]
+      target <- row_index[[as.character(reading$sinergista_intake_id)]]
+      spec <- f7_sinergista_csv_specs[
+        f7_sinergista_csv_specs$tipo_set == as.character(reading$tipo_set) &
+          f7_sinergista_csv_specs$etapa == as.character(reading$etapa) &
+          f7_sinergista_csv_specs$botella == as.character(reading$botella) &
+          f7_sinergista_csv_specs$tiempo_minutos == as.integer(reading$tiempo_minutos), , drop = FALSE
+      ]
+      if (is.na(target) || nrow(spec) != 1L) next
+      output[[spec$hora_columna[[1]]]][[target]] <- as.character(reading$hora_inicio)
+      output[[spec$vivos_columna[[1]]]][[target]] <- as.character(reading$vivos)
+      output[[spec$incapacitados_columna[[1]]]][[target]] <- as.character(reading$incapacitados)
+    }
+    if (nrow(comments)) for (index in seq_len(nrow(comments))) {
+      target <- row_index[[as.character(comments$sinergista_intake_id[[index]])]]
+      if (is.na(target)) next
+      for (column in intersect(c("comentario", "nombre", "sinergista_observaciones_pretratamiento", "sinergista_observaciones_bioensayo", "etanol_observaciones_pretratamiento", "etanol_observaciones_bioensayo"), names(comments))) {
+        destination <- if (identical(column, "nombre")) "comentario_nombre" else column
+        output[[destination]][[target]] <- as.character(comments[[column]][[index]])
+      }
+    }
+    output
+  }
+
   show_password_setup_modal <- function() {
     showModal(modalDialog(
       title = "Crear o restablecer contraseña",
@@ -9728,8 +9780,10 @@ server <- function(input, output, session) {
       "A25:N25", "A32:N32"
     )
     if (is_synergist_print) {
-      merges <- setdiff(merges, c("C13:G13", "C14:G14"))
-      merges <- c(merges, "C13:D13", "F13:G13", "C14:D14", "F14:G14", "A39:N39")
+      merges <- setdiff(merges, c("C13:G13", "C14:G14", "A25:N25", "A32:N32"))
+      merges <- c(merges, "C13:D13", "F13:G13", "C14:D14", "F14:G14", "A25:G25", "H25:N25", "A31:N31", "A32:G32", "H32:N32", "A45:N45")
+    } else {
+      merges <- setdiff(merges, "A32:N32")
     }
 
     add_row <- function(row, values, styles = rep(0L, length(values)), height = NULL) {
@@ -9770,26 +9824,31 @@ server <- function(input, output, session) {
 
     bottle_labels <- c("E1", "E2", "E3", "E4", "C1")
     if (is_synergist_print) {
-      add_row(25, c("8. SINERGISTA", rep("", 13)), c(15L, rep(15L, 13)), 18)
-      add_row(26, c("BOTELLA", "INICIO (hh:mm)", "60 V", "60 I", "OBS.", "", "", "", "", "", "", "", "", ""), rep(16L, 14), 24)
-      for (index in seq_along(bottle_labels)) {
-        add_row(26L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
+      add_row(25, c("8.1 SINERGISTA", rep("", 6), "8.2 Control EtOH", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
+      add_row(26, c("BOTELLA", bottle_labels, "Obser.", "", "BOTELLA", bottle_labels, "Obser."), rep(16L, 14), 22)
+      add_row(27, c("INICIO (hh:mm)", rep("", 6), "INICIO (hh:mm)", rep("", 6)), rep(17L, 14), 19)
+      add_row(28, c("60 V", rep("", 6), "60 V", rep("", 6)), rep(17L, 14), 19)
+      add_row(29, c("60 I", rep("", 6), "60 I", rep("", 6)), rep(17L, 14), 19)
+      add_row(31, c("9. LECTURA POR BOTELLA SINERGISTA debe esperar 60min adicionales", rep("", 13)), c(15L, rep(15L, 13)), 18)
+      add_row(32, c("9.1 SINERGISTA", rep("", 6), "9.2 Control EtOH", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
+      add_row(33, c("BOTELLA", "SinE1", "SinE2", "SinE3", "SinE4", "SinC1", "Obser.", "BOTELLA", "EtOHE1", "EtOHE2", "EtOHE3", "EtOHE4", "EtOHC1", "Obser."), rep(16L, 14), 22)
+      add_row(34, c("INICIO (hh:mm)", rep("", 6), "INICIO (hh:mm)", rep("", 6)), rep(17L, 14), 19)
+      for (index in seq_along(c("0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I"))) {
+        label <- c("0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I")[[index]]
+        add_row(34L + index, c(label, rep("", 6), label, rep("", 6)), rep(17L, 14), 19)
       }
-      add_row(32, c("9. LECTURA POR BOTELLA", rep("", 13)), c(15L, rep(15L, 13)), 18)
-      add_row(33, c("BOTELLA", "INICIO (hh:mm)", "0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS."), rep(16L, 14), 24)
-      for (index in seq_along(bottle_labels)) {
-        add_row(33L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
-      }
-      add_row(39, c("COMENTARIO", rep("", 13)), c(15L, rep(15L, 13)), 18)
-      add_row(40, c("", rep("", 13)), rep(17L, 14), 34)
+      add_row(45, c("COMENTARIO", rep("", 13)), c(15L, rep(15L, 13)), 18)
+      add_row(46, c("", rep("", 13)), rep(17L, 14), 30)
     } else {
       add_row(25, c("8. LECTURAS POR BOTELLA", rep("", 13)), c(15L, rep(15L, 13)), 18)
-      add_row(26, c("BOTELLA", "INICIO (hh:mm)", "0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I", "24H HORA (hh:mm)", "24H V", "24H I", "OBS."), rep(16L, 14), 24)
-      for (index in seq_along(bottle_labels)) {
-        add_row(26L + index, c(bottle_labels[[index]], rep("", 13)), rep(17L, 14), 19)
+      add_row(26, c("BOTELLA", bottle_labels, "Obser.", "24H", bottle_labels, "Obser."), rep(16L, 14), 22)
+      add_row(27, c("INICIO (hh:mm)", rep("", 6), "INICIO (hh:mm)", rep("", 6)), rep(17L, 14), 19)
+      add_row(28, c("0 V", rep("", 6), "24H V", rep("", 6)), rep(17L, 14), 19)
+      add_row(29, c("0 I", rep("", 6), "24H I", rep("", 6)), rep(17L, 14), 19)
+      for (index in seq_along(c("15 V", "15 I", "30 V", "30 I", "45 V", "45 I"))) {
+        label <- c("15 V", "15 I", "30 V", "30 I", "45 V", "45 I")[[index]]
+        add_row(29L + index, c(label, rep("", 13)), rep(17L, 14), 19)
       }
-      add_row(32, c("COMENTARIO", rep("", 13)), c(15L, rep(15L, 13)), 18)
-      add_row(33, c("", rep("", 13)), rep(17L, 14), 34)
     }
 
     merge_xml <- paste0(
@@ -9821,7 +9880,7 @@ server <- function(input, output, session) {
     tipo_bioensayo, version_formulario
   ) {
     is_synergist_print <- grepl("^Sinergista", value_or_default(tipo_bioensayo, ""), ignore.case = TRUE)
-    last_print_row <- if (is_synergist_print) 40L else 33L
+    last_print_row <- if (is_synergist_print) 46L else 35L
     root <- tempfile("f7_print_xlsx_")
     dir.create(root, recursive = TRUE)
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -9903,6 +9962,53 @@ server <- function(input, output, session) {
     files <- list.files(".", recursive = TRUE, all.files = TRUE, no.. = TRUE)
     if (file.exists(file)) unlink(file)
     utils::zip(zipfile = file, files = files, flags = "-q")
+  }
+
+  request_xlsx_sheet_xml <- function(data) {
+    data <- as.data.frame(data, stringsAsFactors = FALSE, check.names = FALSE)
+    rows <- c(
+      f1_excel_row(1L, lapply(seq_along(names(data)), function(column) f1_excel_cell(1L, column, names(data)[[column]], 2L)), 28)
+    )
+    if (nrow(data)) for (row_index in seq_len(nrow(data))) {
+      rows <- c(rows, f1_excel_row(row_index + 1L, lapply(seq_along(names(data)), function(column) {
+        f1_excel_cell(row_index + 1L, column, data[[column]][[row_index]], 4L)
+      }), 18))
+    }
+    paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+      '<sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews>',
+      '<sheetFormatPr defaultRowHeight="18"/><cols>',
+      paste0(vapply(seq_along(names(data)), function(column) paste0('<col min="', column, '" max="', column, '" width="18" customWidth="1"/>'), character(1)), collapse = ""),
+      '</cols><sheetData>', paste0(rows, collapse = ""), '</sheetData>',
+      '<autoFilter ref="A1:', f1_excel_col(max(1L, ncol(data))), max(1L, nrow(data) + 1L), '"/>',
+      '<pageMargins left="0.25" right="0.25" top="0.25" bottom="0.25" header="0.1" footer="0.1"/>',
+      '</worksheet>'
+    )
+  }
+
+  request_create_formulario_7_xlsx <- function(file, diagnostica_intensidad, sinergistas) {
+    root <- tempfile("f7_export_xlsx_")
+    dir.create(root, recursive = TRUE)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    f1_write_file(file.path(root, "[Content_Types].xml"), paste0(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>',
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>',
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
+      '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
+      '</Types>'
+    ))
+    f1_write_file(file.path(root, "_rels", ".rels"), '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
+    f1_write_file(file.path(root, "xl", "workbook.xml"), '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Diagnostica_Intensidad" sheetId="1" r:id="rId1"/><sheet name="Sinergistas" sheetId="2" r:id="rId2"/></sheets></workbook>')
+    f1_write_file(file.path(root, "xl", "_rels", "workbook.xml.rels"), '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')
+    f1_write_file(file.path(root, "xl", "styles.xml"), f7_printable_styles_xml())
+    f1_write_file(file.path(root, "xl", "worksheets", "sheet1.xml"), request_xlsx_sheet_xml(diagnostica_intensidad))
+    f1_write_file(file.path(root, "xl", "worksheets", "sheet2.xml"), request_xlsx_sheet_xml(sinergistas))
+    old_wd <- getwd(); on.exit(setwd(old_wd), add = TRUE); setwd(root)
+    utils::zip(zipfile = file, files = list.files(".", recursive = TRUE, all.files = TRUE, no.. = TRUE), flags = "-q")
   }
 
   f1_ovitrampa_count <- reactive({
@@ -19346,7 +19452,7 @@ server <- function(input, output, session) {
             ),
             div(
               class = "submit-row",
-              downloadButton("download_request_data_csv", "Descargar CSV", class = "btn-primary")
+              uiOutput("request_download_button")
             )
           ),
           div(
@@ -19892,8 +19998,8 @@ server <- function(input, output, session) {
       if (is.na(code) || !nzchar(code)) {
         stop("Complete país, departamento, municipio, población, insecticida, correlativo, generación filial, tipo de bioensayo y año antes de descargar.")
       }
-      version_formulario <- toupper(trimws(value_or_default(input$f7_print_version_formulario, "2")))
-      if (!nzchar(version_formulario)) version_formulario <- "2"
+      version_formulario <- toupper(trimws(value_or_default(input$f7_print_version_formulario, "3")))
+      if (!nzchar(version_formulario)) version_formulario <- "3"
       type <- value_or_default(input$f7_print_tipo_bioensayo, "DD")
       type_label <- switch(
         type,
@@ -21180,6 +21286,40 @@ server <- function(input, output, session) {
       details = "Use los formularios vigentes de Captura de Datos."
     ))
   })
+
+  output$request_download_button <- renderUI({
+    if (identical(value_or_default(input$request_download_dataset, ""), "formulario_7")) {
+      return(downloadButton("download_request_formulario_7_xlsx", "Descargar Excel", class = "btn-primary"))
+    }
+    downloadButton("download_request_data_csv", "Descargar CSV", class = "btn-primary")
+  })
+
+  output$download_request_formulario_7_xlsx <- downloadHandler(
+    filename = function() {
+      date_stamp <- format(Sys.Date(), "%Y%m%d")
+      country <- request_filter_country()
+      institution <- request_filter_institution()
+      scope <- paste(
+        if (is.null(country)) "todos_paises" else gsub("[^A-Za-z0-9]+", "_", tolower(country)),
+        if (is.null(institution)) "todas_instituciones" else gsub("[^A-Za-z0-9]+", "_", tolower(institution)),
+        sep = "_"
+      )
+      paste0("formulario_7_insectario_", scope, "_", date_stamp, ".xlsx")
+    },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    content = function(file) {
+      subdivision <- active_request_data_subdivision()
+      if (!identical(value_or_default(input$request_download_dataset, ""), "formulario_7") ||
+          is.null(subdivision) || !(subdivision %in% request_allowed_data_subdivisions())) {
+        stop("Su perfil no tiene permiso para descargar este conjunto de datos.")
+      }
+      request_create_formulario_7_xlsx(
+        file = file,
+        diagnostica_intensidad = request_fetch_formulario_7(),
+        sinergistas = request_fetch_formulario_7_sinergistas()
+      )
+    }
+  )
 
   output$download_request_data_csv <- downloadHandler(
     filename = function() {
