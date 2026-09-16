@@ -41,7 +41,7 @@ for (mode in names(f7_component_labels)) {
       f7_insecticida = "Deltametrina", f7_solvente_utilizado = "Etanol",
       f7_dosis_intensidad_ug_ml = 10, f7_lote_insecticida = "TEST", f7_origen_material = "Laboratorio",
       f7_codigo_especie_mosquito = "AE", f7_codigo_responsable_revestimiento = "TEST",
-      f7_codigo_responsable_bioensayo = "TEST", f7_codigo_revision_24h = "TEST",
+      f7_codigo_responsable_bioensayo = "TEST",
       f7_temperatura_inicial_c = 25, f7_temperatura_final_c = 25,
       f7_humedad_relativa_inicial_pct = 70, f7_humedad_relativa_final_pct = 70,
       f7_edad_indefinida = TRUE, f7_generacion_filial_indefinida = TRUE,
@@ -50,7 +50,7 @@ for (mode in names(f7_component_labels)) {
     for (k in c("hora_separacion", "hora_inicio_bioensayo", "hora_final_bioensayo")) fixture[[paste0("f7_", k)]] <- "08:00"
     for (k in formulario_7_result_columns) fixture[[paste0("f7_", k)]] <- if (grepl("hora_", k)) "08:00" else if (grepl("vivos$", k)) 20 else 0
     if (mode != "sinergistas") {
-      for (k in grep("^resultado_45min_", formulario_7_result_columns, value = TRUE)) fixture[[paste0("f7_", k)]] <- NULL
+      for (k in grep("^resultado_(45min_|hora_lectura_24h_|24h_)", formulario_7_result_columns, value = TRUE)) fixture[[paste0("f7_", k)]] <- NULL
     }
     for (r in f7_sets_collect(list())$lecturas) {
       prefix <- paste("f7sets", r$tipo_set, r$etapa, r$botella, sep = "_")

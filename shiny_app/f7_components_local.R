@@ -111,9 +111,9 @@ f7_standard_grid <- function(ns) {
       tags$div(style = "overflow-x:auto;", tags$table(class = "table table-bordered", heading(), tags$tbody(
         hours("resultado_hora_inicio_", "Inicio (HH:MM)"),
         lapply(c(0, 15, 30, 45), function(t) counts(paste0(t, "min"), if (identical(t, 45)) "45 min (opcional)" else paste(t, "min"))))))),
-    h4("Lectura a 24 horas"),
+    h4("Lectura a 24 horas (opcional)"),
     tags$div(style = "overflow-x:auto;", tags$table(class = "table table-bordered", heading(), tags$tbody(
-      hours("resultado_hora_lectura_24h_", "Hora de lectura (HH:MM)"), counts("24h", "24 horas"))))
+      hours("resultado_hora_lectura_24h_", "Hora de lectura (HH:MM, opcional)"), counts("24h", "24 horas (opcional)"))))
   )
 }
 
@@ -155,9 +155,9 @@ f7_component_ui <- function(id, mode) {
       conditionalPanel("input.f7_insecticida != 'Temefos'",
         textInput(paste0("f7_resultado_hora_inicio_", bottle), "Inicio (HH:MM)", placeholder = "08:30"),
         lapply(c(0, 15, 30, 45), function(t) formulario_7_count_pair(paste0("resultado_", t, "min_", bottle), if (identical(t, 45)) "45 minutos (opcional)" else paste(t, "minutos")))),
-      h4("Lectura a 24 horas"),
-      textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
-      formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
+      h4("Lectura a 24 horas (opcional)"),
+      textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM, opcional)", placeholder = "08:30"),
+      formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas (opcional)")
     )
   }
   environment(env$formulario_7_bottle_panel) <- env
@@ -339,10 +339,10 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
         if (mode == "intensidad") required <- c(required, "bioensayo_intensidad", if (identical(input$f7_bioensayo_intensidad, "Completa")) "dosis_intensidad")
         if (mode != "sinergistas") {
           result_required <- grep("^resultado_", names(row), value = TRUE)
-          result_required <- result_required[!grepl("^resultado_45min_", result_required)]
-          required <- c(required, "codigo_revision_24h", "resultado_diagnostico", result_required)
+          result_required <- result_required[!grepl("^resultado_(45min_|hora_lectura_24h_|24h_)", result_required)]
+          required <- c(required, "resultado_diagnostico", result_required)
           if (identical(input$f7_insecticida, "Temefos")) required <- setdiff(required, grep("resultado_(hora_inicio|[0-9]+min)", required, value = TRUE))
-        } else if (isTRUE(input$f7sets_incluir_24h)) required <- c(required, "codigo_revision_24h")
+        }
         for (k in unique(required)) if (is.null(row[[k]]) || is.na(row[[k]]) || !nzchar(row[[k]])) errors <- c(errors, paste("Falta:", k))
       }
       unique(errors)

@@ -2863,16 +2863,16 @@ formulario_7_bottle_panel <- function(bottle) {
       reading_rows,
       tagList(
         tags$hr(),
-        h5("Lectura KDR a 24 horas"),
-        textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
-        formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
+        h5("Lectura KDR a 24 horas (opcional)"),
+        textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM, opcional)", placeholder = "08:30"),
+        formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas (opcional)")
       )
     ),
     conditionalPanel(
       "input.f7_tipo_bioensayo != 'sinergistas' && input.f7_insecticida == 'Temefos'",
-      h5("Lectura a 24 horas"),
-      textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
-      formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
+      h5("Lectura a 24 horas (opcional)"),
+      textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM, opcional)", placeholder = "08:30"),
+      formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas (opcional)")
     ),
     conditionalPanel(
       "input.f7_tipo_bioensayo == 'sinergistas' && input.f7_insecticida != 'Temefos'",
@@ -2891,15 +2891,15 @@ formulario_7_bottle_panel <- function(bottle) {
       insecticide_after_synergist_rows,
       tagList(
         tags$hr(),
-        h5("Lectura KDR a 24 horas"),
-        textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
-        formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
+        h5("Lectura KDR a 24 horas (opcional)"),
+        textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM, opcional)", placeholder = "08:30"),
+        formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas (opcional)")
       )
     ),
     conditionalPanel(
       "input.f7_tipo_bioensayo == 'sinergistas' && input.f7_insecticida == 'Temefos'",
       h4("Lectura por botella"),
-      div(class = "alert alert-info", "Para Temefos solo se registra la lectura de 24 horas."),
+      div(class = "alert alert-info", "Para Temefos, la clasificación requiere la lectura de 24 horas."),
       textInput(paste0("f7_resultado_hora_lectura_24h_", bottle), "Hora de lectura (HH:MM)", placeholder = "08:30"),
       formulario_7_count_pair(paste0("resultado_24h_", bottle), "24 horas")
     )
@@ -3053,7 +3053,7 @@ formulario_7_capture_form <- function() {
             textInput("f7_codigo_responsable_revestimiento", "Responsable de revestimiento *"),
             textInput("f7_codigo_responsable_bioensayo", "Responsable del bioensayo *"),
             tags$div(style = "display:none;", textInput("f7_codigo_control_calidad", "Código de control de calidad *", value = "NO APLICA")),
-            textInput("f7_codigo_revision_24h", "Código de revisión a 24 h *")
+            textInput("f7_codigo_revision_24h", "Código de revisión a 24 h (opcional)")
           )
         )
       ),
@@ -12101,10 +12101,6 @@ server <- function(input, output, session) {
       data[[column]] <- parsed
     }
     has_synergist_rows <- apply(data[c("sinergista_def", "sinergista_pbo", "sinergista_dm")], 1, function(values) any(values, na.rm = TRUE))
-    missing_review_24h <- which(is.na(data$codigo_revision_24h))
-    if (length(missing_review_24h)) {
-      details <- c(details, paste0("codigo_revision_24h es obligatorio. Filas: ", paste(head(missing_review_24h, 10), collapse = ", ")))
-    }
     for (column in numeric_columns) {
       raw <- data[[column]]
       parsed <- suppressWarnings(as.numeric(raw))
@@ -12232,7 +12228,7 @@ server <- function(input, output, session) {
     data <- csv_data[f7_sinergista_csv_columns]
     for (column in names(data)) data[[column]] <- f7_clean_text(data[[column]])
     if (!nrow(data)) return(list(data = NULL, details = "El archivo no contiene registros.", captures = NULL))
-    required <- c("formulario_codigo", "formulario_nombre", "codigo_bioensayo", "nombre_poblacion", "pais", "id_institucion", "codigo_departamento", "codigo_municipio", "sinergista_tipo", "dosis_sinergista_ug_ml", "fecha_registro", "fecha_realizacion_bioensayo", "insecticida", "solvente_utilizado", "lote_insecticida", "fecha_revestimiento_botellas", "origen_material", "codigo_especie_mosquito", "fecha_separacion", "hora_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "codigo_revision_24h", "temperatura_inicial_c", "temperatura_final_c", "humedad_relativa_inicial_pct", "humedad_relativa_final_pct", "hora_inicio_bioensayo", "hora_final_bioensayo", "nombre_quien_ingreso")
+    required <- c("formulario_codigo", "formulario_nombre", "codigo_bioensayo", "nombre_poblacion", "pais", "id_institucion", "codigo_departamento", "codigo_municipio", "sinergista_tipo", "dosis_sinergista_ug_ml", "fecha_registro", "fecha_realizacion_bioensayo", "insecticida", "solvente_utilizado", "lote_insecticida", "fecha_revestimiento_botellas", "origen_material", "codigo_especie_mosquito", "fecha_separacion", "hora_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo", "temperatura_inicial_c", "temperatura_final_c", "humedad_relativa_inicial_pct", "humedad_relativa_final_pct", "hora_inicio_bioensayo", "hora_final_bioensayo", "nombre_quien_ingreso")
     for (column in required) { bad <- which(is.na(data[[column]])); if (length(bad)) details <- c(details, paste0(column, " es obligatorio. Filas: ", paste(head(bad, 10), collapse = ", "))) }
     for (column in c("fecha_registro", "fecha_realizacion_bioensayo", "fecha_revestimiento_botellas", "fecha_separacion")) {
       bad <- which(is.na(data[[column]]) | is.na(suppressWarnings(as.Date(data[[column]], "%Y-%m-%d"))) | !grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", data[[column]]))
@@ -13425,9 +13421,6 @@ server <- function(input, output, session) {
         c("origen_material", "codigo_especie_mosquito", "hora_separacion", "fecha_separacion", "codigo_responsable_revestimiento", "codigo_responsable_bioensayo"),
         c("origen del material", "código de especie", "hora de separación", "fecha de separación", "responsable de revestimiento", "responsable del bioensayo")
       )
-      if (!identical(input$f7_tipo_bioensayo, "sinergistas") || isTRUE(input$f7sets_incluir_24h)) {
-        require_fields("codigo_revision_24h", "revisión a 24 horas")
-      }
       if (!isTRUE(input$f7_edad_indefinida) && missing_value("edad_dias")) errors <- c(errors, "Indique la edad en días o marque Edad indefinida.")
       if (!isTRUE(input$f7_generacion_filial_indefinida) && missing_value("generacion_filial")) errors <- c(errors, "Indique la generación filial o márquela como indefinida.")
       if (!missing_value("hora_separacion") && !valid_time("hora_separacion")) errors <- c(errors, "La hora de separación debe usar HH:MM.")

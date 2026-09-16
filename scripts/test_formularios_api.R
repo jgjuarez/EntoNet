@@ -37,7 +37,7 @@ values <- list(
   pais = "Guatemala", id_institucion = "UVG", codigo_departamento = "20",
   codigo_municipio = "01", codigo_especie_mosquito = "AE",
   codigo_responsable_revestimiento = "TEST", codigo_responsable_bioensayo = "TEST",
-  codigo_revision_24h = "TEST", fecha_registro = "2026-09-07",
+  fecha_registro = "2026-09-07",
   fecha_realizacion_bioensayo = "2026-09-07", fecha_revestimiento_botellas = "2026-09-07",
   fecha_separacion = "2026-09-07", hora_separacion = "08:00",
   hora_inicio_bioensayo = "09:00", hora_final_bioensayo = "10:00",
@@ -47,6 +47,8 @@ values <- list(
   humedad_relativa_inicial_pct = "70", humedad_relativa_final_pct = "70"
 )
 for (name in names(values)) row[[name]] <- values[[name]]
+row$resultado_diagnostico <- "Susceptible"
+stopifnot(length(env$validate_formulario_7(row)$details) == 0L)
 for (diagnostic in c("Susceptible", "Suceptible", " susceptible ", "Sospecha de Resistencia", "Resistente")) {
   row$resultado_diagnostico <- diagnostic
   for (mode in c("diagnostica", "exploratorio", "completa")) {
