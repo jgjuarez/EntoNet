@@ -49,11 +49,23 @@ for (mode in names(f7_component_labels)) {
     for (k in c("fecha_registro", "fecha_realizacion_bioensayo", "fecha_revestimiento_botellas", "fecha_separacion")) fixture[[paste0("f7_", k)]] <- "2026-09-10"
     for (k in c("hora_separacion", "hora_inicio_bioensayo", "hora_final_bioensayo")) fixture[[paste0("f7_", k)]] <- "08:00"
     for (k in formulario_7_result_columns) fixture[[paste0("f7_", k)]] <- if (grepl("hora_", k)) "08:00" else if (grepl("vivos$", k)) 20 else 0
+    if (mode != "sinergistas") {
+      for (k in grep("^resultado_45min_", formulario_7_result_columns, value = TRUE)) fixture[[paste0("f7_", k)]] <- NULL
+    }
     for (r in f7_sets_collect(list())$lecturas) {
       prefix <- paste("f7sets", r$tipo_set, r$etapa, r$botella, sep = "_")
       fixture[[paste0(prefix, "_inicio")]] <- "08:00"
       fixture[[paste(prefix, r$tiempo_minutos, "vivos", sep = "_")]] <- 20
       fixture[[paste(prefix, r$tiempo_minutos, "incapacitados", sep = "_")]] <- 0
+    }
+    if (mode == "sinergistas") {
+      for (r in f7_sets_collect(list())$lecturas) {
+        if (identical(r$etapa, "bioensayo") && identical(as.integer(r$tiempo_minutos), 45L)) {
+          prefix <- paste("f7sets", r$tipo_set, r$etapa, r$botella, sep = "_")
+          fixture[[paste(prefix, r$tiempo_minutos, "vivos", sep = "_")]] <- NULL
+          fixture[[paste(prefix, r$tiempo_minutos, "incapacitados", sep = "_")]] <- NULL
+        }
+      }
     }
     do.call(session$setInputs, fixture)
     if (length(check(TRUE))) stop(paste(check(TRUE), collapse = "; "))

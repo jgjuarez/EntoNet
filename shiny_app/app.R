@@ -2839,10 +2839,10 @@ formulario_7_count_pair <- function(prefix, label) {
 
 formulario_7_bottle_panel <- function(bottle) {
   reading_rows <- lapply(c(0, 15, 30, 45), function(minutes) {
-    formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), paste(minutes, "minutos"))
+    formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), if (identical(minutes, 45)) "45 minutos (opcional)" else paste(minutes, "minutos"))
   })
   insecticide_after_synergist_rows <- lapply(c(0, 15, 30, 45), function(minutes) {
-    formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), paste(minutes, "minutos"))
+    formulario_7_count_pair(paste0("resultado_", minutes, "min_", bottle), if (identical(minutes, 45)) "45 minutos (opcional)" else paste(minutes, "minutos"))
   })
 
   tagList(
@@ -2886,7 +2886,7 @@ formulario_7_bottle_panel <- function(bottle) {
       h4("9. Lectura por botella"),
       div(
         class = "alert alert-info",
-        "Después del sinergista se registra la dosis diagnóstica 1X del insecticida a 0, 15, 30, 45 minutos y 24 horas."
+        "Después del sinergista se registra la dosis diagnóstica 1X del insecticida a 0, 15 y 30 minutos; la lectura a 45 minutos es opcional para esta especie."
       ),
       insecticide_after_synergist_rows,
       tagList(

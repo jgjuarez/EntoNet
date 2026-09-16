@@ -11,6 +11,15 @@ for (r in empty$lecturas) {
 }
 p <- f7_sets_collect(input, list(codigo_bioensayo = "PRUEBA-LOCAL"))
 stopifnot(length(f7_sets_errors(p, TRUE)) == 0L)
+optional_45 <- p
+for (index in seq_along(optional_45$lecturas)) {
+  reading <- optional_45$lecturas[[index]]
+  if (identical(reading$etapa, "bioensayo") && identical(as.integer(reading$tiempo_minutos), 45L)) {
+    optional_45$lecturas[[index]]$vivos <- NULL
+    optional_45$lecturas[[index]]$incapacitados <- NULL
+  }
+}
+stopifnot(length(f7_sets_errors(optional_45, TRUE)) == 0L)
 keys <- vapply(p$lecturas, function(r) paste(r$tipo_set, r$etapa, r$botella, r$tiempo_minutos), character(1))
 stopifnot(!anyDuplicated(keys))
 directory <- tempfile("f7_test_")

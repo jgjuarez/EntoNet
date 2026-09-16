@@ -58,6 +58,18 @@ stopifnot(
   identical(tables$comments[[1]]$etanol_observaciones_bioensayo, "EtOH bio")
 )
 
+optional_45_payload <- payload
+for (index in seq_along(optional_45_payload$lecturas)) {
+  reading <- optional_45_payload$lecturas[[index]]
+  if (identical(reading$etapa, "bioensayo") && identical(as.integer(reading$tiempo_minutos), 45L)) {
+    optional_45_payload$lecturas[[index]]$vivos <- NULL
+    optional_45_payload$lecturas[[index]]$incapacitados <- NULL
+  }
+}
+optional_45_tables <- f7_sinergista_tables(row, optional_45_payload)
+stopifnot(length(f7_sets_errors(optional_45_payload, complete = TRUE)) == 0L,
+          length(optional_45_tables$results) == 40L)
+
 temefos_row <- row
 temefos_row$insecticida <- "Temefos"
 temefos_error <- tryCatch(

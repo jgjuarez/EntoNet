@@ -7,7 +7,7 @@ f7_sets_grid <- function(set, stage, bottles, times) {
     tags$tbody(
       tags$tr(tags$th("Inicio (HH:MM)"), lapply(bottles, function(b)
         tags$td(textInput(paste(prefix, b, "inicio", sep = "_"), NULL, placeholder = "08:30", width = "105px")))),
-      lapply(times, function(t) tags$tr(tags$th(paste(t, "min")), lapply(bottles, function(b) tags$td(
+      lapply(times, function(t) tags$tr(tags$th(if (identical(t, 45)) "45 min (opcional)" else paste(t, "min")), lapply(bottles, function(b) tags$td(
         numericInput(paste(prefix, b, t, "vivos", sep = "_"), "Vivos", NA, min = 0, step = 1, width = "105px"),
         numericInput(paste(prefix, b, t, "incapacitados", sep = "_"), "Incapacitados", NA, min = 0, step = 1, width = "105px")
       ))))
@@ -27,7 +27,7 @@ f7_sets_ui <- function(stages = c("pretratamiento", "bioensayo", "kdr_24h"), tab
         f7_sets_grid(set, "pretratamiento", paste0("e", 1:5), 60),
         textAreaInput(paste0("f7sets_", set, "observaciones_pre"), "Observaciones de la exposición previa", rows = 2)),
         if ("bioensayo" %in% stages) tagList(h4(paste0("9.", number, " · Lectura posterior: ", label)),
-        p(if (set == "sinergista") "Mosquitos procedentes de 8.1. Botellas SinE1–SinE4 y SinC1." else "Mosquitos procedentes de 8.2. Botellas EtOHE1–EtOHE4 y EtOHC1."),
+        p(if (set == "sinergista") "Mosquitos procedentes de 8.1. Botellas SinE1–SinE4 y SinC1. Registre hasta 30 minutos; la lectura a 45 minutos es opcional para esta especie." else "Mosquitos procedentes de 8.2. Botellas EtOHE1–EtOHE4 y EtOHC1. Registre hasta 30 minutos; la lectura a 45 minutos es opcional para esta especie."),
         f7_sets_grid(set, "bioensayo", c(paste0("e", 1:4), "c1"), c(0, 15, 30, 45)),
         textAreaInput(paste0("f7sets_", set, "observaciones_bio"), "Observaciones de la lectura posterior", rows = 2))
       )
@@ -87,13 +87,14 @@ f7_sets_errors <- function(payload, complete = FALSE) {
     label <- paste(r$tipo_set, r$etapa, toupper(r$botella), paste0(r$tiempo_minutos, " min"))
     counts <- list(r$vivos, r$incapacitados)
     missing <- vapply(counts, is.null, logical(1))
-    if ((complete && any(missing)) || xor(missing[[1]], missing[[2]])) errors <- c(errors, paste(label, ": complete vivos e incapacitados."))
+    optional_45min <- identical(r$etapa, "bioensayo") && identical(as.integer(r$tiempo_minutos), 45L)
+    if ((complete && any(missing) && !optional_45min) || xor(missing[[1]], missing[[2]])) errors <- c(errors, paste(label, ": complete vivos e incapacitados."))
     for (v in counts) if (!is.null(v)) {
       n <- suppressWarnings(as.numeric(v))
       if (length(n) != 1 || !is.finite(n) || n < 0 || n != floor(n)) errors <- c(errors, paste(label, ": use enteros no negativos."))
     }
     if (!is.null(r$hora_inicio) && !grepl("^([01][0-9]|2[0-3]):[0-5][0-9]$", r$hora_inicio)) errors <- c(errors, paste(label, ": hora inválida, use HH:MM."))
-    if (complete && is.null(r$hora_inicio)) errors <- c(errors, paste(label, ": indique la hora."))
+    if (complete && is.null(r$hora_inicio) && !optional_45min) errors <- c(errors, paste(label, ": indique la hora."))
   }
   if (anyDuplicated(keys)) errors <- c(errors, "Hay lecturas duplicadas para un set, etapa, botella y tiempo.")
   if (!length(payload$lecturas) %in% c(50L, 60L)) errors <- c(errors, "El borrador debe conservar las 50 lecturas base y, opcionalmente, las 10 de 24 horas.")
@@ -201,7 +202,12 @@ f7_sinergista_tables <- function(row, payload) {
     etanol_observaciones_bioensayo = set_observation("etanol", "observaciones_bioensayo")
   ))
 
-  list(header = header, results = payload$lecturas, comments = comments, analysis = analysis)
+  results <- Filter(function(reading) {
+    !(identical(reading$etapa, "bioensayo") &&
+      identical(as.integer(reading$tiempo_minutos), 45L) &&
+      is.null(reading$vivos) && is.null(reading$incapacitados))
+  }, payload$lecturas)
+  list(header = header, results = results, comments = comments, analysis = analysis)
 }
 
 f7_sets_save_local <- function(payload, directory = file.path("..", "output", "f7_capturas_locales")) {
