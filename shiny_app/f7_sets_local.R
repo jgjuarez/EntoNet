@@ -69,7 +69,7 @@ f7_sets_collect <- function(input, header = list()) {
     encabezado = header, sets = sets, lecturas = readings)
 }
 
-f7_sets_errors <- function(payload, complete = FALSE) {
+f7_sets_errors <- function(payload, complete = FALSE, require_hours = complete) {
   errors <- character()
   if (!identical(payload$version_estructura, "f7_sets_local_v1") ||
       !is.list(payload$lecturas) || !length(payload$lecturas) ||
@@ -94,7 +94,7 @@ f7_sets_errors <- function(payload, complete = FALSE) {
       if (length(n) != 1 || !is.finite(n) || n < 0 || n != floor(n)) errors <- c(errors, paste(label, ": use enteros no negativos."))
     }
     if (!is.null(r$hora_inicio) && !grepl("^([01][0-9]|2[0-3]):[0-5][0-9]$", r$hora_inicio)) errors <- c(errors, paste(label, ": hora inválida, use HH:MM."))
-    if (complete && is.null(r$hora_inicio) && !optional_45min) errors <- c(errors, paste(label, ": indique la hora."))
+    if (complete && require_hours && is.null(r$hora_inicio) && !optional_45min) errors <- c(errors, paste(label, ": indique la hora."))
   }
   if (anyDuplicated(keys)) errors <- c(errors, "Hay lecturas duplicadas para un set, etapa, botella y tiempo.")
   if (!length(payload$lecturas) %in% c(50L, 60L)) errors <- c(errors, "El borrador debe conservar las 50 lecturas base y, opcionalmente, las 10 de 24 horas.")
@@ -161,17 +161,22 @@ f7_sinergista_header_columns <- c(
   "nombre_quien_ingreso"
 )
 
-f7_sinergista_tables <- function(row, payload) {
+f7_sinergista_tables <- function(row, payload, allow_missing_hours = FALSE) {
   if (nrow(row) != 1L) stop("La captura de Sinergistas debe contener un solo encabezado.")
   if (formulario_7_is_temefos(row$insecticida[[1]])) {
     stop("Temefos solo puede capturarse para Diagnóstica e Intensidad.")
   }
-  errors <- f7_sets_errors(payload, complete = TRUE)
+  errors <- f7_sets_errors(payload, complete = TRUE, require_hours = !allow_missing_hours)
   if (length(errors)) stop(paste(errors, collapse = "\n"))
 
   analysis <- f7_sets_analysis(payload, row$insecticida[[1]])
   header <- as.list(row[1, intersect(names(row), f7_sinergista_header_columns), drop = FALSE])
-  header$version_estructura <- "f7_sinergistas_v1"
+  current_version <- if ("version_estructura" %in% names(row)) as.character(row$version_estructura[[1]]) else NA_character_
+  header$version_estructura <- if (isTRUE(allow_missing_hours) && identical(current_version, "f7_sinergistas_historico_v1")) {
+    "f7_sinergistas_historico_v1"
+  } else {
+    "f7_sinergistas_v1"
+  }
   header$incluir_24h <- any(vapply(payload$lecturas, function(reading) identical(reading$etapa, "kdr_24h"), logical(1)))
   header$sinergista_resultado_diagnostico <- analysis$sinergista$resultado_diagnostico
   header$etanol_resultado_diagnostico <- analysis$etanol$resultado_diagnostico

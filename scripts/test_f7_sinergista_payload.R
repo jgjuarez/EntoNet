@@ -70,6 +70,18 @@ optional_45_tables <- f7_sinergista_tables(row, optional_45_payload)
 stopifnot(length(f7_sets_errors(optional_45_payload, complete = TRUE)) == 0L,
           length(optional_45_tables$results) == 40L)
 
+historical_payload <- optional_45_payload
+for (index in seq_along(historical_payload$lecturas)) historical_payload$lecturas[[index]]$hora_inicio <- NULL
+stopifnot(length(f7_sets_errors(historical_payload, complete = TRUE)) > 0L)
+historical_row <- row
+historical_row$version_estructura <- "f7_sinergistas_historico_v1"
+historical_tables <- f7_sinergista_tables(historical_row, historical_payload, allow_missing_hours = TRUE)
+stopifnot(
+  identical(historical_tables$header$version_estructura, "f7_sinergistas_historico_v1"),
+  length(historical_tables$results) == 40L,
+  all(vapply(historical_tables$results, function(reading) is.null(reading$hora_inicio), logical(1)))
+)
+
 temefos_row <- row
 temefos_row$insecticida <- "Temefos"
 temefos_error <- tryCatch(
@@ -77,4 +89,4 @@ temefos_error <- tryCatch(
   error = function(error) conditionMessage(error)
 )
 stopifnot(identical(temefos_error, "Temefos solo puede capturarse para Diagnóstica e Intensidad."))
-cat("PASS: payload de Sinergistas separa encabezado, 50 lecturas y observaciones de ambos sets\n")
+cat("PASS: payload de Sinergistas separa sets y permite conservar horas ausentes solo en registros historicos\n")
