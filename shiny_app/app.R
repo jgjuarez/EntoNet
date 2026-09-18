@@ -1540,6 +1540,62 @@ f7_sinergista_qc_records <- function(headers) {
   rownames(records) <- NULL
   records
 }
+
+f7_sinergista_visualization_records <- function(headers) {
+  if (!nrow(headers)) return(data.frame())
+  set_records <- f7_sinergista_qc_records(headers)
+  if (!nrow(set_records)) return(data.frame())
+  set_records <- f7_add_cdc_analysis(set_records)
+
+  sinergista <- set_records[set_records$qc_set == "sinergista", , drop = FALSE]
+  etanol <- set_records[set_records$qc_set == "etanol", , drop = FALSE]
+  etanol_index <- match(as.character(sinergista$sinergista_intake_id), as.character(etanol$sinergista_intake_id))
+  output <- sinergista
+
+  cdc_fields <- c(
+    "cdc_tiempo_diagnostico_min", "cdc_mortalidad_prueba_pct",
+    "cdc_mortalidad_control_pct", "cdc_mortalidad_corregida_pct",
+    "cdc_correccion", "cdc_resultado", "cdc_clasificacion_mapa"
+  )
+  result_fields <- grep("_(vivos|incapacitados)$", formulario_7_result_columns, value = TRUE)
+  for (field in c(cdc_fields, result_fields)) {
+    output[[paste0("sinergista_", field)]] <- sinergista[[field]]
+    output[[paste0("etanol_", field)]] <- etanol[[field]][etanol_index]
+  }
+
+  output$tipo_bioensayo <- "Sinergistas"
+  output$bioensayo_intensidad <- NA_character_
+  output$dosis_intensidad <- NA_character_
+  output$resultado_diagnostico <- output$sinergista_cdc_resultado
+  output$sinergista_resultado_diagnostico <- output$sinergista_cdc_resultado
+  output$etanol_resultado_diagnostico <- output$etanol_cdc_resultado
+  output$sinergista_mortalidad_corregida_pct <- output$sinergista_cdc_mortalidad_corregida_pct
+  output$etanol_mortalidad_corregida_pct <- output$etanol_cdc_mortalidad_corregida_pct
+  output$sinergista_mortalidad_control_pct <- output$sinergista_cdc_mortalidad_control_pct
+  output$etanol_mortalidad_control_pct <- output$etanol_cdc_mortalidad_control_pct
+  output$diferencia_sinergista_etanol_pct <- round(
+    output$sinergista_mortalidad_corregida_pct - output$etanol_mortalidad_corregida_pct,
+    1
+  )
+  output$comparacion_sinergista_etanol <- ifelse(
+    is.na(output$diferencia_sinergista_etanol_pct),
+    "EtOH pendiente",
+    ifelse(
+      output$diferencia_sinergista_etanol_pct > 0,
+      "Mayor mortalidad con sinergista",
+      ifelse(output$diferencia_sinergista_etanol_pct < 0, "Mayor mortalidad con EtOH", "Sin diferencia")
+    )
+  )
+  output$cdc_tiempo_diagnostico_min <- output$sinergista_cdc_tiempo_diagnostico_min
+  output$cdc_mortalidad_prueba_pct <- output$sinergista_cdc_mortalidad_prueba_pct
+  output$cdc_mortalidad_control_pct <- output$sinergista_cdc_mortalidad_control_pct
+  output$cdc_mortalidad_corregida_pct <- output$sinergista_cdc_mortalidad_corregida_pct
+  output$cdc_correccion <- output$sinergista_cdc_correccion
+  output$cdc_resultado <- output$sinergista_cdc_resultado
+  output$cdc_clasificacion_mapa <- output$sinergista_cdc_clasificacion_mapa
+  rownames(output) <- NULL
+  output
+}
 formulario_7_comment_columns <- c("comentario", "comentario_nombre")
 formulario_7_intake_columns <- c(
   setdiff(formulario_7_header_columns, c("fuente_formulario")),
@@ -16259,7 +16315,7 @@ server <- function(input, output, session) {
     f7_visualization_records(data.frame())
     f7_visualization_error(NULL)
     tryCatch({
-      records <- supabase_private_select(
+      bioensayo_records <- supabase_private_select(
         "formulario_7_bioensayo_intake",
         select = paste(
           "intake_id,codigo_bioensayo,fecha_realizacion_bioensayo,nombre_poblacion,",
@@ -16271,7 +16327,48 @@ server <- function(input, output, session) {
         filters = list(pais = paste0("eq.", query$country)),
         order = "fecha_realizacion_bioensayo.asc,intake_id.asc"
       )
+      if (nrow(bioensayo_records)) {
+        diagnostic_flag <- tolower(trimws(as.character(bioensayo_records$bioensayo_diagnostica_1x))) %in% c("true", "t", "1", "si", "sí", "yes")
+        intensity_flag <- !is.na(bioensayo_records$bioensayo_intensidad) & nzchar(trimws(as.character(bioensayo_records$bioensayo_intensidad)))
+        bioensayo_records$tipo_bioensayo <- ifelse(
+          diagnostic_flag,
+          "Diagnóstica 1X",
+          ifelse(intensity_flag, paste("Intensidad", bioensayo_records$bioensayo_intensidad), NA_character_)
+        )
+        bioensayo_records$sinergista_tipo <- NA_character_
+        bioensayo_records <- f7_attach_result_counts(bioensayo_records)
+        bioensayo_records <- f7_add_cdc_analysis(bioensayo_records)
+      }
+
+      sinergista_headers <- supabase_private_select(
+        "formulario_7_sinergista_intake",
+        select = paste(
+          "sinergista_intake_id,codigo_bioensayo,fecha_realizacion_bioensayo,nombre_poblacion,",
+          "sinergista_tipo,dosis_sinergista_ug_ml,sinergista_resultado_diagnostico,",
+          "etanol_resultado_diagnostico,sinergista_mortalidad_corregida_pct,",
+          "etanol_mortalidad_corregida_pct,sinergista_mortalidad_control_pct,",
+          "etanol_mortalidad_control_pct,insecticida,codigo_departamento,codigo_municipio,",
+          "review_status,creado_en,actualizado_en",
+          sep = ""
+        ),
+        filters = list(pais = paste0("eq.", query$country)),
+        order = "fecha_realizacion_bioensayo.asc,sinergista_intake_id.asc"
+      )
+      sinergista_records <- if (nrow(sinergista_headers)) {
+        f7_sinergista_visualization_records(sinergista_headers)
+      } else {
+        data.frame()
+      }
+      records <- f7_bind_rows_fill(bioensayo_records, sinergista_records)
       if (nrow(records)) {
+        for (field in c(
+          "sinergista_mortalidad_corregida_pct", "etanol_mortalidad_corregida_pct",
+          "sinergista_mortalidad_control_pct", "etanol_mortalidad_control_pct",
+          "sinergista_resultado_diagnostico", "etanol_resultado_diagnostico",
+          "diferencia_sinergista_etanol_pct", "comparacion_sinergista_etanol"
+        )) {
+          if (!field %in% names(records)) records[[field]] <- NA
+        }
         records$departamento <- mapply(
           ubicacion_departamento_nombre,
           query$country,
@@ -16282,20 +16379,6 @@ server <- function(input, output, session) {
         records$fecha_realizacion_bioensayo <- as.Date(records$fecha_realizacion_bioensayo)
         records$creado_en <- as.POSIXct(records$creado_en)
         records$actualizado_en <- as.POSIXct(records$actualizado_en)
-        records$tipo_bioensayo <- ifelse(
-          records$bioensayo_diagnostica_1x,
-          "Diagnóstica 1X",
-          ifelse(
-            !is.na(records$bioensayo_intensidad),
-            paste("Intensidad", records$bioensayo_intensidad),
-            "Sinergistas"
-          )
-        )
-        true_value <- function(values) tolower(trimws(as.character(values))) %in% c("true", "t", "1", "si", "sí", "yes")
-        records$sinergista_tipo <- NA_character_
-        records$sinergista_tipo[true_value(records$sinergista_def)] <- "DEF"
-        records$sinergista_tipo[true_value(records$sinergista_pbo)] <- "PBO"
-        records$sinergista_tipo[true_value(records$sinergista_dm)] <- "DM"
         records$codigo_municipio_mapa <- mapply(
           normalizar_codigo_municipio_mapa,
           query$country,
@@ -16321,8 +16404,6 @@ server <- function(input, output, session) {
           ubicacion_municipio_catalogo$municipio[municipio_index],
           records$municipio
         )
-        records <- f7_attach_result_counts(records)
-        records <- f7_add_cdc_analysis(records)
       }
       f7_visualization_records(records)
       f7_visualization_last_refresh(Sys.time())
@@ -16588,6 +16669,10 @@ server <- function(input, output, session) {
       sep = "|"
     )
     groups <- split(records, group_key)
+    mean_or_na <- function(values) {
+      values <- suppressWarnings(as.numeric(values))
+      if (any(is.finite(values))) round(mean(values, na.rm = TRUE), 1) else NA_real_
+    }
     points <- do.call(rbind, lapply(groups, function(group) {
       data.frame(
         location_id = paste(group$codigo_departamento[[1]], group$codigo_municipio_mapa[[1]], group$nombre_poblacion[[1]], sep = "|"),
@@ -16601,6 +16686,9 @@ server <- function(input, output, session) {
         sospecha = sum(group$cdc_resultado == "Sospecha de Resistencia", na.rm = TRUE),
         resistente = sum(group$cdc_resultado == "Resistente", na.rm = TRUE),
         invalido = sum(group$cdc_resultado == "Ensayo inválido", na.rm = TRUE),
+        mortalidad_sinergista = mean_or_na(group$sinergista_mortalidad_corregida_pct),
+        mortalidad_etanol = mean_or_na(group$etanol_mortalidad_corregida_pct),
+        diferencia_sinergista_etanol = mean_or_na(group$diferencia_sinergista_etanol_pct),
         fecha_ultima = max(group$fecha_realizacion_bioensayo, na.rm = TRUE),
         tipos = paste(sort(unique(group$tipo_bioensayo)), collapse = ", "),
         stringsAsFactors = FALSE
@@ -16716,6 +16804,9 @@ server <- function(input, output, session) {
       paste(format(min(evaluated_dates), "%Y-%m-%d"), format(max(evaluated_dates), "%Y-%m-%d"), sep = " a ")
     }
     municipalities <- if (nrow(records)) length(unique(paste(records$codigo_departamento, records$codigo_municipio_mapa))) else 0L
+    is_synergist_view <- identical(value_or_default(input$f7_viz_type, "all"), "Sinergistas")
+    average_difference <- suppressWarnings(mean(records$diferencia_sinergista_etanol_pct, na.rm = TRUE))
+    if (!is.finite(average_difference)) average_difference <- NA_real_
     div(
       class = "f7-viz-kpi-grid",
       div(
@@ -16745,7 +16836,18 @@ server <- function(input, output, session) {
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Poblaciones"), span(class = "f7-viz-kpi-value", length(populations))),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Fechas evaluadas"), span(class = "f7-viz-kpi-value f7-viz-kpi-date-value", date_range_label)),
       div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Pendientes de revisión"), span(class = "f7-viz-kpi-value", sum(records$review_status == "pending", na.rm = TRUE))),
-      div(class = "f7-viz-kpi-card", span(class = "f7-viz-kpi-label", "Resistencia Bioensayos"), span(class = "f7-viz-kpi-value", sum(records$cdc_resultado == "Resistente", na.rm = TRUE)))
+      div(
+        class = "f7-viz-kpi-card",
+        span(class = "f7-viz-kpi-label", if (is_synergist_view) "Diferencia media Sinergista-EtOH" else "Resistencia Bioensayos"),
+        span(
+          class = "f7-viz-kpi-value",
+          if (is_synergist_view) {
+            ifelse(is.na(average_difference), "Pendiente", paste0(ifelse(average_difference > 0, "+", ""), round(average_difference, 1), " pp"))
+          } else {
+            sum(records$cdc_resultado == "Resistente", na.rm = TRUE)
+          }
+        )
+      )
     )
   })
 
@@ -16827,6 +16929,15 @@ server <- function(input, output, session) {
       "<br>Sospecha Resistencia: ", points$sospecha,
       "<br>Resistencia: ", points$resistente,
       "<br>Ensayo inválido: ", points$invalido,
+      ifelse(
+        is.na(points$mortalidad_sinergista),
+        "",
+        paste0(
+          "<br>Mortalidad Sinergista: ", points$mortalidad_sinergista, "%",
+          "<br>Mortalidad EtOH: ", ifelse(is.na(points$mortalidad_etanol), "Pendiente", paste0(points$mortalidad_etanol, "%")),
+          "<br>Diferencia: ", ifelse(is.na(points$diferencia_sinergista_etanol), "Pendiente", paste0(ifelse(points$diferencia_sinergista_etanol > 0, "+", ""), points$diferencia_sinergista_etanol, " pp"))
+        )
+      ),
       "<br>Última prueba: ", points$fecha_ultima,
       "<br>Tipos: ", htmltools::htmlEscape(points$tipos)
     )
@@ -16910,7 +17021,68 @@ server <- function(input, output, session) {
     "departamento"
   }
 
+  f7_draw_synergist_comparison_plot <- function(records, department_filter = "all") {
+    comparison_field <- f7_visualization_comparison_field(department_filter)
+    rows <- list()
+    for (set_name in c("Sinergista", "EtOH")) {
+      mortality_field <- if (identical(set_name, "Sinergista")) {
+        "sinergista_mortalidad_corregida_pct"
+      } else {
+        "etanol_mortalidad_corregida_pct"
+      }
+      rows[[length(rows) + 1L]] <- data.frame(
+        codigo_bioensayo = records$codigo_bioensayo,
+        sinergista_tipo = records$sinergista_tipo,
+        grupo = as.character(records[[comparison_field]]),
+        conjunto = set_name,
+        mortalidad = suppressWarnings(as.numeric(records[[mortality_field]])),
+        stringsAsFactors = FALSE
+      )
+    }
+    plot_data <- do.call(rbind, rows)
+    plot_data <- plot_data[
+      !is.na(plot_data$sinergista_tipo) & nzchar(trimws(plot_data$sinergista_tipo)) &
+        !is.na(plot_data$grupo) & nzchar(trimws(plot_data$grupo)) &
+        !is.na(plot_data$mortalidad),
+      , drop = FALSE
+    ]
+    if (!nrow(plot_data)) {
+      plot.new()
+      text(0.5, 0.55, "Sin pares Sinergista/EtOH para graficar", cex = 0.95, font = 2, col = "#526070")
+      text(0.5, 0.45, "Complete las lecturas de ambos sets al tiempo diagnóstico.", cex = 0.78, col = "#6B7280")
+      return(invisible(NULL))
+    }
+    plot_data$sinergista_tipo <- factor(plot_data$sinergista_tipo, levels = c("DEF", "PBO", "DM"))
+    plot_data$conjunto <- factor(plot_data$conjunto, levels = c("Sinergista", "EtOH"))
+    comparison_plot <- ggplot(plot_data, aes(x = sinergista_tipo, y = mortalidad, fill = conjunto)) +
+      geom_hline(yintercept = 90, linetype = "dashed", color = "#CBD5E1", linewidth = 0.35) +
+      geom_hline(yintercept = 98, linetype = "dashed", color = "#94A3B8", linewidth = 0.35) +
+      stat_summary(fun = mean, geom = "col", position = position_dodge(width = 0.76), width = 0.68, alpha = 0.82) +
+      geom_point(
+        aes(group = conjunto),
+        position = position_jitterdodge(jitter.width = 0.08, dodge.width = 0.76),
+        shape = 21, color = "#111827", size = 1.8, alpha = 0.78
+      ) +
+      facet_wrap(~ grupo, scales = "free_x") +
+      scale_fill_manual(values = c("Sinergista" = "#007A78", "EtOH" = "#F4A261")) +
+      scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25), labels = function(values) paste0(values, "%")) +
+      labs(x = "Sinergista", y = "Mortalidad corregida (%)", fill = "Set") +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        panel.grid.minor = element_blank(), panel.grid.major.x = element_blank(),
+        strip.text = element_text(color = "#082243", face = "bold"),
+        legend.position = "bottom"
+      )
+    print(comparison_plot)
+    invisible(NULL)
+  }
+
   f7_draw_resistance_plot <- function(records, selected_type, department_filter = "all") {
+    if (identical(selected_type, "Sinergistas")) {
+      return(f7_draw_synergist_comparison_plot(records, department_filter))
+    }
     category_config <- f7_visualization_category_config(selected_type)
     comparison_field <- f7_visualization_comparison_field(department_filter)
     category_values <- records[[category_config$field]]
@@ -17007,6 +17179,7 @@ server <- function(input, output, session) {
   output$f7_visualization_resistance_legend <- renderUI({
     records <- f7_visualization_filtered()
     selected_type <- value_or_default(input$f7_viz_type, "all")
+    if (identical(selected_type, "Sinergistas")) return(NULL)
     category_field <- if (identical(selected_type, "Sinergistas")) {
       "sinergista_tipo"
     } else if (identical(selected_type, "Diagnóstica 1X")) {
@@ -17068,6 +17241,42 @@ server <- function(input, output, session) {
 
     if (!nrow(records)) return(data.frame())
 
+    if (identical(selected_type, "Sinergistas")) {
+      rows <- list()
+      for (record_index in seq_len(nrow(records))) {
+        for (set_name in c("sinergista", "etanol")) {
+          for (minutes in c(0L, 15L, 30L, 45L, 1440L)) {
+            prefix_time <- if (identical(minutes, 1440L)) "24h" else paste0(minutes, "min")
+            vivos <- 0
+            muertos <- 0
+            has_counts <- FALSE
+            for (bottle in c("b1", "b2", "b3", "b4")) {
+              column_prefix <- paste0(set_name, "_resultado_", prefix_time, "_", bottle)
+              vivos_value <- f7_cdc_count_value(records[[paste0(column_prefix, "_vivos")]][[record_index]])
+              muertos_value <- f7_cdc_count_value(records[[paste0(column_prefix, "_incapacitados")]][[record_index]])
+              if (!is.na(vivos_value) || !is.na(muertos_value)) has_counts <- TRUE
+              vivos <- vivos + ifelse(is.na(vivos_value), 0, vivos_value)
+              muertos <- muertos + ifelse(is.na(muertos_value), 0, muertos_value)
+            }
+            total <- vivos + muertos
+            if (!has_counts || total <= 0) next
+            rows[[length(rows) + 1L]] <- data.frame(
+              codigo_bioensayo = records$codigo_bioensayo[[record_index]],
+              departamento = records$departamento[[record_index]],
+              insecticida = records$insecticida[[record_index]],
+              curva_categoria = records$curva_categoria[[record_index]],
+              conjunto = if (identical(set_name, "sinergista")) "Sinergista" else "EtOH",
+              tiempo_min = minutes,
+              mortalidad = muertos / total * 100,
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+      if (!length(rows)) return(data.frame())
+      return(do.call(rbind, rows))
+    }
+
     time_points <- c(0L, 15L, 30L, 45L, 60L, 1440L)
     time_labels <- c("0 min", "15 min", "30 min", "45 min", "60 min", "24 h")
     treated_bottles <- c("b1", "b2", "b3", "b4")
@@ -17096,6 +17305,7 @@ server <- function(input, output, session) {
           departamento = records$departamento[[record_index]],
           insecticida = records$insecticida[[record_index]],
           curva_categoria = records$curva_categoria[[record_index]],
+          conjunto = "Bioensayo",
           tiempo_min = minutes,
           tiempo = factor(time_labels[[minutes_index]], levels = time_labels),
           mortalidad = muertos / total * 100,
@@ -17153,15 +17363,13 @@ server <- function(input, output, session) {
     }
     extra_categories <- sort(setdiff(unique(as.character(curve_data$curva_categoria)), category_order))
     curve_data$curva_categoria <- factor(as.character(curve_data$curva_categoria), levels = c(category_order, extra_categories))
-    curve_data$bioensayo_departamento <- paste(curve_data$codigo_bioensayo, curve_data$departamento, sep = " | ")
-    curve_data$bioensayo_puntos <- ave(curve_data$tiempo_min, curve_data$bioensayo_departamento, FUN = length)
-    ggplot(curve_data, aes(x = tiempo, y = mortalidad)) +
+    curve_data$bioensayo_grupo <- paste(curve_data$codigo_bioensayo, curve_data$departamento, curve_data$conjunto, sep = " | ")
+    curve_data$bioensayo_puntos <- ave(curve_data$tiempo_min, curve_data$bioensayo_grupo, FUN = length)
+    curve_plot <- ggplot(curve_data, aes(x = tiempo, y = mortalidad)) +
       geom_hline(yintercept = 90, linetype = "dashed", color = "#CBD5E1", linewidth = 0.35) +
       geom_hline(yintercept = 98, linetype = "dashed", color = "#94A3B8", linewidth = 0.35) +
-      geom_line(data = curve_data[curve_data$bioensayo_puntos > 1, , drop = FALSE], aes(group = bioensayo_departamento), color = "#6B7280", alpha = 0.2, linewidth = 0.35) +
-      geom_point(aes(group = bioensayo_departamento), color = "#6B7280", alpha = 0.22, size = 0.7) +
-      stat_summary(aes(color = departamento, group = departamento), fun = mean, geom = "line", linewidth = 1.05) +
-      stat_summary(aes(color = departamento, group = departamento), fun = mean, geom = "point", size = 1.8) +
+      geom_line(data = curve_data[curve_data$bioensayo_puntos > 1, , drop = FALSE], aes(group = bioensayo_grupo), color = "#6B7280", alpha = 0.2, linewidth = 0.35) +
+      geom_point(aes(group = bioensayo_grupo), color = "#6B7280", alpha = 0.22, size = 0.7) +
       facet_wrap(~ curva_categoria, ncol = 1) +
       scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25), labels = function(values) paste0(values, "%")) +
       scale_color_viridis_d(option = "D", end = 0.88) +
@@ -17179,6 +17387,19 @@ server <- function(input, output, session) {
         legend.title = element_text(color = "#082243", face = "bold"),
         legend.text = element_text(color = "#526070", size = 9)
       )
+    if (identical(selected_type, "Sinergistas")) {
+      curve_plot <- curve_plot +
+        stat_summary(aes(color = departamento, linetype = conjunto, group = interaction(departamento, conjunto)), fun = mean, geom = "line", linewidth = 1.05) +
+        stat_summary(aes(color = departamento, shape = conjunto, group = interaction(departamento, conjunto)), fun = mean, geom = "point", size = 1.8) +
+        scale_linetype_manual(values = c("Sinergista" = "solid", "EtOH" = "dashed")) +
+        scale_shape_manual(values = c("Sinergista" = 16, "EtOH" = 17)) +
+        labs(linetype = "Set", shape = "Set")
+    } else {
+      curve_plot <- curve_plot +
+        stat_summary(aes(color = departamento, group = departamento), fun = mean, geom = "line", linewidth = 1.05) +
+        stat_summary(aes(color = departamento, group = departamento), fun = mean, geom = "point", size = 1.8)
+    }
+    curve_plot
   }, bg = "transparent", res = 110)
 
   output$f7_visualization_diagnostic_summary_table <- renderUI({
@@ -17188,6 +17409,48 @@ server <- function(input, output, session) {
       "nombre_poblacion"
     } else {
       "departamento"
+    }
+    if (identical(selected_type, "Sinergistas")) {
+      records <- records[
+        !is.na(records[[comparison_field]]) & nzchar(trimws(as.character(records[[comparison_field]]))) &
+          !is.na(records$insecticida) & nzchar(trimws(as.character(records$insecticida))) &
+          !is.na(records$sinergista_tipo) & nzchar(trimws(as.character(records$sinergista_tipo))),
+        , drop = FALSE
+      ]
+      if (!nrow(records)) return(div(class = "alert alert-info", "Sin resultados de Sinergista/EtOH para resumir."))
+      comparison_label <- if (identical(comparison_field, "nombre_poblacion")) "Población" else "Departamento"
+      format_pct <- function(value) ifelse(is.finite(value), paste0(format(round(value, 1), nsmall = 1), "%"), "Pendiente")
+      sections <- list()
+      for (insecticide in sort(unique(as.character(records$insecticida)))) {
+        insecticide_records <- records[records$insecticida == insecticide, , drop = FALSE]
+        for (synergist in sort(unique(as.character(insecticide_records$sinergista_tipo)))) {
+          category_records <- insecticide_records[insecticide_records$sinergista_tipo == synergist, , drop = FALSE]
+          comparison_groups <- sort(unique(as.character(category_records[[comparison_field]])))
+          table_rows <- lapply(comparison_groups, function(group_name) {
+            group <- category_records[as.character(category_records[[comparison_field]]) == group_name, , drop = FALSE]
+            paired <- is.finite(group$sinergista_mortalidad_corregida_pct) & is.finite(group$etanol_mortalidad_corregida_pct)
+            sin_mean <- if (any(is.finite(group$sinergista_mortalidad_corregida_pct))) mean(group$sinergista_mortalidad_corregida_pct, na.rm = TRUE) else NA_real_
+            ethanol_mean <- if (any(is.finite(group$etanol_mortalidad_corregida_pct))) mean(group$etanol_mortalidad_corregida_pct, na.rm = TRUE) else NA_real_
+            difference <- if (is.finite(sin_mean) && is.finite(ethanol_mean)) sin_mean - ethanol_mean else NA_real_
+            tags$tr(
+              tags$td(group_name), tags$td(nrow(group)), tags$td(sum(paired)),
+              tags$td(format_pct(sin_mean)), tags$td(format_pct(ethanol_mean)),
+              tags$td(ifelse(is.finite(difference), paste0(ifelse(difference > 0, "+", ""), format(round(difference, 1), nsmall = 1), " pp"), "Pendiente"))
+            )
+          })
+          sections[[length(sections) + 1L]] <- div(
+            class = "f7-viz-summary-section",
+            h6(insecticide),
+            p(class = "f7-viz-summary-subtitle", synergist, " · comparación pareada Sinergista vs EtOH"),
+            tags$table(
+              class = "table table-condensed table-striped",
+              tags$thead(tags$tr(lapply(c(comparison_label, "Bioensayos", "Pares completos", "Sinergista", "EtOH", "Diferencia"), tags$th))),
+              tags$tbody(table_rows)
+            )
+          )
+        }
+      }
+      return(tagList(sections))
     }
     category_field <- if (identical(selected_type, "Sinergistas")) {
       "sinergista_tipo"
@@ -17280,6 +17543,39 @@ server <- function(input, output, session) {
 
   f7_report_summary_tables <- function(records, selected_type, department_filter = "all") {
     comparison_field <- f7_visualization_comparison_field(department_filter)
+    if (identical(selected_type, "Sinergistas")) {
+      keep <- !is.na(records[[comparison_field]]) & nzchar(trimws(as.character(records[[comparison_field]]))) &
+        !is.na(records$insecticida) & nzchar(trimws(as.character(records$insecticida))) &
+        !is.na(records$sinergista_tipo) & nzchar(trimws(as.character(records$sinergista_tipo)))
+      records <- records[keep, , drop = FALSE]
+      if (!nrow(records)) return(list())
+      comparison_label <- if (identical(comparison_field, "nombre_poblacion")) "Población" else "Departamento"
+      tables <- list()
+      for (insecticide in sort(unique(as.character(records$insecticida)))) {
+        insecticide_records <- records[records$insecticida == insecticide, , drop = FALSE]
+        for (category in sort(unique(as.character(insecticide_records$sinergista_tipo)))) {
+          category_records <- insecticide_records[insecticide_records$sinergista_tipo == category, , drop = FALSE]
+          groups <- sort(unique(as.character(category_records[[comparison_field]])))
+          data <- do.call(rbind, lapply(groups, function(group_name) {
+            group <- category_records[as.character(category_records[[comparison_field]]) == group_name, , drop = FALSE]
+            paired <- is.finite(group$sinergista_mortalidad_corregida_pct) & is.finite(group$etanol_mortalidad_corregida_pct)
+            sin_mean <- if (any(is.finite(group$sinergista_mortalidad_corregida_pct))) mean(group$sinergista_mortalidad_corregida_pct, na.rm = TRUE) else NA_real_
+            ethanol_mean <- if (any(is.finite(group$etanol_mortalidad_corregida_pct))) mean(group$etanol_mortalidad_corregida_pct, na.rm = TRUE) else NA_real_
+            data.frame(
+              setNames(list(group_name), comparison_label),
+              Bioensayos = nrow(group),
+              `Pares completos` = sum(paired),
+              `Sinergista (%)` = round(sin_mean, 1),
+              `EtOH (%)` = round(ethanol_mean, 1),
+              `Diferencia (pp)` = round(sin_mean - ethanol_mean, 1),
+              check.names = FALSE, stringsAsFactors = FALSE
+            )
+          }))
+          tables[[length(tables) + 1L]] <- list(insecticide = insecticide, category = category, data = data)
+        }
+      }
+      return(tables)
+    }
     category_field <- if (identical(selected_type, "Sinergistas")) {
       "sinergista_tipo"
     } else if (identical(selected_type, "Intensidad Exploratorio")) {
@@ -17487,6 +17783,11 @@ server <- function(input, output, session) {
       `Mortalidad control CDC` = ifelse(is.na(records$cdc_mortalidad_control_pct), "", paste0(records$cdc_mortalidad_control_pct, "%")),
       `Mortalidad corregida CDC` = ifelse(is.na(records$cdc_mortalidad_corregida_pct), "", paste0(records$cdc_mortalidad_corregida_pct, "%")),
       `Clasificación CDC` = ifelse(is.na(records$cdc_resultado), "Sin cálculo CDC", records$cdc_resultado),
+      `Mortalidad Sinergista` = ifelse(is.na(records$sinergista_mortalidad_corregida_pct), "No aplica", paste0(records$sinergista_mortalidad_corregida_pct, "%")),
+      `Clasificación Sinergista` = ifelse(is.na(records$sinergista_resultado_diagnostico), "No aplica", records$sinergista_resultado_diagnostico),
+      `Mortalidad EtOH` = ifelse(is.na(records$etanol_mortalidad_corregida_pct), "No aplica", paste0(records$etanol_mortalidad_corregida_pct, "%")),
+      `Clasificación EtOH` = ifelse(is.na(records$etanol_resultado_diagnostico), "No aplica", records$etanol_resultado_diagnostico),
+      `Diferencia Sinergista-EtOH` = ifelse(is.na(records$diferencia_sinergista_etanol_pct), "No aplica", paste0(ifelse(records$diferencia_sinergista_etanol_pct > 0, "+", ""), records$diferencia_sinergista_etanol_pct, " pp")),
       `Resultado digitado` = ifelse(is.na(records$resultado_diagnostico), "No aplica", records$resultado_diagnostico),
       Estado = records$review_status,
       `Ingresado en` = display_date(records$creado_en),
@@ -17530,8 +17831,8 @@ server <- function(input, output, session) {
             class = "f7-viz-diagnostic-layout",
             div(
               class = "visualization-results-card f7-viz-diagnostic-panel",
-              h5("Resultados de Resistencia"),
-              p("Tasa de mortalidad calculada con el método CDC por tipo de bioensayo y departamento."),
+              h5(if (identical(selected_bioassay_type, "Sinergistas")) "Comparación Sinergista vs EtOH" else "Resultados de Resistencia"),
+              p(if (identical(selected_bioassay_type, "Sinergistas")) "Mortalidad corregida de ambos sets, comparada dentro del mismo bioensayo y ubicación." else "Tasa de mortalidad calculada con el método CDC por tipo de bioensayo y departamento."),
               div(
                 class = "f7-viz-diagnostic-plot",
                 plotOutput("f7_visualization_resistance_plot", height = "400px"),
@@ -17540,8 +17841,8 @@ server <- function(input, output, session) {
             ),
             div(
               class = "visualization-results-card f7-viz-diagnostic-curve",
-              h5("Curvas de mortalidad por departamento"),
-              p("Líneas grises = bioensayos individuales, líneas de color = promedio departamental. Las facetas se ajustan al tipo de bioensayo seleccionado."),
+              h5(if (identical(selected_bioassay_type, "Sinergistas")) "Curvas Sinergista y EtOH" else "Curvas de mortalidad por departamento"),
+              p(if (identical(selected_bioassay_type, "Sinergistas")) "Cada faceta corresponde al sinergista seleccionado; el tipo de línea distingue el set Sinergista del control EtOH." else "Líneas grises = bioensayos individuales, líneas de color = promedio departamental. Las facetas se ajustan al tipo de bioensayo seleccionado."),
               plotOutput("f7_visualization_diagnostic_curve_plot", height = "470px")
             ),
             div(
@@ -17561,7 +17862,11 @@ server <- function(input, output, session) {
           p("Utilice los filtros para explorar los registros del Formulario 7. Los puntos actuales son centroides aproximados por municipio; los registros sin coordenada aproximada permanecen disponibles en las tablas."),
           div(
             class = "alert alert-info",
-            HTML("Método de análisis: la clasificación se calcula con la mortalidad al tiempo diagnóstico del <em>CDC Bottle Bioassay</em>; para Temefos se usa la lectura de 24 horas. Cuando la mortalidad del control es &gt;3% y ≤20% se aplica corrección de Abbott; si el control es &gt;20% el ensayo se marca como inválido. Interpretación CDC: 98-100% susceptible, 90-97% sospecha de resistencia y &lt;90% resistente. Fuente: <a href='https://www.cdc.gov/mosquitoes/media/pdfs/2024/04/CDC-Global-Bottle-Bioassay-Manual-508.pdf' target='_blank' rel='noopener'>CDC Global Bottle Bioassay Manual</a>.")
+            HTML(if (identical(selected_bioassay_type, "Sinergistas")) {
+              "Método de análisis: se calcula por separado la mortalidad corregida del set Sinergista y del set EtOH al tiempo diagnóstico CDC. La diferencia mostrada es Sinergista menos EtOH en puntos porcentuales; los registros sin lecturas EtOH permanecen identificados como pendientes."
+            } else {
+              "Método de análisis: la clasificación se calcula con la mortalidad al tiempo diagnóstico del <em>CDC Bottle Bioassay</em>; para Temefos se usa la lectura de 24 horas. Cuando la mortalidad del control es &gt;3% y ≤20% se aplica corrección de Abbott; si el control es &gt;20% el ensayo se marca como inválido. Interpretación CDC: 98-100% susceptible, 90-97% sospecha de resistencia y &lt;90% resistente. Fuente: <a href='https://www.cdc.gov/mosquitoes/media/pdfs/2024/04/CDC-Global-Bottle-Bioassay-Manual-508.pdf' target='_blank' rel='noopener'>CDC Global Bottle Bioassay Manual</a>."
+            })
           ),
           uiOutput("f7_visualization_refresh_status"),
           uiOutput("f7_visualization_filters")
