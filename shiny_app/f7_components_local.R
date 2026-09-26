@@ -130,7 +130,7 @@ f7_component_ui <- function(id, mode) {
     })
   }
   env$actionButton <- function(inputId, label, ...) {
-    if (inputId == "save_formulario_7") label <- "Validar y guardar captura completa"
+    if (inputId == "save_formulario_7") label <- "Guardar captura"
     shiny::actionButton(ns(inputId), label, ...)
   }
   env$tabsetPanel <- function(..., id = NULL) shiny::tabsetPanel(..., id = if (is.null(id)) NULL else ns(id))
@@ -246,7 +246,7 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
       if (mode != "flujo") return(mode)
       switch(value_or_default(input$f7_tipo_bioensayo, "diagnostica_1x"), diagnostica_1x = "diagnostica", intensidad = "intensidad", sinergistas = "sinergistas", "diagnostica")
     })
-    status <- reactiveVal("Cada componente guarda sus propios archivos locales. La sábana incluye únicamente capturas completas.")
+    status <- reactiveVal("Los campos faltantes generan una alerta. La captura puede guardarse como pendiente para completar datos históricos durante la revisión.")
     tick <- reactiveVal(0)
     steps <- reactive(c("informacion_general", "tipo_bioensayo", "informacion_bioensayo", "material_biologico", "responsables", "condiciones", "horario", "resultados", if (mode_value() == "sinergistas") "lectura_posterior", "comentarios_envio"))
     observeEvent(mode_value(), {
@@ -255,12 +255,37 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
     })
     session$onFlushed(function() {
       if (mode != "flujo") updateRadioButtons(session, "f7_tipo_bioensayo", choices = setNames(if (mode == "diagnostica") "diagnostica_1x" else mode, f7_component_labels[[mode]]))
-      updateActionButton(session, "save_formulario_7", label = "Validar y guardar captura completa")
+      updateActionButton(session, "save_formulario_7", label = "Guardar captura")
       updateTextInput(session, "f7_codigo_control_calidad", value = "NO APLICA")
     }, once = TRUE)
-    output$f7_codigo_municipio_ui <- renderUI(tagList(
-      textInput(session$ns("departamento"), "Código departamento *"),
-      textInput(session$ns("f7_codigo_municipio"), "Código municipio *")))
+    output$f7_codigo_municipio_ui <- renderUI({
+      country <- value_or_default(input$f7_pais, "")
+      tagList(
+        selectInput(
+          session$ns("departamento"),
+          "Departamento *",
+          choices = ubicacion_departamento_choices(country),
+          selected = ""
+        ),
+        uiOutput(session$ns("f7_municipio_selector_ui"))
+      )
+    })
+    output$f7_municipio_selector_ui <- renderUI({
+      country <- value_or_default(input$f7_pais, "")
+      department <- value_or_default(input$departamento, "")
+      tagList(
+        selectInput(
+          session$ns("f7_codigo_municipio"),
+          "Municipio o código nacional *",
+          choices = ubicacion_municipio_choices(country, department, include_manual = TRUE)
+        ),
+        conditionalPanel(
+          "input.f7_codigo_municipio == '__manual__'",
+          textInput(session$ns("f7_codigo_municipio_manual"), "Código nacional de municipio *", placeholder = "Ej. 0201"),
+          ns = session$ns
+        )
+      )
+    })
     output$f7_navigation_controls <- renderUI(tagList(
       actionButton(session$ns("previous"), "Anterior"),
       actionButton(session$ns("next_step"), "Siguiente")
@@ -273,6 +298,9 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
       names(values) <- sub("^f7_", "", names(values))
       for (k in setdiff(c(formulario_7_header_columns, formulario_7_result_columns), names(values))) values[[k]] <- NA_character_
       values$codigo_departamento <- input$departamento
+      if (identical(value_or_default(input$f7_codigo_municipio, ""), "__manual__")) {
+        values$codigo_municipio <- gsub("[^0-9]+", "", value_or_default(input$f7_codigo_municipio_manual, ""))
+      }
       values$nombre_quien_ingreso <- input$f7_creado_por
       values$formulario_codigo <- "F7"
       values$formulario_nombre <- "Registro de datos del bioensayo de la botella CDC"
@@ -370,9 +398,21 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
       mode <- mode_value()
       folder <- file.path(directory, f7_storage_key(mode))
       dir.create(folder, recursive = TRUE, showWarnings = FALSE)
-      errors <- check(TRUE)
-      if (length(errors)) { status(paste(errors, collapse = " · ")); return(invisible(FALSE)) }
+      errors <- check(FALSE)
       row <- current()
+      if (is.na(row$codigo_bioensayo[[1]]) || !nzchar(trimws(row$codigo_bioensayo[[1]]))) {
+        errors <- c(errors, "El código de bioensayo es indispensable para guardar y evitar registros duplicados.")
+      }
+      if (length(errors)) {
+        status(paste("No se guardó porque hay valores inválidos:", paste(unique(errors), collapse = " · ")))
+        return(invisible(FALSE))
+      }
+      warnings <- setdiff(check(TRUE), errors)
+      warning_summary <- if (length(warnings) > 12L) {
+        c(head(warnings, 12L), paste0("… y ", length(warnings) - 12L, " campos o lecturas pendientes adicionales."))
+      } else {
+        warnings
+      }
       if (is.function(save_capture)) {
         payload <- if (identical(mode, "sinergistas")) f7_sets_collect(input) else NULL
         result <- tryCatch(
@@ -380,10 +420,15 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
           error = function(error) error
         )
         if (inherits(result, "error")) { status(paste("No se pudo guardar en Supabase:", conditionMessage(result))); return(invisible(FALSE)) }
-        status(value_or_default(result$message, "Captura completa guardada en Supabase."))
+        saved_message <- value_or_default(result$message, "Captura guardada en Supabase.")
+        if (length(warnings)) {
+          status(paste(saved_message, "Alerta: faltan datos históricos; el registro quedó pending.", paste(warning_summary, collapse = " · ")))
+        } else {
+          status(saved_message)
+        }
         return(invisible(TRUE))
       }
-      row$estado_captura <- "completo_local"
+      row$estado_captura <- if (length(warnings)) "pendiente_local" else "completo_local"
       files <- list.files(folder, pattern = "^captura_.*json$", full.names = TRUE)
       codes <- vapply(files, function(f) jsonlite::read_json(f)$fila$codigo_bioensayo, character(1))
       if (row$codigo_bioensayo %in% codes) { status("Ese código ya tiene una captura completa en este componente."); return(invisible(FALSE)) }
@@ -393,7 +438,11 @@ f7_component_server <- function(id, mode, directory = "output/f7_componentes", s
       snapshot <- snapshot[keep]
       jsonlite::write_json(list(version = "f7_componentes_v1", componente = mode, fila = as.list(row), inputs = snapshot), file, auto_unbox = TRUE, pretty = TRUE, na = "null", null = "null")
       tick(tick() + 1)
-      status(paste("Captura completa guardada localmente:", normalizePath(file)))
+      status(paste(
+        if (length(warnings)) "Captura pendiente guardada localmente:" else "Captura completa guardada localmente:",
+        normalizePath(file),
+        if (length(warnings)) paste("· Alerta:", paste(warning_summary, collapse = " · ")) else ""
+      ))
     }
     observeEvent(input$save_formulario_7, save())
   })

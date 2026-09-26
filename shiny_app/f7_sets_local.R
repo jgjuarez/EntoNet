@@ -123,6 +123,11 @@ f7_sets_analysis <- function(payload, insecticida) {
     row <- list(insecticida = insecticida)
     for (index in seq_along(expected)) {
       source <- indexed[[expected[[index]]]]
+      counts <- suppressWarnings(as.numeric(c(source$vivos, source$incapacitados)))
+      if (length(counts) != 2L || any(!is.finite(counts)) || any(counts < 0) ||
+          any(counts != floor(counts)) || sum(counts) <= 0) {
+        return(pending("Faltan lecturas completas al tiempo diagnóstico."))
+      }
       bottle <- c("b1", "b2", "b3", "b4", "c1")[[index]]
       prefix <- f7_cdc_result_prefix(diagnostic_time, bottle)
       row[[paste0(prefix, "_vivos")]] <- source$vivos
@@ -161,12 +166,16 @@ f7_sinergista_header_columns <- c(
   "nombre_quien_ingreso"
 )
 
-f7_sinergista_tables <- function(row, payload, allow_missing_hours = FALSE) {
+f7_sinergista_tables <- function(row, payload, allow_missing_hours = FALSE, allow_incomplete = FALSE) {
   if (nrow(row) != 1L) stop("La captura de Sinergistas debe contener un solo encabezado.")
   if (formulario_7_is_temefos(row$insecticida[[1]])) {
     stop("Temefos solo puede capturarse para Diagnóstica e Intensidad.")
   }
-  errors <- f7_sets_errors(payload, complete = TRUE, require_hours = !allow_missing_hours)
+  errors <- f7_sets_errors(
+    payload,
+    complete = !allow_incomplete,
+    require_hours = !allow_missing_hours && !allow_incomplete
+  )
   if (length(errors)) stop(paste(errors, collapse = "\n"))
 
   analysis <- f7_sets_analysis(payload, row$insecticida[[1]])
@@ -208,9 +217,10 @@ f7_sinergista_tables <- function(row, payload, allow_missing_hours = FALSE) {
   ))
 
   results <- Filter(function(reading) {
+    has_counts <- !is.null(reading$vivos) || !is.null(reading$incapacitados)
+    if (allow_incomplete) return(has_counts)
     !(identical(reading$etapa, "bioensayo") &&
-      identical(as.integer(reading$tiempo_minutos), 45L) &&
-      is.null(reading$vivos) && is.null(reading$incapacitados))
+      identical(as.integer(reading$tiempo_minutos), 45L) && !has_counts)
   }, payload$lecturas)
   list(header = header, results = results, comments = comments, analysis = analysis)
 }

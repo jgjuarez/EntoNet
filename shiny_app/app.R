@@ -565,22 +565,49 @@ formulario_5_template <- data.frame(
   stringsAsFactors = FALSE
 )
 
-formulario_7_departamento_catalogo <- data.frame(
-  pais = c(rep("Guatemala", 22), rep("El Salvador", 14)),
-  departamento_codigo = c(
-    sprintf("%02d", 1:22),
-    sprintf("%02d", 1:14)
-  ),
-  departamento = c(
-    "Guatemala", "El Progreso", "Sacatepéquez", "Chimaltenango", "Escuintla", "Santa Rosa",
-    "Sololá", "Totonicapán", "Quetzaltenango", "Suchitepéquez", "Retalhuleu", "San Marcos",
-    "Huehuetenango", "Quiché", "Baja Verapaz", "Alta Verapaz", "Petén", "Izabal", "Zacapa",
-    "Chiquimula", "Jalapa", "Jutiapa",
-    "Ahuachapán", "Santa Ana", "Sonsonate", "Chalatenango", "La Libertad", "San Salvador",
-    "Cuscatlán", "La Paz", "Cabañas", "San Vicente", "Usulután", "San Miguel", "Morazán", "La Unión"
-  ),
-  stringsAsFactors = FALSE
-)
+formulario_7_departamento_catalogo <- local({
+  divisions <- list(
+    "Belice" = c("Belize", "Cayo", "Corozal", "Orange Walk", "Stann Creek", "Toledo"),
+    "Guatemala" = c(
+      "Guatemala", "El Progreso", "Sacatepéquez", "Chimaltenango", "Escuintla", "Santa Rosa",
+      "Sololá", "Totonicapán", "Quetzaltenango", "Suchitepéquez", "Retalhuleu", "San Marcos",
+      "Huehuetenango", "Quiché", "Baja Verapaz", "Alta Verapaz", "Petén", "Izabal", "Zacapa",
+      "Chiquimula", "Jalapa", "Jutiapa"
+    ),
+    "El Salvador" = c(
+      "Ahuachapán", "Santa Ana", "Sonsonate", "Chalatenango", "La Libertad", "San Salvador",
+      "Cuscatlán", "La Paz", "Cabañas", "San Vicente", "Usulután", "San Miguel", "Morazán", "La Unión"
+    ),
+    "Honduras" = c(
+      "Atlántida", "Colón", "Comayagua", "Copán", "Cortés", "Choluteca", "El Paraíso", "Francisco Morazán",
+      "Gracias a Dios", "Intibucá", "Islas de la Bahía", "La Paz", "Lempira", "Ocotepeque", "Olancho",
+      "Santa Bárbara", "Valle", "Yoro"
+    ),
+    "Nicaragua" = c(
+      "Boaco", "Carazo", "Chinandega", "Chontales", "Estelí", "Granada", "Jinotega", "León", "Madriz",
+      "Managua", "Masaya", "Matagalpa", "Nueva Segovia", "Río San Juan", "Rivas",
+      "Región Autónoma de la Costa Caribe Norte", "Región Autónoma de la Costa Caribe Sur"
+    ),
+    "Costa Rica" = c("San José", "Alajuela", "Cartago", "Heredia", "Guanacaste", "Puntarenas", "Limón"),
+    "Panamá" = c(
+      "Bocas del Toro", "Coclé", "Colón", "Chiriquí", "Darién", "Herrera", "Los Santos", "Panamá",
+      "Veraguas", "Panamá Oeste", "Emberá-Wounaan", "Guna Yala", "Ngäbe-Buglé", "Naso Tjër Di"
+    ),
+    "República Dominicana" = c(
+      "Distrito Nacional", "Azua", "Baoruco", "Barahona", "Dajabón", "Duarte", "Elías Piña", "El Seibo",
+      "Espaillat", "Independencia", "La Altagracia", "La Romana", "La Vega", "María Trinidad Sánchez",
+      "Monte Cristi", "Pedernales", "Peravia", "Puerto Plata", "Hermanas Mirabal", "Samaná", "San Cristóbal",
+      "San Juan", "San Pedro de Macorís", "Sánchez Ramírez", "Santiago", "Santiago Rodríguez", "Valverde",
+      "Monseñor Nouel", "Monte Plata", "Hato Mayor", "San José de Ocoa", "Santo Domingo"
+    )
+  )
+  do.call(rbind, lapply(names(divisions), function(country) data.frame(
+    pais = country,
+    departamento_codigo = sprintf("%02d", seq_along(divisions[[country]])),
+    departamento = divisions[[country]],
+    stringsAsFactors = FALSE
+  )))
+})
 
 formulario_7_municipio_catalogo <- local({
   departamentos_gt <- c(
@@ -685,6 +712,12 @@ ubicacion_normalizar_pais <- function(country) {
   country_upper <- normalize_ascii_upper(country)
   if (country_upper %in% c("EL SALVADOR", "SALVADOR", "SV")) return("El Salvador")
   if (country_upper %in% c("GUATEMALA", "GT")) return("Guatemala")
+  if (country_upper %in% c("BELICE", "BELIZE", "BZ")) return("Belice")
+  if (country_upper %in% c("HONDURAS", "HN")) return("Honduras")
+  if (country_upper %in% c("NICARAGUA", "NI")) return("Nicaragua")
+  if (country_upper %in% c("COSTA RICA", "CR")) return("Costa Rica")
+  if (country_upper %in% c("PANAMA", "PA")) return("Panamá")
+  if (country_upper %in% c("REPUBLICA DOMINICANA", "DOMINICAN REPUBLIC", "DO", "RD")) return("República Dominicana")
   country
 }
 
@@ -2998,7 +3031,7 @@ formulario_7_capture_form <- function() {
                 )
               )
             ),
-            selectInput("f7_pais", "País *", choices = c("El Salvador", "Guatemala")),
+            selectInput("f7_pais", "País *", choices = country_choices, selected = "Guatemala"),
             textInput("f7_id_institucion", "ID Institución *", value = default_institution_id),
             selectInput("f7_codigo_departamento", "Departamento *", choices = c("Seleccione" = "")),
             uiOutput("f7_codigo_municipio_ui"),
@@ -3168,7 +3201,7 @@ formulario_7_print_form <- function() {
       fluidRow(
         column(
           6,
-          selectInput("f7_print_pais", "País", choices = c("El Salvador", "Guatemala"), selected = "El Salvador"),
+          selectInput("f7_print_pais", "País", choices = country_choices, selected = "Guatemala"),
           selectInput("f7_print_codigo_bioensayo_departamento", "Departamento", choices = c("Seleccione" = "")),
           uiOutput("f7_print_codigo_bioensayo_municipio_ui"),
           selectInput(
@@ -8524,6 +8557,12 @@ server <- function(input, output, session) {
     country <- normalize_ascii_upper(value_or_default(country, ""))
     if (country %in% c("GUATEMALA", "GT")) return("GT")
     if (country %in% c("EL SALVADOR", "SALVADOR", "SV")) return("SV")
+    if (country %in% c("BELICE", "BELIZE", "BZ")) return("BZ")
+    if (country %in% c("HONDURAS", "HN")) return("HN")
+    if (country %in% c("NICARAGUA", "NI")) return("NI")
+    if (country %in% c("COSTA RICA", "CR")) return("CR")
+    if (country %in% c("PANAMA", "PA")) return("PA")
+    if (country %in% c("REPUBLICA DOMINICANA", "DOMINICAN REPUBLIC", "DO", "RD")) return("DO")
     NA_character_
   }
 
@@ -12186,7 +12225,7 @@ server <- function(input, output, session) {
     }
     allowed <- list(
       formulario_codigo = "F7", bioensayo_intensidad = c("Exploratorio", "Completa"), solvente_utilizado = c("Etanol", "Otro"),
-      origen_material = c("Silvestre", "Laboratorio"), pais = c("El Salvador", "Guatemala"),
+      origen_material = c("Silvestre", "Laboratorio"), pais = country_choices,
       dosis_intensidad = c("1X", "2X", "5X", "10X"),
       sinergista_tipo = c("DEF", "PBO", "DM"),
       resultado_diagnostico = c("Susceptible", "Sospecha de Resistencia", "Resistente")
@@ -12299,7 +12338,7 @@ server <- function(input, output, session) {
     for (column in boolean_columns) { parsed <- f7_parse_boolean(data[[column]]); bad <- which(is.na(parsed)); if (length(bad)) details <- c(details, paste0(column, " debe usar true o false. Filas: ", paste(head(bad, 10), collapse = ", "))); data[[column]] <- ifelse(is.na(parsed), data[[column]], tolower(as.character(parsed))) }
     if (any(!is.na(data$formulario_codigo) & data$formulario_codigo != "F7")) details <- c(details, "formulario_codigo debe ser F7.")
     for (column in c("sinergista_tipo", "solvente_utilizado", "origen_material", "pais")) {
-      allowed <- switch(column, sinergista_tipo = c("DEF", "PBO", "DM"), solvente_utilizado = c("Etanol", "Otro"), origen_material = c("Silvestre", "Laboratorio"), pais = c("El Salvador", "Guatemala"))
+      allowed <- switch(column, sinergista_tipo = c("DEF", "PBO", "DM"), solvente_utilizado = c("Etanol", "Otro"), origen_material = c("Silvestre", "Laboratorio"), pais = country_choices)
       bad <- which(!is.na(data[[column]]) & !data[[column]] %in% allowed); if (length(bad)) details <- c(details, paste0(column, " no es válido. Filas: ", paste(head(bad, 10), collapse = ", ")))
     }
     if (length(which(vapply(data$insecticida, formulario_7_is_temefos, logical(1))))) details <- c(details, "Temefos solo puede capturarse para Diagnóstica e Intensidad.")
@@ -12442,8 +12481,8 @@ server <- function(input, output, session) {
     intake_ids
   }
 
-  insert_formulario_7_sinergista <- function(row, payload) {
-    tables <- f7_sinergista_tables(row, payload)
+  insert_formulario_7_sinergista <- function(row, payload, allow_incomplete = FALSE) {
+    tables <- f7_sinergista_tables(row, payload, allow_incomplete = allow_incomplete)
     intake_id <- supabase_private_rpc(
       "entonet_insert_formulario_7_sinergista",
       list(
@@ -12465,17 +12504,17 @@ server <- function(input, output, session) {
   }
 
   f7_web_save_capture <- function(mode, row, payload = NULL) {
+    code <- f7_clean_text(row$codigo_bioensayo)[[1]]
+    if (is.na(code)) stop("El código de bioensayo es indispensable para guardar y evitar registros duplicados.")
     if (identical(mode, "sinergistas")) {
       existing <- formulario_7_sinergista_existing_unique_codes(row$codigo_bioensayo)
       if (length(existing)) stop(paste0("Código de bioensayo repetido: ", existing[[1]]))
-      intake_id <- insert_formulario_7_sinergista(row, payload)
+      intake_id <- insert_formulario_7_sinergista(row, payload, allow_incomplete = TRUE)
       return(list(message = paste0("Sinergistas guardado con sinergista_intake_id ", intake_id, " y estado pending.")))
     }
-    validated <- validate_formulario_7(row)
-    if (length(validated$details)) stop(paste(validated$details, collapse = " · "))
-    existing <- formulario_7_existing_unique_codes(codes = validated$data$codigo_bioensayo)
+    existing <- formulario_7_existing_unique_codes(codes = row$codigo_bioensayo)
     if (length(existing)) stop(paste0("Código de bioensayo repetido: ", existing[[1]]))
-    intake_id <- insert_formulario_7(data = validated$data)[[1]]
+    intake_id <- insert_formulario_7(data = row)[[1]]
     list(message = paste0(if (identical(mode, "diagnostica")) "Diagnóstica" else "Intensidad", " guardada con intake_id ", intake_id, " y estado pending."))
   }
   f7_component_server("f7_web_capture", "flujo", save_capture = f7_web_save_capture)
@@ -13959,7 +13998,7 @@ server <- function(input, output, session) {
         }
         choices <- switch(
           field,
-          pais = c("El Salvador", "Guatemala"),
+          pais = country_choices,
           sinergista_tipo = c("DEF", "PBO", "DM"),
           solvente_utilizado = c("Etanol", "Otro"),
           origen_material = c("Silvestre", "Laboratorio"),
@@ -14125,7 +14164,7 @@ server <- function(input, output, session) {
       }
       choices <- switch(
         field,
-        pais = c("El Salvador", "Guatemala"),
+        pais = country_choices,
         bioensayo_intensidad = c("No aplica" = "", "Exploratorio" = "Exploratorio", "Completa" = "Completa"),
         dosis_intensidad = c("Vacío" = "", "1X" = "1X", "2X" = "2X", "5X" = "5X", "10X" = "10X"),
         resultado_diagnostico = c("No aplica" = "", "Susceptible" = "Susceptible", "Sospecha de Resistencia" = "Sospecha de Resistencia", "Resistente" = "Resistente"),
@@ -17626,43 +17665,157 @@ server <- function(input, output, session) {
     tables
   }
 
-  f7_report_draw_text_page <- function(title, lines) {
+  f7_report_palette <- c(
+    navy = "#082243", teal = "#008C8F", cyan = "#31C6D4",
+    ink = "#263442", muted = "#627181", pale = "#EAF5F5",
+    stripe = "#F4F8F8", white = "#FFFFFF", rule = "#D6E2E5"
+  )
+
+  f7_report_page_number <- 0L
+
+  f7_report_new_page <- function(section = NULL, show_number = TRUE, section_cex = 1.35) {
     plot.new()
-    text(0.05, 0.94, title, adj = 0, cex = 1.35, font = 2, col = "#082243")
-    y <- 0.86
-    for (line in lines) {
-      wrapped <- strwrap(line, width = 92)
-      for (part in wrapped) {
-        text(0.05, y, part, adj = 0, cex = 0.82, col = "#263442")
-        y <- y - 0.045
-      }
-      y <- y - 0.025
-      if (y < 0.08) {
-        plot.new()
-        y <- 0.94
-      }
+    plot.window(xlim = c(0, 1), ylim = c(0, 1), xaxs = "i", yaxs = "i")
+    if (show_number) {
+      f7_report_page_number <<- f7_report_page_number + 1L
+      text(0.055, 0.975, "EntoNet | Resistance Evaluation Initiative (REI)", adj = c(0, 1),
+           cex = 0.43, col = f7_report_palette[["muted"]])
+      segments(0.055, 0.955, 0.945, 0.955, col = f7_report_palette[["rule"]], lwd = 0.8)
+      text(0.945, 0.025, f7_report_page_number, adj = c(1, 0), cex = 0.5,
+           col = f7_report_palette[["muted"]])
+    }
+    if (!is.null(section)) {
+      text(0.055, 0.91, section, adj = c(0, 1), cex = section_cex, font = 2,
+           col = f7_report_palette[["navy"]])
+      rule_y <- if (section_cex > 2) 0.855 else 0.875
+      segments(0.055, rule_y, 0.18, rule_y, col = f7_report_palette[["teal"]], lwd = 3)
     }
   }
 
-  f7_report_draw_table_page <- function(report_title, section_title, table_data) {
+  f7_report_cover_path <- function() {
+    candidates <- c(
+      file.path("www", "Caratulav2.png"),
+      file.path("shiny_app", "www", "Caratulav2.png"),
+      file.path(getwd(), "www", "Caratulav2.png"),
+      file.path(getwd(), "shiny_app", "www", "Caratulav2.png")
+    )
+    existing <- candidates[file.exists(candidates)]
+    if (!length(existing)) stop("No se encontró la carátula del reporte (www/Caratulav2.png).")
+    normalizePath(existing[[1]], winslash = "/", mustWork = TRUE)
+  }
+
+  f7_report_draw_cover <- function() {
+    cover <- png::readPNG(f7_report_cover_path(), native = TRUE)
+    previous_margins <- par(mar = rep(0, 4))
+    on.exit(par(previous_margins), add = TRUE)
     plot.new()
-    text(0.05, 0.94, report_title, adj = 0, cex = 1.05, font = 2, col = "#082243")
-    text(0.05, 0.88, section_title, adj = 0, cex = 0.9, font = 2, col = "#263442")
-    y <- 0.80
-    header <- paste(names(table_data), collapse = " | ")
-    text(0.05, y, header, adj = 0, cex = 0.62, font = 2, family = "mono", col = "#111827")
-    y <- y - 0.035
-    for (row_index in seq_len(nrow(table_data))) {
-      row_text <- paste(as.character(table_data[row_index, ]), collapse = " | ")
-      for (part in strwrap(row_text, width = 105)) {
-        text(0.05, y, part, adj = 0, cex = 0.58, family = "mono", col = "#263442")
-        y <- y - 0.032
+    plot.window(xlim = c(0, 1), ylim = c(0, 1), xaxs = "i", yaxs = "i")
+    rasterImage(cover, 0, 0, 1, 1, interpolate = TRUE)
+  }
+
+  f7_report_draw_paragraphs <- function(title, paragraphs, lead = NULL,
+                                        title_cex = 1.35, body_cex = 0.64,
+                                        wrap_width = 105,
+                                        callout_label = NULL,
+                                        callout_text = NULL) {
+    f7_report_new_page(title, section_cex = title_cex)
+    y <- 0.83
+    if (!is.null(lead) && nzchar(lead)) {
+      rect(0.055, y - 0.105, 0.945, y + 0.015, border = NA, col = f7_report_palette[["pale"]])
+      lead_lines <- strwrap(lead, width = 96)
+      text(0.075, y - 0.015, paste(lead_lines, collapse = "\n"), adj = c(0, 1),
+           cex = 0.67, col = f7_report_palette[["ink"]], font = 2)
+      y <- y - 0.15
+    }
+    for (paragraph in paragraphs) {
+      lines <- strwrap(paragraph, width = wrap_width)
+      needed <- length(lines) * 0.029 + 0.00
+      if (y - needed < 0.07) {
+        f7_report_new_page(paste(title, "(continuación)"), section_cex = title_cex)
+        y <- 0.83
       }
-      if (y < 0.08) {
-        plot.new()
-        y <- 0.94
+      text(0.055, y, paste(lines, collapse = "\n"), adj = c(0, 1), cex = body_cex,
+           col = f7_report_palette[["ink"]])
+      y <- y - needed
+    }
+    if (!is.null(callout_text) && nzchar(callout_text)) {
+      callout_lines <- strwrap(callout_text, width = 83)
+      callout_height <- 0.075 + length(callout_lines) * 0.026
+      if (y - callout_height < 0.07) {
+        f7_report_new_page(paste(title, "(continuación)"), section_cex = title_cex)
+        y <- 0.83
+      }
+      rect(0.055, y - callout_height, 0.945, y, border = NA,
+           col = f7_report_palette[["pale"]])
+      text(0.075, y - 0.025, callout_label %||% "Propósito del reporte",
+           adj = c(0, 1), cex = 1.20, font = 2,
+           col = f7_report_palette[["teal"]])
+      text(0.075, y - 0.058, paste(callout_lines, collapse = "\n"),
+           adj = c(0, 1), cex = 0.98, col = f7_report_palette[["ink"]])
+    }
+  }
+
+  f7_report_draw_kpis <- function(title, kpis, note = NULL) {
+    f7_report_new_page(title)
+    if (!is.null(note)) {
+      text(0.055, 0.83, paste(strwrap(note, width = 105), collapse = "\n"),
+           adj = c(0, 1), cex = 0.64, col = f7_report_palette[["ink"]])
+    }
+    y <- 0.72
+    for (index in seq_along(kpis)) {
+      item <- kpis[[index]]
+      rect(0.055, y - 0.085, 0.945, y + 0.025, border = f7_report_palette[["rule"]],
+           col = if (index %% 2L) f7_report_palette[["pale"]] else f7_report_palette[["white"]])
+      text(0.075, y, item$label, adj = c(0, 0.5), cex = 0.62, font = 2,
+           col = f7_report_palette[["teal"]])
+      text(0.925, y, item$value, adj = c(1, 0.5), cex = 0.78, font = 2,
+           col = f7_report_palette[["navy"]])
+      y <- y - 0.125
+    }
+  }
+
+  f7_report_format_cell <- function(value) {
+    if (length(value) == 0L || is.na(value) || !nzchar(trimws(as.character(value)))) "-" else as.character(value)
+  }
+
+  f7_report_draw_table_page <- function(report_title, section_title, table_data) {
+    if (!nrow(table_data)) return(invisible(NULL))
+    rows_per_page <- 18L
+    pages <- split(seq_len(nrow(table_data)), ceiling(seq_len(nrow(table_data)) / rows_per_page))
+    for (page_index in seq_along(pages)) {
+      suffix <- if (length(pages) > 1L) paste0(" (", page_index, "/", length(pages), ")") else ""
+      f7_report_new_page(report_title)
+      text(0.055, 0.83, paste0(section_title, suffix), adj = c(0, 1), cex = 0.78, font = 2,
+           col = f7_report_palette[["teal"]])
+      page_data <- table_data[pages[[page_index]], , drop = FALSE]
+      widths <- pmax(nchar(names(page_data)), vapply(page_data, function(column) {
+        max(nchar(vapply(column, f7_report_format_cell, character(1))), na.rm = TRUE)
+      }, numeric(1)))
+      widths <- pmax(widths, 5)
+      widths <- widths / sum(widths)
+      x <- c(0.055, 0.055 + cumsum(widths) * 0.89)
+      top <- 0.77
+      row_height <- min(0.041, 0.66 / (nrow(page_data) + 1L))
+      rect(x[-length(x)], top - row_height, x[-1], top, col = f7_report_palette[["teal"]],
+           border = f7_report_palette[["white"]])
+      for (column_index in seq_along(page_data)) {
+        text((x[column_index] + x[column_index + 1L]) / 2, top - row_height / 2,
+             names(page_data)[[column_index]], cex = 0.48, font = 2,
+             col = f7_report_palette[["white"]])
+      }
+      for (row_index in seq_len(nrow(page_data))) {
+        row_top <- top - row_height * row_index
+        fill <- if (row_index %% 2L) f7_report_palette[["stripe"]] else f7_report_palette[["white"]]
+        rect(x[-length(x)], row_top - row_height, x[-1], row_top, col = fill,
+             border = f7_report_palette[["rule"]], lwd = 0.5)
+        for (column_index in seq_along(page_data)) {
+          text((x[column_index] + x[column_index + 1L]) / 2, row_top - row_height / 2,
+               f7_report_format_cell(page_data[[column_index]][[row_index]]), cex = 0.45,
+               col = f7_report_palette[["ink"]])
+        }
       }
     }
+    invisible(NULL)
   }
 
   f7_generate_visualization_report <- function(file, records, country, report_scope, department_filter = "all", selected_type = "all") {
@@ -17670,32 +17823,79 @@ server <- function(input, output, session) {
     if (!nrow(records)) stop("No hay registros disponibles para generar el reporte.")
     date_values <- stats::na.omit(as.Date(records$fecha_realizacion_bioensayo))
     date_label <- if (!length(date_values)) "Sin fechas registradas" else paste(format(min(date_values), "%Y-%m-%d"), format(max(date_values), "%Y-%m-%d"), sep = " a ")
-    departments <- sort(unique(stats::na.omit(as.character(records$departamento))))
+    departments <- sort(unique(trimws(stats::na.omit(as.character(records$departamento)))))
+    departments <- departments[nzchar(departments)]
     populations <- sort(unique(stats::na.omit(as.character(records$nombre_poblacion))))
     insecticides <- sort(unique(stats::na.omit(as.character(records$insecticida))))
     result_group <- f7_report_result_group(records$cdc_resultado)
     result_counts <- table(factor(result_group[!is.na(result_group)], levels = c("Resistencia", "Sospecha Resistencia", "Susceptible")))
     report_title <- paste("Reporte de bioensayos CDC -", country)
-    summary_lines <- c(
-      paste("Tipo de reporte:", report_scope),
-      paste("Registros incluidos:", nrow(records)),
-      paste("Rango de fechas evaluadas:", date_label),
-      paste("Departamentos con registros:", if (length(departments)) paste(departments, collapse = ", ") else "Sin dato"),
-      paste("Poblaciones registradas:", length(populations)),
-      paste("Insecticidas con registros:", if (length(insecticides)) paste(insecticides, collapse = ", ") else "Sin dato"),
-      paste("Conteo por resultado CDC calculado: Resistencia", result_counts[["Resistencia"]], "; Sospecha Resistencia", result_counts[["Sospecha Resistencia"]], "; Susceptible", result_counts[["Susceptible"]], "."),
-      "Resumen descriptivo: este reporte presenta los registros disponibles, sus tasas de mortalidad corregida y conteos por clasificación CDC calculada. No incluye interpretación epidemiológica ni conclusiones sobre tendencias."
+    department_label <- if (length(departments)) paste(departments, collapse = ", ") else "Sin dato"
+    department_narrative <- if (!length(departments)) {
+      "los departamentos con registros disponibles"
+    } else if (length(departments) == 1L) {
+      departments[[1]]
+    } else {
+      paste0(paste(departments[-length(departments)], collapse = ", "), " y ", departments[[length(departments)]])
+    }
+    insecticide_label <- if (length(insecticides)) paste(insecticides, collapse = ", ") else "Sin dato"
+    result_total <- sum(result_counts)
+    result_summary <- paste0(
+      "De los ", result_total, " registros con clasificación CDC calculada, ",
+      result_counts[["Resistencia"]], " se clasificaron como resistencia, ",
+      result_counts[["Sospecha Resistencia"]], " como sospecha de resistencia y ",
+      result_counts[["Susceptible"]], " como susceptibles."
     )
 
     types_to_plot <- if (!identical(selected_type, "all")) selected_type else c("Diagnóstica 1X", "Intensidad Exploratorio", "Sinergistas")
     types_to_plot <- types_to_plot[types_to_plot %in% unique(records$tipo_bioensayo)]
-    grDevices::pdf(file, width = 11, height = 8.5, onefile = TRUE)
+    grDevices::pdf(file, width = 8.5, height = 11, onefile = TRUE, paper = "special",
+                   family = "Helvetica", useDingbats = FALSE)
     on.exit(grDevices::dev.off(), add = TRUE)
-    f7_report_draw_text_page(report_title, summary_lines)
+    f7_report_page_number <<- 0L
+    f7_report_draw_cover()
+    f7_report_draw_paragraphs(
+      "Introducción",
+      c(
+        "La resistencia a insecticidas puede reducir la efectividad de las herramientas químicas utilizadas por los programas de control de vectores. Su vigilancia sistemática permite identificar cambios en la respuesta fenotípica de las poblaciones de mosquitos y generar evidencia para orientar la selección, rotación y evaluación de insecticidas dentro de un enfoque de manejo integrado de vectores.",
+        "La Resistance Evaluation Initiative (REI), implementada en el marco de EntoNet, busca fortalecer la generación de información estandarizada y comparable sobre resistencia a insecticidas. Este reporte presenta los resultados disponibles para Guatemala en un formato orientado a la toma de decisiones, con una lectura nacional seguida por resultados desagregados a nivel departamental.",
+        paste0("El análisis se concentra en los bioensayos de botella CDC registrados en la base web de la EntoNet. La información se resume para ", department_narrative, ". Las localidades de colecta se muestran para documentar la cobertura del muestreo, pero la interpretación principal se realiza a nivel de país y departamento, no por población individual.")
+      ),
+      title_cex = 34 / 12,
+      body_cex = 1,
+      wrap_width = 84,
+      callout_label = "Propósito del reporte",
+      callout_text = "Proporcionar al Ministerio de Salud una síntesis clara de la cobertura de vigilancia y de la respuesta fenotípica observada, identificando dónde se requiere mantener, ampliar o confirmar la vigilancia de resistencia."
+    )
+    f7_report_draw_kpis(
+      "Resumen ejecutivo nacional",
+      list(
+        list(label = "Registros incluidos", value = format(nrow(records), big.mark = ",")),
+        list(label = "Período evaluado", value = date_label),
+        list(label = "Departamentos", value = format(length(departments), big.mark = ",")),
+        list(label = "Poblaciones", value = format(length(populations), big.mark = ",")),
+        list(label = "Insecticidas", value = format(length(insecticides), big.mark = ",")),
+        list(label = "Alcance", value = report_scope)
+      ),
+      note = paste(result_summary, "Departamentos incluidos:", department_label)
+    )
+    f7_report_draw_paragraphs(
+      "Alcance territorial y metodología",
+      c(
+        paste0("Cobertura territorial. Los registros incluidos corresponden a: ", department_label, ". Se identificaron ",
+               length(populations), " poblaciones con información disponible."),
+        paste0("Insecticidas. El conjunto analizado incluye: ", insecticide_label, "."),
+        "Criterios analíticos. Para los bioensayos diagnósticos e intensidad se agruparon los resultados en Resistencia, Sospecha de Resistencia y Susceptible a partir de la clasificación CDC calculada. Para sinergistas se resumieron las mortalidades corregidas del sinergista y del control con etanol, además de su diferencia en puntos porcentuales.",
+        "Calidad y límites. Los conteos reflejan únicamente registros disponibles en la consulta actual. Los valores faltantes se excluyen de cada resumen específico y no se imputan. La interpretación debe considerar la integridad del registro, el tamaño muestral y el control de calidad del bioensayo."
+      )
+    )
     for (type in types_to_plot) {
       type_records <- records[records$tipo_bioensayo == type, , drop = FALSE]
+      f7_report_page_number <<- f7_report_page_number + 1L
       f7_draw_resistance_plot(type_records, type, department_filter)
-      title(main = paste("Resultados de Resistencia -", type), cex.main = 1.05, col.main = "#082243")
+      title(main = paste("Resultados de resistencia -", type), cex.main = 1.05, col.main = f7_report_palette[["navy"]])
+      mtext(paste("EntoNet | REI | Página", f7_report_page_number), side = 1, line = 3,
+            cex = 0.5, col = f7_report_palette[["muted"]])
     }
     for (type in types_to_plot) {
       type_records <- records[records$tipo_bioensayo == type, , drop = FALSE]
@@ -17705,6 +17905,14 @@ server <- function(input, output, session) {
         f7_report_draw_table_page(report_title, section_title, table_info$data)
       }
     }
+    f7_report_draw_paragraphs(
+      "Síntesis para la revisión técnica",
+      c(
+        result_summary,
+        paste0("Los resultados deben revisarse junto con la fecha del ensayo, el origen de la población, el insecticida, la dosis y la calidad del control. El reporte conserva el nivel de desagregación disponible para ", length(departments), " departamentos y ", length(populations), " poblaciones."),
+        "Antes de comunicar conclusiones programáticas, se recomienda verificar los registros pendientes, confirmar resultados atípicos y documentar cualquier exclusión aplicada durante la revisión técnica."
+      )
+    )
   }
 
   output$download_f7_complete_report <- downloadHandler(
