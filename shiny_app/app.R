@@ -9869,7 +9869,7 @@ server <- function(input, output, session) {
       "A4:B4", "C4:G4", "I4:N4", "A5:B5", "C5:G5", "I5:N5",
       "A6:N6", "B7:N7",
       "A9:G9", "H9:N9", "A10:B10", "C10:G10", "H10:I10", "J10:K10", "L10:M10",
-      "A11:B11", "C11:G11", "H11:I11", "J11:N11",
+      "A11:B11", "H11:I11", "J11:N11",
       "A12:B12", "C12:G12", "H12:I12", "J12:N12",
       "A13:B13", "C13:G13", "H13:I13", "J13:N13",
       "A14:B14", "C14:G14", "H14:I14", "J14:N14",
@@ -9882,7 +9882,7 @@ server <- function(input, output, session) {
     )
     if (is_synergist_print) {
       merges <- setdiff(merges, c("C13:G13", "C14:G14", "A25:N25", "A32:N32"))
-      merges <- c(merges, "C13:D13", "F13:G13", "C14:D14", "F14:G14", "A25:G25", "H25:N25", "A31:N31", "A32:G32", "H32:N32")
+      merges <- c(merges, "C11:D11", "F11:G11", "C13:D13", "F13:G13", "C14:D14", "F14:G14", "A25:G25", "H25:N25", "A31:N31", "A32:G32", "H32:N32")
     } else {
       merges <- setdiff(merges, "A32:N32")
     }
@@ -9903,7 +9903,7 @@ server <- function(input, output, session) {
 
     add_row(9, c("3. INFORMACIÓN DEL BIOENSAYO", rep("", 6), "4. INFORMACIÓN DEL MATERIAL BIOLÓGICO", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
     add_row(10, c("Fecha realización (dd/mm/aa)", "", "", "", "", "", "", "Origen", "", "Silvestre__", "", "Laboratorio__", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(11, c(if (is_synergist_print) "Sinergista" else "Insecticida", "", "", "", "", "", "", "Edad", "", "", "", if (is_synergist_print) "" else "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(11, c(if (is_synergist_print) "Sinergista" else "Insecticida", "", "", "", if (is_synergist_print) "# lote" else "", "", "", "Edad", "", "", "", if (is_synergist_print) "" else "Indefinida", "", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(12, c(if (is_synergist_print) "Dosis sinergista" else "Solvente utilizado", "", if (is_synergist_print) "" else "Etanol", "", if (is_synergist_print) "" else "Otro:", "", "", "Código especie mosquito", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(13, c(if (is_synergist_print) "Insecticida" else "Concentración", "", "", "", if (is_synergist_print) "Solvente" else "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(14, c(if (is_synergist_print) "Concentración ug/mL" else "# lote insecticida", "", "", "", if (is_synergist_print) "# lote" else "", if (is_synergist_print) "" else "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
@@ -9926,13 +9926,13 @@ server <- function(input, output, session) {
     if (is_synergist_print) {
       pretreatment_bottle_labels <- c("E1", "E2", "E3", "E4", "E5")
       add_row(25, c("8.1 SINERGISTA", rep("", 6), "8.2 Control EtOH", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
-      add_row(26, c("BOTELLA", pretreatment_bottle_labels, "Obser.", "BOTELLA", pretreatment_bottle_labels, "Obser."), rep(16L, 14), 22)
+      add_row(26, c("BOTELLA", c("SinE1", "SinE2", "SinE3", "SinE4", "SinC1"), "Obser.", "BOTELLA", c("EtOHE1", "EtOHE2", "EtOHE3", "EtOHE4", "EtOHC1"), "Obser."), rep(16L, 14), 22)
       add_row(27, c("INICIO (hh:mm)", rep("", 6), "INICIO (hh:mm)", rep("", 6)), rep(17L, 14), 19)
       add_row(28, c("60 V", rep("", 6), "60 V", rep("", 6)), rep(17L, 14), 19)
       add_row(29, c("60 I", rep("", 6), "60 I", rep("", 6)), rep(17L, 14), 19)
       add_row(31, c("9. LECTURA POR BOTELLA SINERGISTA debe esperar 60min adicionales", rep("", 13)), c(15L, rep(15L, 13)), 18)
-      add_row(32, c("9.1 SINERGISTA", rep("", 6), "9.2 Control EtOH", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
-      add_row(33, c("BOTELLA", "SinE1", "SinE2", "SinE3", "SinE4", "SinC1", "Obser.", "BOTELLA", "EtOHE1", "EtOHE2", "EtOHE3", "EtOHE4", "EtOHC1", "Obser."), rep(16L, 14), 22)
+      add_row(32, c("9.1 INSECTICIDA", rep("", 6), "9.2 INSECTICIDA", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
+      add_row(33, c("BOTELLA", "E1", "E2", "E3", "E4", "E5", "Obser.", "BOTELLA", "E1", "E2", "E3", "E4", "E5", "Obser."), rep(16L, 14), 22)
       add_row(34, c("INICIO (hh:mm)", rep("", 6), "INICIO (hh:mm)", rep("", 6)), rep(17L, 14), 19)
       for (index in seq_along(c("0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I"))) {
         label <- c("0 V", "0 I", "15 V", "15 I", "30 V", "30 I", "45 V", "45 I")[[index]]
