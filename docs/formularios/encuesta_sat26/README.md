@@ -39,6 +39,7 @@ Este flujo renderiza una página pública dedicada de SAT26, sin sidebar ni boto
 - El JSONB de `public.encuesta_sat26_intake` conserva las selecciones múltiples originales como arreglos.
 - La vista `public.encuesta_sat26_export` presenta cada opción múltiple en una columna binaria (`1` seleccionada, `0` no seleccionada y `NULL` si la pregunta no existe en el registro).
 - La vista analítica usa `security_invoker = true` y solo concede lectura a `service_role`; no está expuesta a participantes anónimos.
+- La versión revisada de C8 usa `public.encuesta_sat26_export_v2`, que conserva las columnas históricas y agrega las respuestas separadas de vigilancia y control.
 - Documentar el mapeo de preguntas, validaciones y lógica de salto.
 
 ## Archivos previstos
@@ -53,6 +54,8 @@ Este flujo renderiza una página pública dedicada de SAT26, sin sidebar ni boto
 - `encuesta_sat26_columnas_captura.csv`
 - `encuesta_sat26_opciones_multiples.csv`
 - `encuesta_sat26_captura_template.csv`
+
+La migración `048_encuesta_sat26_export_c8.sql` crea la vista de exportación v2 y ya fue aplicada en Supabase.
 
 ## Estado inicial
 

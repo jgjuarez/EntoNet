@@ -58,9 +58,8 @@ Esta guía documenta decisiones tomadas durante la construcción local de la enc
 - Si el anexo usa “No sé”, “Desconocido” o “Desconozco su inclusión”, se normaliza visualmente como “Desconozco” salvo que se necesite preservar un matiz específico.
 - Si “Otro” u “Otras” aparece como opción, debe agregarse un campo condicional para describirlo.
 - Si una pregunta selecciona qué datos conoce la persona, los campos de detalle deben aparecer solo cuando la opción correspondiente fue seleccionada.
-  - Ejemplo: si C1b.1 marca “Nombre”, mostrar C1b.1.1.
-  - Si C1b.1 marca “Último año de actualización”, mostrar C1b.1.2.
-  - Si C1b.1 marca “Documento del plan”, mostrar C1b.1.3.
+  - Los detalles solo deben aparecer para opciones disponibles en la versión activa del cuestionario.
+  - Las opciones retiradas pueden mantenerse en la exportación histórica para preservar respuestas previas.
 - No mostrar campos de detalle de una fila si la fila madre no fue seleccionada.
 
 ## Cursiva para géneros y nombres biológicos
@@ -91,4 +90,4 @@ Esta guía documenta decisiones tomadas durante la construcción local de la enc
 - `encuesta_sat26_columnas_captura.csv`: diccionario final de columnas escalares y binarias.
 - `encuesta_sat26_opciones_multiples.csv`: correspondencia auditable entre pregunta múltiple, opción almacenada y columna `1/0`.
 - `encuesta_sat26_captura_template.csv`: encabezado plano esperado para exportaciones.
-- `public.encuesta_sat26_export`: vista de Supabase con una fila por `codigo_unico`.
+- `public.encuesta_sat26_export_v2`: vista de Supabase con una fila por `codigo_unico`, compatible con las preguntas C8 separadas y las columnas históricas.

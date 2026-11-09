@@ -32,3 +32,12 @@
 - La descarga mantiene una fila por `codigo_unico`, las 530 columnas analíticas y las selecciones múltiples separadas en columnas binarias `1/0`.
 - El inicio de sesión consulta `usuario_perfil` mediante la API privada de Supabase y deja la conexión PostgreSQL directa únicamente como respaldo, evitando bloquear el acceso cuando las credenciales del pooler están desactualizadas.
 - La pantalla administrativa de descarga de encuestas adoptó la misma estructura visual de `Datos - Campo`: panel de selección, alcance por país e institución, botón CSV y resumen del perfil activo.
+
+## 2026-11-08 (Supabase actualizado; versión web lista para publicar)
+
+- Se actualizaron etiquetas y periodos de referencia de la encuesta; los IDs internos de las preguntas existentes se conservaron para no invalidar respuestas previas.
+- C1b dejó de ofrecer la opción `Nombre`; los valores históricos continúan disponibles en el JSONB y en la exportación anterior.
+- C8 se separó por vigilancia y control, con respuestas independientes y hasta tres motivadores por cada ámbito.
+- Se agregaron claves JSONB y columnas analíticas para las nuevas respuestas C8. La migración `048_encuesta_sat26_export_c8.sql` ya se aplicó en Supabase y creó `public.encuesta_sat26_export_v2`.
+- La aplicación consulta la vista v2; las respuestas permanecen en JSONB y no se reescribieron registros existentes.
+- Se generó `Encuesta_SAT26_2026_actualizada.docx` a partir de la versión vigente del cuestionario.
