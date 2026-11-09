@@ -9952,10 +9952,11 @@ server <- function(input, output, session) {
 
   f7_printable_sheet_xml <- function(
     pais, departamento, municipio, codigo_bioensayo, nombre_poblacion,
-    tipo_bioensayo, version_formulario, include_watermark = FALSE
+    tipo_bioensayo, version_formulario, insecticida = "", include_watermark = FALSE
   ) {
     rows <- character()
     is_synergist_print <- grepl("^Sinergista", value_or_default(tipo_bioensayo, ""), ignore.case = TRUE)
+    is_temefos_print <- formulario_7_is_temefos(insecticida)
     merges <- c(
       "A1:N1", "A2:N2", "A3:B3", "C3:G3", "I3:J3", "L3:N3",
       "A4:B4", "C4:G4", "I4:N4", "A5:B5", "C5:G5", "I5:N5",
@@ -9995,15 +9996,17 @@ server <- function(input, output, session) {
 
     add_row(9, c("3. INFORMACIÓN DEL BIOENSAYO", rep("", 6), "4. INFORMACIÓN DEL MATERIAL BIOLÓGICO", rep("", 6)), c(rep(15L, 7), rep(15L, 7)), 18)
     add_row(10, c("Fecha realización (dd/mm/aa)", "", "", "", "", "", "", "Origen", "", "Silvestre__", "", "Laboratorio__", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(11, c(if (is_synergist_print) "Sinergista" else "Insecticida", "", "", "", if (is_synergist_print) "# lote" else "", "", "", "Edad", "", "", "", if (is_synergist_print) "" else "Indefinida", "", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(11, c(if (is_synergist_print) "Sinergista" else "Insecticida", "", "", "", if (is_synergist_print) "# lote" else "", "", "", if (is_temefos_print) "Estadio Larval" else "Edad", "", "", "", if (is_synergist_print) "" else "Indefinida", "", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(12, c(if (is_synergist_print) "Dosis sinergista" else "Solvente utilizado", "", if (is_synergist_print) "" else "Etanol", "", if (is_synergist_print) "" else "Otro:", "", "", "Código especie mosquito", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(13, c(if (is_synergist_print) "Insecticida" else "Concentración", "", "", "", if (is_synergist_print) "Solvente" else "", if (is_synergist_print) "" else "ug/mL", "", "Hora separación (hh:mm)", "", "", "h", "", "m", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(14, c(if (is_synergist_print) "Concentración ug/mL" else "# lote insecticida", "", "", "", if (is_synergist_print) "# lote" else "", if (is_synergist_print) "" else "", "", "Fecha separación (dd/mm/aa)", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, if (is_synergist_print) 16L else 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "Generación filial", "", "", "", if (is_synergist_print) "" else "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
-    add_row(16, c("# Veces se han utilizado las botellas", "", "E1__", "", "E2__", "", "E3__", "", "E4__", "", "C1__", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
+    if (!is_temefos_print) {
+      add_row(15, c("Fecha revestimiento (dd/mm/aa)", "", "", "", "", "", "", "Generación filial", "", "", "", if (is_synergist_print) "" else "Indefinida", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+      add_row(16, c("# Veces se han utilizado las botellas", "", "E1__", "", "E2__", "", "E3__", "", "E4__", "", "C1__", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L, 17L), 21)
+    }
 
     add_row(18, c("5. RESPONSABLES", rep("", 13)), c(15L, rep(15L, 13)), 18)
-    add_row(19, c("Código quien realizó revestimiento", "", "", "", "", "", "", "Código quien realiza bioensayo", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
+    add_row(19, c(if (is_temefos_print) "" else "Código quien realizó revestimiento", "", "", "", "", "", "", "Código quien realiza bioensayo", "", "", "", "", "", ""), c(16L, 16L, 17L, 17L, 17L, 17L, 17L, 16L, 16L, 17L, 17L, 17L, 17L, 17L), 21)
     add_row(
       20,
       c("", "", "", "", "", "", "", "Código revisión 24h", "", "", "", "", "", ""),
@@ -10069,7 +10072,7 @@ server <- function(input, output, session) {
 
   f7_create_printable_xlsx <- function(
     file, pais, departamento, municipio, codigo_bioensayo, nombre_poblacion,
-    tipo_bioensayo, version_formulario
+    tipo_bioensayo, version_formulario, insecticida = ""
   ) {
     is_synergist_print <- grepl("^Sinergista", value_or_default(tipo_bioensayo, ""), ignore.case = TRUE)
     last_print_row <- if (is_synergist_print) 42L else 35L
@@ -10135,7 +10138,7 @@ server <- function(input, output, session) {
       file.path(root, "xl", "worksheets", "sheet1.xml"),
       f7_printable_sheet_xml(
         pais, departamento, municipio, codigo_bioensayo, nombre_poblacion,
-        tipo_bioensayo, version_formulario, include_watermark
+        tipo_bioensayo, version_formulario, insecticida, include_watermark
       )
     )
     if (include_watermark) {
@@ -21000,7 +21003,8 @@ server <- function(input, output, session) {
         codigo_bioensayo = code,
         nombre_poblacion = f5_optional_text(input$f7_print_nombre_poblacion),
         tipo_bioensayo = type_label,
-        version_formulario = version_formulario
+        version_formulario = version_formulario,
+        insecticida = input$f7_print_insecticida
       )
     }
   )
